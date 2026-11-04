@@ -228,7 +228,7 @@ const AtmosphereTransition = forwardRef<AtmosphereHandle>(
       const H = canvas.height;
 
       /* Tremor de turbulência (aplicado ao canvas todo). */
-      const shake = seg(p, 0.64, 0.84) * (1 - seg(p, 0.9, 0.97)) * 4;
+      const shake = seg(p, 0.66, 0.8) * (1 - seg(p, 0.86, 0.94)) * 1.5;
 
       if (shake > 0.01) {
         const sx = (Math.sin(p * 83) + 0.5 * Math.sin(p * 151)) * shake;

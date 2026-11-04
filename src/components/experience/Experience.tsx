@@ -25,6 +25,18 @@ const SpaceScene = dynamic(() => import("./SpaceScene"), { ssr: false });
 type Phase = "hero" | "traveling" | "storm" | "returning";
 
 /*
+ * As nuvens 2D (AtmosphereTransition) têm a própria linha do
+ * tempo. Aqui ela é remapeada: começa quando os tufos 3D já estão
+ * passando (~0.64) e fecha a tela (véu sólido) em ~0.76.
+ */
+function toCloudTimeline(p: number) {
+  if (p <= 0.64) return p * (0.62 / 0.64);
+  if (p <= 0.76) return 0.62 + ((p - 0.64) / 0.12) * 0.18;
+  if (p <= 0.79) return 0.8 + ((p - 0.76) / 0.03) * 0.02;
+  return 0.82 + ((p - 0.79) / 0.21) * 0.18;
+}
+
+/*
  * ============================================================
  * WEBGL OU VÍDEO
  * ============================================================
@@ -84,8 +96,8 @@ const SCENE_TIMEOUT_MS = 8000;
 
 /* A timeline está documentada em travel.ts. */
 
-const FORWARD_MS = 6200;
-const RETURN_MS = 3800;
+const FORWARD_MS = 4400;
+const RETURN_MS = 3000;
 const REDUCED_MS = 500;
 const COOLDOWN_MS = 700;
 
@@ -115,6 +127,7 @@ type Mode = "flight" | "3d" | "zoom";
 
 export default function Experience() {
   const spaceRef = useRef<HTMLDivElement>(null);
+  const vignetteRef = useRef<HTMLDivElement>(null);
   const identityRef = useRef<HTMLDivElement>(null);
   const indicatorRef = useRef<HTMLDivElement>(null);
   const atmosphereRef = useRef<AtmosphereHandle>(null);
@@ -266,9 +279,14 @@ export default function Experience() {
       fallback.style.filter = blur > 0.05 ? `blur(${blur}px)` : "none";
     }
 
+    /* Vinheta só no espaço: sobre nuvens claras ela vira um "anel". */
+    if (vignetteRef.current) {
+      vignetteRef.current.style.opacity = `${1 - smooth(seg(progress, 0.3, 0.5))}`;
+    }
+
     /* O espaço some por baixo do véu de nuvem. */
     if (space) {
-      space.style.opacity = `${1 - smooth(seg(progress, 0.72, 0.8))}`;
+      space.style.opacity = `${1 - smooth(seg(progress, 0.74, 0.79))}`;
     }
 
     if (phaseRef.current !== "returning") {
@@ -283,11 +301,11 @@ export default function Experience() {
       }
     }
 
-    atmosphereRef.current?.render(progress);
+    atmosphereRef.current?.render(toCloudTimeline(progress));
 
     /* STORM: liga por baixo do véu e "inclina" até o horizonte. */
-    const stormIn = smooth(seg(progress, 0.7, 0.8));
-    const tilt = 1 - Math.pow(1 - seg(progress, 0.82, 1), 3);
+    const stormIn = smooth(seg(progress, 0.7, 0.77));
+    const tilt = 1 - Math.pow(1 - seg(progress, 0.79, 1), 3);
     const stormBlur = (1 - tilt) * 6;
 
     if (stormScene) {
@@ -302,7 +320,7 @@ export default function Experience() {
       }) contrast(${0.97 + tilt * 0.1}) brightness(${0.88 + tilt * 0.12})`;
     }
 
-    if (phaseRef.current === "traveling" && progress >= 0.92 && !stormTextRef.current) {
+    if (phaseRef.current === "traveling" && progress >= 0.9 && !stormTextRef.current) {
       stormTextRef.current = true;
       stormIntroRef.current?.show();
     }
@@ -722,6 +740,7 @@ export default function Experience() {
 
           {/* Vinheta leve: foca o olhar sem escurecer a Terra */}
           <div
+            ref={vignetteRef}
             className="pointer-events-none absolute inset-0"
             style={{
               background:

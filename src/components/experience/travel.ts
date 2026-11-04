@@ -18,18 +18,16 @@ export const smooth = (x: number) => x * x * (3 - 2 * x);
 export const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
 /*
- * TIMELINE (progresso 0..1)
+ * TIMELINE (progresso 0..1, ~4.4s na ida)
  *
- * 0.00 - 0.74   VOO: a câmera sai do espaço e desce até o topo
- *               das nuvens. Distância cai exponencialmente
- *               (velocidade relativa constante = sensação real
- *               de aproximação). No fim ela "nivela" e olha
- *               para o horizonte curvo da Terra.
- * 0.56 - 0.68   halo azul nas bordas (2D)
- * 0.62 - 0.92   folhas de nuvem (brancas -> azul de tempestade)
- * 0.64 - 0.80   véu: branco -> ardósia -> azul do storm
- * 0.70 - 0.80   storm liga por baixo do véu sólido
- * 0.82 - 1.00   DESCIDA: teto de nuvem sobe e sai, storm inclina
- * 0.92          texto da Storm entra
+ * 0.00 - 0.36   ESPAÇO: arco em direção ao destino (Atlântico, 7°N 36°W)
+ * 0.36 - 0.60   REENTRADA: altitude despenca, câmera olha para frente;
+ *               horizonte, vento, blur radial
+ * 0.56 - 0.76   TRAVESSIA: tufos de nuvem voam contra a câmera,
+ *               cada vez mais densos; véu 2D fecha a tela em ~0.76
+ *               (a câmera 3D nunca desce até o oceano)
+ * 0.70 - 0.79   storm liga por baixo; cena 3D some
+ * 0.79 - 1.00   saída da nuvem: storm inclina até o horizonte
+ * 0.90          texto da Storm entra
  */
 export const FLIGHT_END = 0.74;
