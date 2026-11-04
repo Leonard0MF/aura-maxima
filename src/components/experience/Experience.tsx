@@ -1,6 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
+import {
+  Component,
+  ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 import AtmosphereTransition, {
   AtmosphereHandle,
@@ -8,55 +17,104 @@ import AtmosphereTransition, {
 } from "./AtmosphereTransition";
 import StormIntro, { StormIntroHandle } from "./StormIntro";
 import { display, mono } from "./fonts";
+import { clamp, FLIGHT_END, seg, smooth, travel } from "./travel";
+
+/* three.js só no cliente e em um chunk separado. */
+const SpaceScene = dynamic(() => import("./SpaceScene"), { ssr: false });
 
 type Phase = "hero" | "traveling" | "storm" | "returning";
 
 /*
  * ============================================================
- * UTILS
+ * WEBGL OU VÍDEO
  * ============================================================
+ * Sem aceleração de hardware (GPU bloqueada, driver ruim,
+ * "aceleração de hardware" desligada no navegador) não existe
+ * WebGL. Nesses casos a Terra volta a ser o vídeo com zoom,
+ * em vez de deixar a página preta.
  */
 
-const clamp = (v: number, a = 0, b = 1) => Math.min(Math.max(v, a), b);
-const seg = (p: number, a: number, b: number) => clamp((p - a) / (b - a));
-const smooth = (x: number) => x * x * (3 - 2 * x);
+let webglCache: boolean | null = null;
 
-/*
- * ============================================================
- * TIMELINE (progresso 0..1)
- * ============================================================
- *
- * Regra: NADA de atmosfera antes de a Terra estar grande.
- *
- * 0.00 - 0.72   APROXIMAÇÃO: zoom hiperbólico (1/(1-k·t)).
- *               Lento no começo, explosivo no fim (~25x).
- *               Nunca para de crescer antes de a Terra sumir.
- * 0.52 - 0.74   zoom blur radial (só quando já há velocidade)
- * 0.56 - 0.68   halo azul nas bordas (~4x)
- * 0.62 - 0.92   folhas de nuvem (brancas -> azul de tempestade)
- * 0.64 - 0.80   véu: branco -> ardósia -> azul do storm
- * 0.64 - 0.74   Terra some (escondida pelo véu)
- * 0.76 - 0.82   storm liga por baixo do véu sólido
- * 0.82 - 1.00   DESCIDA: teto de nuvem sobe e sai, névoa sobe,
- *               storm (ampliado, só céu) inclina até o horizonte
- * 0.92          texto da Storm entra (tempo real)
- *
- * ============================================================
- */
+function detectWebGL() {
+  if (webglCache !== null) return webglCache;
 
-const FORWARD_MS = 5000;
-const RETURN_MS = 3400;
+  /* Dev: /?fallback=1 força o modo vídeo para testar. */
+  if (
+    process.env.NODE_ENV !== "production" &&
+    new URLSearchParams(window.location.search).has("fallback")
+  ) {
+    return (webglCache = false);
+  }
+
+  try {
+    const c = document.createElement("canvas");
+    const gl = c.getContext("webgl2") || c.getContext("webgl");
+    webglCache = !!gl;
+    (gl as WebGLRenderingContext | null)
+      ?.getExtension("WEBGL_lose_context")
+      ?.loseContext();
+  } catch {
+    webglCache = false;
+  }
+  return webglCache;
+}
+
+const noopSubscribe = () => () => {};
+
+/* Se a cena 3D quebrar ao renderizar, cai para o vídeo. */
+class SceneBoundary extends Component<
+  { onError: () => void; children: ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch() {
+    this.props.onError();
+  }
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
+
+/* Tempo máximo esperando a cena antes de mostrar o hero assim mesmo. */
+const SCENE_TIMEOUT_MS = 8000;
+
+/* A timeline está documentada em travel.ts. */
+
+const FORWARD_MS = 6200;
+const RETURN_MS = 3800;
 const REDUCED_MS = 500;
 const COOLDOWN_MS = 700;
 
-const GHOST_W = 1280; // resolução do canvas de zoom blur
-const GHOST_SAMPLES = 8;
+/* Depois que o hero aparece, começa a baixar o vídeo do storm. */
+const STORM_PRELOAD_DELAY_MS = 1200;
+
+/*
+ * VÍDEO DE VOO (modo realista)
+ * Se este arquivo existir, a viagem do espaço até as nuvens é
+ * esse vídeo, e não a cena 3D. Ele toca em tempo real na ida e
+ * é "rebobinado" quadro a quadro na volta.
+ */
+const FLIGHT_SRC = "/videos/flight.mp4";
+
+/* Depois do voo: nuvens -> storm, em tempo real. */
+const FLIGHT_TAIL_MS = 1800;
+
+/* Se o vídeo travar (rede) por mais que isso, segue sem ele. */
+const FLIGHT_STALL_MS = 1500;
+
+/*
+ * flight: vídeo de voo real (preferido)
+ * 3d:     cena three.js (sem vídeo de voo)
+ * zoom:   vídeo da Terra com zoom (sem WebGL)
+ */
+type Mode = "flight" | "3d" | "zoom";
 
 export default function Experience() {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const ghostRef = useRef<HTMLCanvasElement>(null);
-  const earthRef = useRef<HTMLDivElement>(null);
+  const spaceRef = useRef<HTMLDivElement>(null);
   const identityRef = useRef<HTMLDivElement>(null);
   const indicatorRef = useRef<HTMLDivElement>(null);
   const atmosphereRef = useRef<AtmosphereHandle>(null);
@@ -64,8 +122,42 @@ export default function Experience() {
   const stormSceneRef = useRef<HTMLDivElement>(null);
   const stormRef = useRef<HTMLVideoElement>(null);
 
-  const [videoFinished, setVideoFinished] = useState(false);
-  const finishedRef = useRef(false);
+  /* A cena 3D para de renderizar quando está escondida pelo storm. */
+  const [sceneActive, setSceneActive] = useState(true);
+  const [sceneReady, setSceneReady] = useState(false);
+
+  /* null no servidor; no cliente, true/false conforme o suporte a WebGL. */
+  const webglSupported = useSyncExternalStore(noopSubscribe, detectWebGL, () => null);
+  const [sceneFailed, setSceneFailed] = useState(false);
+  const fallbackVideoRef = useRef<HTMLVideoElement>(null);
+  const flightRef = useRef<HTMLVideoElement>(null);
+
+  /* null enquanto verifica se o vídeo de voo existe. */
+  const [flightAvailable, setFlightAvailable] = useState<boolean | null>(null);
+
+  const mode: Mode | null =
+    flightAvailable === null || webglSupported === null
+      ? null
+      : flightAvailable
+        ? "flight"
+        : webglSupported && !sceneFailed
+          ? "3d"
+          : "zoom";
+
+  const modeRef = useRef<Mode | null>(null);
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    fetch(FLIGHT_SRC, { method: "HEAD", signal: ctrl.signal })
+      .then((r) => setFlightAvailable(r.ok))
+      .catch(() => {
+        if (!ctrl.signal.aborted) setFlightAvailable(false);
+      });
+    return () => ctrl.abort();
+  }, []);
 
   const phaseRef = useRef<Phase>("hero");
   const animationRef = useRef<number | null>(null);
@@ -73,12 +165,6 @@ export default function Experience() {
   const lastScrollYRef = useRef(0);
   const cooldownRef = useRef(0);
   const stormTextRef = useRef(false);
-
-  /*
-   * ============================================================
-   * SCROLL LOCK
-   * ============================================================
-   */
 
   const lockScroll = useCallback(() => {
     document.body.style.overflow = "hidden";
@@ -95,13 +181,8 @@ export default function Experience() {
 
   /*
    * ============================================================
-   * HERO: REVELAÇÃO ROBUSTA
+   * HERO: revelação própria (WAAPI), fora da timeline no retorno
    * ============================================================
-   *
-   * O nome NÃO acompanha a timeline no retorno. Durante o retorno
-   * ele fica oculto e, quando a Terra já está de volta, entra com
-   * uma animação própria (WAAPI). Isso evita aparecer de repente
-   * ou piscar por causa de valores intermediários da timeline.
    */
 
   const cancelHeroAnimations = useCallback(() => {
@@ -119,23 +200,14 @@ export default function Experience() {
       if (identity) {
         identity.style.opacity = "1";
         identity.style.transform = "none";
-        identity.style.filter = "none";
 
         identity.animate?.(
           [
-            {
-              opacity: 0,
-              transform: "translate3d(0, 18px, 0)",
-              filter: "blur(10px)",
-            },
-            {
-              opacity: 1,
-              transform: "translate3d(0, 0, 0)",
-              filter: "blur(0px)",
-            },
+            { opacity: 0, transform: "translate3d(0, 24px, 0)", filter: "blur(12px)" },
+            { opacity: 1, transform: "translate3d(0, 0, 0)", filter: "blur(0px)" },
           ],
           {
-            duration: 1000,
+            duration: 1300,
             delay,
             easing: "cubic-bezier(0.16, 1, 0.3, 1)",
             fill: "backwards",
@@ -145,10 +217,9 @@ export default function Experience() {
 
       if (indicator) {
         indicator.style.opacity = "1";
-
         indicator.animate?.([{ opacity: 0 }, { opacity: 1 }], {
-          duration: 800,
-          delay: delay + 500,
+          duration: 900,
+          delay: delay + 700,
           easing: "ease",
           fill: "backwards",
         });
@@ -159,258 +230,88 @@ export default function Experience() {
 
   /*
    * ============================================================
-   * ZOOM BLUR REAL
-   * ============================================================
-   *
-   * Desenha o vídeo da Terra várias vezes em escalas crescentes
-   * (a partir do ponto de fuga) e tira a média. É o que uma
-   * câmera real registra quando se aproxima rápido.
-   */
-
-  const drawGhost = useCallback((spread: number, opacity: number) => {
-    const ghost = ghostRef.current;
-    if (!ghost) return;
-
-    if (opacity < 0.01) {
-      ghost.style.opacity = "0";
-      return;
-    }
-
-    const video = videoRef.current;
-    const still = canvasRef.current;
-    const useStill = finishedRef.current;
-
-    const src: HTMLVideoElement | HTMLCanvasElement | null = useStill
-      ? still
-      : video;
-
-    const sw = useStill ? still?.width : video?.videoWidth;
-    const sh = useStill ? still?.height : video?.videoHeight;
-
-    if (!src || !sw || !sh) return;
-
-    const cw = GHOST_W;
-    const ch = Math.round((GHOST_W * window.innerHeight) / window.innerWidth);
-
-    if (ghost.width !== cw || ghost.height !== ch) {
-      ghost.width = cw;
-      ghost.height = ch;
-    }
-
-    const ctx = ghost.getContext("2d");
-    if (!ctx) return;
-
-    /* object-cover */
-    const cover = Math.max(cw / sw, ch / sh);
-    const dw = sw * cover;
-    const dh = sh * cover;
-    const ox = (cw - dw) / 2;
-    const oy = (ch - dh) / 2;
-
-    /* mesmo ponto de fuga do transform-origin da Terra (50% 69%) */
-    const fx = cw * 0.5;
-    const fy = ch * 0.69;
-
-    ctx.globalAlpha = 1;
-    ctx.clearRect(0, 0, cw, ch);
-
-    for (let i = 0; i < GHOST_SAMPLES; i++) {
-      const s = 1 + spread * (i / (GHOST_SAMPLES - 1));
-
-      ctx.globalAlpha = 1 / (i + 1); // média acumulada
-
-      ctx.drawImage(
-        src,
-        fx + (ox - fx) * s,
-        fy + (oy - fy) * s,
-        dw * s,
-        dh * s
-      );
-    }
-
-    ctx.globalAlpha = 1;
-    ghost.style.opacity = `${opacity}`;
-  }, []);
-
-  /*
-   * ============================================================
-   * RENDER DA TIMELINE
+   * RENDER DA TIMELINE (lado DOM; a cena 3D lê travel.progress)
    * ============================================================
    */
 
-  const renderProgress = useCallback(
-    (progress: number) => {
-      const earth = earthRef.current;
-      const identity = identityRef.current;
-      const indicator = indicatorRef.current;
-      const stormScene = stormSceneRef.current;
-      const storm = stormRef.current;
+  const renderProgress = useCallback((progress: number) => {
+    travel.progress = progress;
 
-      /*
-       * ------------------------------------------------------
-       * EARTH: aproximação hiperbólica
-       * ------------------------------------------------------
-       */
+    const space = spaceRef.current;
+    const identity = identityRef.current;
+    const indicator = indicatorRef.current;
+    const stormScene = stormSceneRef.current;
+    const storm = stormRef.current;
 
+    /* Modo realista: hero -> vídeo de voo, que segue o progresso. */
+    const flight = flightRef.current;
+    if (modeRef.current === "flight" && flight) {
+      flight.style.opacity = `${smooth(seg(progress, 0, 0.025))}`;
+
+      /* Na volta (e no modo de inspeção) o vídeo é posicionado pelo progresso. */
+      if (phaseRef.current !== "traveling" && flight.duration && !flight.seeking) {
+        const t = seg(progress, 0, FLIGHT_END) * flight.duration;
+        if (Math.abs(flight.currentTime - t) > 0.03) flight.currentTime = t;
+      }
+    }
+
+    /* Fallback em vídeo: zoom hiperbólico (o comportamento antigo). */
+    const fallback = fallbackVideoRef.current;
+    if (modeRef.current === "zoom" && fallback) {
       const z = seg(progress, 0, 0.72);
-
-      const scale = 1 / (1 - 0.96 * z);
-
-      const zt = Math.pow(z, 1.5);
-      const tx = zt * 2;
-      const ty = zt * -12;
-
-      /* Tremor de turbulência (pequeno, só na travessia) */
-      const shakeAmp =
-        seg(progress, 0.64, 0.8) * (1 - seg(progress, 0.86, 0.95)) * 3;
-
-      const sx =
-        (Math.sin(progress * 83) + 0.5 * Math.sin(progress * 151)) * shakeAmp;
-      const sy =
-        (Math.cos(progress * 97) + 0.5 * Math.sin(progress * 173)) * shakeAmp;
-
-      const blurAmount = seg(progress, 0.56, 0.72) * 5;
-      const dim = seg(progress, 0.56, 0.72);
-
-      if (earth) {
-        earth.style.transform = `translate3d(${sx}px, ${sy}px, 0) translate3d(${tx}%, ${ty}%, 0) scale(${scale})`;
-
-        earth.style.filter =
-          blurAmount > 0.05
-            ? `blur(${blurAmount}px) brightness(${1 - dim * 0.05}) saturate(${
-                1 - dim * 0.03
-              })`
-            : "none";
-
-        const earthFade = smooth(seg(progress, 0.68, 0.80));
-
-earth.style.opacity = `${1 - earthFade}`;
-      }
-
-      /* Zoom blur radial: só quando já existe velocidade */
-      const spread = Math.pow(seg(progress, 0.52, 0.74), 1.4) * 0.6;
-      const ghostOpacity = smooth(seg(progress, 0.52, 0.6));
-
-      drawGhost(spread, ghostOpacity);
-
-      /*
-       * ------------------------------------------------------
-       * IDENTITY + INDICATOR
-       * ------------------------------------------------------
-       * No retorno eles ficam fora da timeline (ver revealHero).
-       */
-
-      if (phaseRef.current !== "returning") {
-        const identityProgress = smooth(seg(progress, 0, 0.14));
-
-        if (identity) {
-          identity.style.opacity = `${1 - identityProgress}`;
-          identity.style.transform = `translate3d(${
-            identityProgress * 95
-          }px, ${identityProgress * -42}px, 0)`;
-        }
-
-        if (indicator) {
-          indicator.style.opacity = `${1 - smooth(seg(progress, 0, 0.08))}`;
-        }
-      }
-
-      /*
-       * ------------------------------------------------------
-       * ATMOSFERA (nuvens + véu)
-       * ------------------------------------------------------
-       */
-
-      atmosphereRef.current?.render(progress);
-
-      /*
-       * ------------------------------------------------------
-       * STORM
-       * ------------------------------------------------------
-       * Liga por baixo do véu sólido. Depois a câmera "inclina
-       * para baixo": o vídeo começa ampliado (só o céu escuro),
-       * com origem no TOPO; ao reduzir a escala, o horizonte
-       * sobe da borda de baixo até a posição final.
-       */
-
-      const stormIn = smooth(seg(progress, 0.70, 0.80));
-
-      const tiltLinear = seg(progress, 0.82, 1);
-      const tilt = 1 - Math.pow(1 - tiltLinear, 3); // ease-out
-
-      const stormScale = 1 + (1 - tilt) * 0.75;
-      const stormBlur = (1 - tilt) * 6;
-
-      if (stormScene) {
-        stormScene.style.opacity = `${stormIn}`;
-        stormScene.style.transform = `scale(${stormScale})`;
-      }
-
-      if (storm) {
-        storm.style.filter = `${
-          stormBlur > 0.1 ? `blur(${stormBlur}px) ` : ""
-        }saturate(${0.82 + tilt * 0.18}) contrast(${
-          0.97 + tilt * 0.1
-        }) brightness(${0.88 + tilt * 0.12})`;
-      }
-
-      /*
-       * ------------------------------------------------------
-       * TEXTO DA STORM (só na ida; some no retorno)
-       * ------------------------------------------------------
-       */
-
-      if (
-        phaseRef.current === "traveling" &&
-        progress >= 0.92 &&
-        !stormTextRef.current
-      ) {
-        stormTextRef.current = true;
-        stormIntroRef.current?.show();
-      }
-    },
-    [drawGhost]
-  );
-
-  /*
-   * ============================================================
-   * CAPTURA DO FRAME FINAL DA TERRA
-   * ============================================================
-   */
-
-  const captureFinalFrame = useCallback(() => {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-
-    if (!video || !canvas || video.videoWidth === 0 || video.videoHeight === 0) {
-      return;
+      const blur = seg(progress, 0.56, 0.72) * 5;
+      fallback.style.transform = `translate3d(${z ** 1.5 * 2}%, ${
+        z ** 1.5 * -12
+      }%, 0) scale(${1 / (1 - 0.96 * z)})`;
+      fallback.style.filter = blur > 0.05 ? `blur(${blur}px)` : "none";
     }
 
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    /* O espaço some por baixo do véu de nuvem. */
+    if (space) {
+      space.style.opacity = `${1 - smooth(seg(progress, 0.72, 0.8))}`;
+    }
 
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    if (phaseRef.current !== "returning") {
+      const out = smooth(seg(progress, 0, 0.12));
 
-    finishedRef.current = true;
-    setVideoFinished(true);
+      if (identity) {
+        identity.style.opacity = `${1 - out}`;
+        identity.style.transform = `translate3d(${out * 60}px, 0, 0)`;
+      }
+      if (indicator) {
+        indicator.style.opacity = `${1 - smooth(seg(progress, 0, 0.06))}`;
+      }
+    }
+
+    atmosphereRef.current?.render(progress);
+
+    /* STORM: liga por baixo do véu e "inclina" até o horizonte. */
+    const stormIn = smooth(seg(progress, 0.7, 0.8));
+    const tilt = 1 - Math.pow(1 - seg(progress, 0.82, 1), 3);
+    const stormBlur = (1 - tilt) * 6;
+
+    if (stormScene) {
+      stormScene.style.opacity = `${stormIn}`;
+      stormScene.style.visibility = stormIn > 0 ? "visible" : "hidden";
+      stormScene.style.transform = `scale(${1 + (1 - tilt) * 0.75})`;
+    }
+
+    if (storm) {
+      storm.style.filter = `${stormBlur > 0.1 ? `blur(${stormBlur}px) ` : ""}saturate(${
+        0.82 + tilt * 0.18
+      }) contrast(${0.97 + tilt * 0.1}) brightness(${0.88 + tilt * 0.12})`;
+    }
+
+    if (phaseRef.current === "traveling" && progress >= 0.92 && !stormTextRef.current) {
+      stormTextRef.current = true;
+      stormIntroRef.current?.show();
+    }
   }, []);
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    video.addEventListener("ended", captureFinalFrame);
-    return () => video.removeEventListener("ended", captureFinalFrame);
-  }, [captureFinalFrame]);
 
   /*
    * ============================================================
-   * CORES DO STORM (amostradas do 1º frame)
+   * CORES DO STORM (amostradas do 1º frame) -> véu termina nelas
    * ============================================================
-   * O véu termina nessas cores (topo e base), então o
-   * crossfade fica invisível.
    */
 
   useEffect(() => {
@@ -423,7 +324,6 @@ earth.style.opacity = `${1 - earthFade}`;
       const c = document.createElement("canvas");
       c.width = 8;
       c.height = 8;
-
       const ctx = c.getContext("2d", { willReadFrequently: true });
       if (!ctx) return;
 
@@ -432,11 +332,7 @@ earth.style.opacity = `${1 - earthFade}`;
         const d = ctx.getImageData(0, 0, 8, 8).data;
 
         const avg = (rowStart: number, rowEnd: number): RGB => {
-          let r = 0;
-          let g = 0;
-          let b = 0;
-          let n = 0;
-
+          let r = 0, g = 0, b = 0, n = 0;
           for (let row = rowStart; row < rowEnd; row++) {
             for (let col = 0; col < 8; col++) {
               const i = (row * 8 + col) * 4;
@@ -446,47 +342,38 @@ earth.style.opacity = `${1 - earthFade}`;
               n++;
             }
           }
-
-          /* Compensa os overlays escuros da cena do storm. */
-          const k = 0.88;
-
+          const k = 0.88; // compensa os overlays escuros
           return [(r / n) * k, (g / n) * k, (b / n) * k];
         };
 
         atmosphereRef.current?.setTint(avg(0, 3), avg(5, 8));
       } catch {
-        // canvas bloqueado (vídeo de outro domínio): fica o fallback
+        // canvas bloqueado: fica o fallback
       }
     };
 
     if (storm.readyState >= 2) sample();
-
     storm.addEventListener("loadeddata", sample);
     return () => storm.removeEventListener("loadeddata", sample);
   }, []);
 
+  /* O vídeo do storm (pesado) só começa a baixar depois do hero. */
+  const preloadStorm = useCallback(() => {
+    const storm = stormRef.current;
+    if (!storm || storm.preload === "auto") return;
+    storm.preload = "auto";
+    storm.load();
+  }, []);
+
   /*
    * ============================================================
-   * RESET (Terra, atmosfera, storm; o hero é do revealHero)
+   * RESET / FINISH
    * ============================================================
    */
 
   const resetVisualState = useCallback(() => {
-    const earth = earthRef.current;
-    const ghost = ghostRef.current;
     const stormScene = stormSceneRef.current;
     const storm = stormRef.current;
-
-    if (earth) {
-      earth.style.opacity = "1";
-      earth.style.transform = "translate3d(0,0,0) scale(1)";
-      earth.style.filter = "none";
-      earth.style.transformOrigin = "50% 69%";
-    }
-
-    if (ghost) {
-      ghost.style.opacity = "0";
-    }
 
     atmosphereRef.current?.render(0);
 
@@ -495,28 +382,18 @@ earth.style.opacity = `${1 - earthFade}`;
 
     if (stormScene) {
       stormScene.style.opacity = "0";
-      stormScene.style.transform = "scale(1.75)";
+      stormScene.style.visibility = "hidden";
     }
 
     if (storm) {
       storm.pause();
-
       try {
         storm.currentTime = 0;
       } catch {
         // metadata ainda não disponível
       }
-
-      storm.style.transform = "none";
-      storm.style.filter = "none";
     }
   }, []);
-
-  /*
-   * ============================================================
-   * FINISH FORWARD / RETURN
-   * ============================================================
-   */
 
   const finishForward = useCallback(() => {
     renderProgress(1);
@@ -528,9 +405,9 @@ earth.style.opacity = `${1 - earthFade}`;
 
     phaseRef.current = "storm";
     animationRef.current = null;
+    setSceneActive(false);
 
     unlockScroll();
-
     lastScrollYRef.current = window.scrollY;
     cooldownRef.current = performance.now() + COOLDOWN_MS;
   }, [renderProgress, unlockScroll]);
@@ -543,11 +420,8 @@ earth.style.opacity = `${1 - earthFade}`;
     animationRef.current = null;
 
     unlockScroll();
-
     window.scrollTo({ top: 0, behavior: "instant" });
     lastScrollYRef.current = 0;
-
-    /* Evita que o scroll com inércia dispare a ida de novo. */
     cooldownRef.current = performance.now() + COOLDOWN_MS;
 
     revealHero(150);
@@ -555,79 +429,125 @@ earth.style.opacity = `${1 - earthFade}`;
 
   /*
    * ============================================================
-   * FORWARD
+   * FORWARD / RETURN
    * ============================================================
    */
+
+  const run = useCallback(
+    (phase: "traveling" | "returning", duration: number, onDone: () => void) => {
+      phaseRef.current = phase;
+      animationStartRef.current = performance.now();
+
+      const animate = (now: number) => {
+        if (phaseRef.current !== phase) return;
+
+        const t = clamp((now - animationStartRef.current) / duration);
+        renderProgress(phase === "traveling" ? t : 1 - t);
+
+        if (t >= 1) {
+          onDone();
+          return;
+        }
+        animationRef.current = requestAnimationFrame(animate);
+      };
+
+      animationRef.current = requestAnimationFrame(animate);
+    },
+    [renderProgress]
+  );
+
+  /*
+   * Ida no modo realista: quem dita o progresso é o próprio
+   * vídeo (currentTime). Quando ele acaba, a cauda (nuvens ->
+   * storm) segue em tempo real.
+   */
+  const runFlight = useCallback(
+    (flight: HTMLVideoElement) => {
+      phaseRef.current = "traveling";
+
+      flight.pause();
+      flight.currentTime = 0;
+      flight.play().catch(() => {});
+
+      let tailStart: number | null = null;
+      let tailFrom = 0;
+      let lastTime = -1;
+      let lastChange = performance.now();
+
+      const animate = (now: number) => {
+        if (phaseRef.current !== "traveling") return;
+
+        let p = 0;
+
+        if (tailStart === null) {
+          const d = flight.duration || 1;
+          p = clamp(flight.currentTime / d) * FLIGHT_END;
+
+          if (flight.currentTime !== lastTime) {
+            lastTime = flight.currentTime;
+            lastChange = now;
+          }
+
+          const stalled = now - lastChange > FLIGHT_STALL_MS;
+          if (flight.ended || flight.currentTime >= d - 0.05 || stalled) {
+            tailStart = now;
+            tailFrom = p;
+          }
+        }
+
+        if (tailStart !== null) {
+          const k = clamp((now - tailStart) / FLIGHT_TAIL_MS);
+          p = tailFrom + (1 - tailFrom) * k;
+        }
+
+        renderProgress(p);
+
+        if (p >= 1) {
+          flight.pause();
+          finishForward();
+          return;
+        }
+        animationRef.current = requestAnimationFrame(animate);
+      };
+
+      animationRef.current = requestAnimationFrame(animate);
+    },
+    [finishForward, renderProgress]
+  );
 
   const startForward = useCallback(() => {
     if (phaseRef.current !== "hero") return;
 
-    phaseRef.current = "traveling";
-    animationStartRef.current = performance.now();
-
     lockScroll();
     cancelHeroAnimations();
+    preloadStorm();
 
-    /* O storm toca já, invisível, para não engasgar no crossfade. */
+    /* Toca já, invisível, para não engasgar no crossfade. */
     stormRef.current?.play().catch(() => {});
 
-    const duration = getDuration(FORWARD_MS);
+    const flight = flightRef.current;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-    const animate = (now: number) => {
-      if (phaseRef.current !== "traveling") return;
+    if (modeRef.current === "flight" && flight && !reduced) {
+      runFlight(flight);
+      return;
+    }
 
-      const progress = clamp((now - animationStartRef.current) / duration);
-
-      renderProgress(progress);
-
-      if (progress >= 1) {
-        finishForward();
-        return;
-      }
-
-      animationRef.current = requestAnimationFrame(animate);
-    };
-
-    animationRef.current = requestAnimationFrame(animate);
-  }, [cancelHeroAnimations, finishForward, lockScroll, renderProgress]);
-
-  /*
-   * ============================================================
-   * RETURN (mesma timeline, invertida)
-   * ============================================================
-   */
+    run("traveling", getDuration(FORWARD_MS), finishForward);
+  }, [cancelHeroAnimations, finishForward, lockScroll, preloadStorm, run, runFlight]);
 
   const startReturn = useCallback(() => {
     if (phaseRef.current !== "storm") return;
 
-    phaseRef.current = "returning";
-    animationStartRef.current = performance.now();
-
     lockScroll();
+    setSceneActive(true);
 
-    /* O texto da Storm some rápido antes de a viagem de volta. */
     stormTextRef.current = false;
     stormIntroRef.current?.hide();
 
-    const duration = getDuration(RETURN_MS);
-
-    const animate = (now: number) => {
-      if (phaseRef.current !== "returning") return;
-
-      const reverse = clamp((now - animationStartRef.current) / duration);
-
-      renderProgress(1 - reverse);
-
-      if (reverse >= 1) {
-        finishReturn();
-        return;
-      }
-
-      animationRef.current = requestAnimationFrame(animate);
-    };
-
-    animationRef.current = requestAnimationFrame(animate);
-  }, [finishReturn, lockScroll, renderProgress]);
+    flightRef.current?.pause();
+    run("returning", getDuration(RETURN_MS), finishReturn);
+  }, [finishReturn, lockScroll, run]);
 
   /*
    * ============================================================
@@ -643,32 +563,18 @@ earth.style.opacity = `${1 - earthFade}`;
 
       const currentY = window.scrollY;
       const delta = currentY - lastScrollYRef.current;
-
       lastScrollYRef.current = currentY;
 
       const phase = phaseRef.current;
-
       if (phase === "traveling" || phase === "returning") return;
-
-      /* Cooldown: ignora a inércia do scroll logo após uma transição. */
       if (performance.now() < cooldownRef.current) return;
 
-      /* STORM -> HERO (só perto do topo) */
-      if (
-        phase === "storm" &&
-        delta < -2 &&
-        currentY < window.innerHeight * 0.5
-      ) {
+      if (phase === "storm" && delta < -2 && currentY < window.innerHeight * 0.5) {
         startReturn();
         return;
       }
 
-      /* HERO -> STORM */
-      if (
-        phase === "hero" &&
-        delta > 0 &&
-        currentY > window.innerHeight * 0.04
-      ) {
+      if (phase === "hero" && delta > 0 && currentY > window.innerHeight * 0.04) {
         startForward();
       }
     };
@@ -679,62 +585,92 @@ earth.style.opacity = `${1 - earthFade}`;
       requestAnimationFrame(update);
     };
 
+    const onPointer = (e: PointerEvent) => {
+      travel.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
+      travel.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+    };
+
     window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("pointermove", onPointer, { passive: true });
     lastScrollYRef.current = window.scrollY;
 
     return () => {
       window.removeEventListener("scroll", onScroll);
-
-      if (animationRef.current !== null) {
-        cancelAnimationFrame(animationRef.current);
-      }
-
+      window.removeEventListener("pointermove", onPointer);
+      if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
       document.body.style.overflow = "";
     };
   }, [startForward, startReturn]);
 
   /*
    * ============================================================
-   * INTRO
+   * INTRO: quando as texturas carregam, o espaço acende
    * ============================================================
-   * A transition de opacity da Terra é removida depois do fade-in,
-   * senão ela atrasaria a opacidade durante a viagem.
    */
 
+  const onSceneReady = useCallback(() => setSceneReady(true), []);
+  const onSceneError = useCallback(() => setSceneFailed(true), []);
+
+  /* O three.js às vezes falha ao criar o contexto de forma assíncrona. */
   useEffect(() => {
-    const earth = earthRef.current;
-    if (!earth) return;
+    const onRejection = (e: PromiseRejectionEvent) => {
+      const msg = String((e.reason as Error | undefined)?.message ?? e.reason);
+      if (msg.includes("WebGL")) {
+        e.preventDefault();
+        setSceneFailed(true);
+      }
+    };
+    window.addEventListener("unhandledrejection", onRejection);
+    return () => window.removeEventListener("unhandledrejection", onRejection);
+  }, []);
 
-    if (window.scrollY > 10) {
-      earth.style.opacity = "1";
+  /* Rede: se a cena demorar demais, o hero aparece mesmo assim. */
+  useEffect(() => {
+    if (sceneReady) return;
+    const id = window.setTimeout(() => setSceneReady(true), SCENE_TIMEOUT_MS);
+    return () => window.clearTimeout(id);
+  }, [sceneReady]);
 
-      if (identityRef.current) identityRef.current.style.opacity = "1";
-      if (indicatorRef.current) indicatorRef.current.style.opacity = "1";
+  useEffect(() => {
+    if (!sceneReady) return;
 
-      return;
+    const space = spaceRef.current;
+
+    /* Modo de inspeção (só em dev): /?p=0.6 congela a timeline. */
+    if (process.env.NODE_ENV !== "production") {
+      const p = new URLSearchParams(window.location.search).get("p");
+      if (p !== null) {
+        if (space) space.style.opacity = "1";
+        renderProgress(Number(p));
+        if (Number(p) === 0) revealHero(0);
+        return;
+      }
     }
 
-    earth.style.opacity = "0";
-    earth.style.transition = "none";
+    if (space) {
+      space.animate?.([{ opacity: 0 }, { opacity: 1 }], {
+        duration: 1800,
+        easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+        fill: "backwards",
+      });
+      space.style.opacity = "1";
+    }
 
-    const start = window.setTimeout(() => {
-      earth.style.transition =
-        "opacity 1100ms cubic-bezier(0.22, 1, 0.36, 1)";
-      earth.style.opacity = "1";
-    }, 100);
+    const hero = window.setTimeout(() => revealHero(0), 500);
 
-    const cleanup = window.setTimeout(() => {
-      earth.style.transition = "none";
-    }, 1300);
-
-    const hero = window.setTimeout(() => revealHero(0), 450);
+    /* O vídeo de voo precisa estar pronto no primeiro scroll. */
+    const flight = flightRef.current;
+    if (flight && flight.preload !== "auto") {
+      flight.preload = "auto";
+      flight.load();
+    }
+    const storm = window.setTimeout(preloadStorm, STORM_PRELOAD_DELAY_MS);
 
     return () => {
-      window.clearTimeout(start);
-      window.clearTimeout(cleanup);
       window.clearTimeout(hero);
+      window.clearTimeout(storm);
     };
-  }, [revealHero]);
+  }, [sceneReady, preloadStorm, renderProgress, revealHero]);
 
   /*
    * ============================================================
@@ -743,81 +679,68 @@ earth.style.opacity = `${1 - earthFade}`;
    */
 
   return (
-    <main className="relative min-h-screen bg-black">
+    <div className="relative min-h-screen bg-black">
       <section className="relative h-[300vh] w-full bg-black">
-        {/* =====================================================
-            EARTH (z-10)
-        ====================================================== */}
-
+        {/* ESPAÇO 3D (z-10) */}
         <div
-          ref={earthRef}
-          className="fixed inset-0 z-10 h-screen w-full overflow-hidden will-change-transform"
-          style={{ opacity: 0, transformOrigin: "50% 69%" }}
+          ref={spaceRef}
+          className="fixed inset-0 z-10 h-screen w-full"
+          style={{ opacity: 0 }}
         >
-          <video
-            ref={videoRef}
-            src="/videos/earth.mp4"
-            autoPlay
-            muted
-            playsInline
-            preload="auto"
-            className="absolute inset-0 h-full w-full object-cover"
-            style={{
-              opacity: videoFinished ? 0 : 1,
-              backfaceVisibility: "hidden",
-              WebkitBackfaceVisibility: "hidden",
-            }}
-          />
+          {mode === "3d" && (
+            <SceneBoundary onError={onSceneError}>
+              <SpaceScene active={sceneActive} onReady={onSceneReady} />
+            </SceneBoundary>
+          )}
 
-          <canvas
-            ref={canvasRef}
-            className="absolute inset-0 h-full w-full object-cover"
-            style={{
-              opacity: videoFinished ? 1 : 0,
-              transition: "opacity 500ms ease",
-              backfaceVisibility: "hidden",
-              WebkitBackfaceVisibility: "hidden",
-            }}
-          />
+          {(mode === "zoom" || mode === "flight") && (
+            <video
+              ref={fallbackVideoRef}
+              src="/videos/earth.mp4"
+              autoPlay
+              muted
+              playsInline
+              preload="auto"
+              onLoadedData={onSceneReady}
+              onError={onSceneReady}
+              className="absolute inset-0 h-full w-full object-cover"
+              style={{ transformOrigin: "50% 69%", willChange: "transform" }}
+            />
+          )}
 
-          {/* Zoom blur radial (média de cópias em escalas crescentes) */}
-          <canvas
-            ref={ghostRef}
-            className="pointer-events-none absolute inset-0 h-full w-full"
-            style={{ opacity: 0 }}
-          />
+          {mode === "flight" && (
+            <video
+              ref={flightRef}
+              src={FLIGHT_SRC}
+              muted
+              playsInline
+              preload="metadata"
+              className="absolute inset-0 h-full w-full object-cover"
+              style={{ opacity: 0 }}
+            />
+          )}
 
-          {/* Vignette */}
+          {/* Vinheta leve: foca o olhar sem escurecer a Terra */}
           <div
             className="pointer-events-none absolute inset-0"
             style={{
               background:
-                "radial-gradient(circle at 50% 50%, transparent 24%, rgba(0,0,0,0.14) 60%, rgba(0,0,0,0.78) 100%)",
-            }}
-          />
-
-          {/* Bottom darkness */}
-          <div
-            className="pointer-events-none absolute inset-0"
-            style={{
-              background:
-                "linear-gradient(to bottom, transparent 42%, rgba(0,0,0,0.28) 100%)",
+                "radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(0,0,0,0.55) 100%)",
             }}
           />
         </div>
 
-        {/* =====================================================
-            STORM (z-20, ABAIXO da atmosfera)
-        ====================================================== */}
-
+        {/* STORM (z-20, abaixo da atmosfera) */}
         <div
           ref={stormSceneRef}
-          className="pointer-events-none fixed inset-0 z-20 overflow-hidden will-change-[opacity,transform]"
+          className="pointer-events-none fixed inset-0 z-20 overflow-hidden"
           style={{
             opacity: 0,
+            visibility: "hidden",
             transform: "scale(1.75)",
             transformOrigin: "50% 0%",
             background: "#183441",
+            willChange: "opacity, transform",
           }}
         >
           <video
@@ -825,16 +748,10 @@ earth.style.opacity = `${1 - earthFade}`;
             src="/videos/storm.mp4"
             muted
             playsInline
-            preload="auto"
+            preload="none"
             loop
             className="absolute inset-0 h-full w-full object-cover"
-            style={{
-              backfaceVisibility: "hidden",
-              WebkitBackfaceVisibility: "hidden",
-              willChange: "transform",
-            }}
           />
-
           <div
             className="pointer-events-none absolute inset-0"
             style={{
@@ -842,7 +759,6 @@ earth.style.opacity = `${1 - earthFade}`;
                 "linear-gradient(to bottom, rgba(18,42,54,0.02), rgba(3,13,20,0.42))",
             }}
           />
-
           <div
             className="pointer-events-none absolute inset-0"
             style={{
@@ -852,62 +768,51 @@ earth.style.opacity = `${1 - earthFade}`;
           />
         </div>
 
-        {/* =====================================================
-            ATMOSPHERE (z-[45], ACIMA do storm)
-        ====================================================== */}
-
+        {/* NUVENS / VÉU (z-45) */}
         <AtmosphereTransition ref={atmosphereRef} />
 
-        {/* =====================================================
-            STORM INTRO (z-[48])
-        ====================================================== */}
-
+        {/* TEXTO DA STORM (z-48) */}
         <StormIntro ref={stormIntroRef} />
 
-        {/* =====================================================
-            IDENTITY (z-50)
-        ====================================================== */}
-
+        {/* IDENTIDADE (z-50) */}
         <div
           ref={identityRef}
-          className="pointer-events-none fixed inset-0 z-50 flex items-center justify-end px-6 md:px-[7vw]"
+          className="pointer-events-none fixed inset-0 z-50 flex items-start justify-center px-6 pt-[16vh] md:items-center md:justify-end md:px-[7vw] md:pt-0"
           style={{ opacity: 0 }}
         >
-          <div className="w-full text-white md:w-[44vw] md:max-w-[760px]">
+          <div className="w-full text-center text-white md:w-[42vw] md:max-w-[720px] md:text-left">
             <p
-              className={`${mono.className} mb-3 text-[9px] uppercase tracking-[0.3em] text-white/50 sm:text-[10px] md:mb-5 md:text-xs md:tracking-[0.45em]`}
+              className={`${mono.className} mb-4 text-[11px] uppercase tracking-[0.32em] text-[#9ec3e6]/80 md:mb-6 md:text-xs md:tracking-[0.4em]`}
             >
-              Developer · Builder · Security-minded Engineer
+              Developer · Builder · Security
             </p>
 
             <h1
-              className={`${display.className} text-[clamp(2.8rem,9vw,6rem)] font-bold leading-[0.92] tracking-[-0.03em] md:text-[clamp(3.4rem,5.6vw,6rem)]`}
+              className={`${display.className} text-[clamp(3rem,13vw,4.5rem)] font-bold leading-[0.9] tracking-[-0.035em] md:text-[clamp(3.6rem,6vw,6.5rem)]`}
             >
               Leonardo
               <br />
-              Machmann
+              <span className="text-white/55">Machmann</span>
             </h1>
           </div>
         </div>
 
-        {/* =====================================================
-            SCROLL INDICATOR (z-50)
-        ====================================================== */}
-
+        {/* INDICADOR DE SCROLL (z-50) */}
         <div
           ref={indicatorRef}
           className="pointer-events-none fixed bottom-8 left-1/2 z-50 -translate-x-1/2 text-center"
           style={{ opacity: 0 }}
         >
           <p
-            className={`${mono.className} text-[8px] uppercase tracking-[0.35em] text-white/40 md:text-[10px]`}
+            className={`${mono.className} text-[10px] uppercase tracking-[0.35em] text-white/60 md:text-[11px]`}
           >
             Scroll to enter
           </p>
-
-          <div className="mx-auto mt-3 h-7 w-px bg-gradient-to-b from-white/40 to-transparent" />
+          <div className="relative mx-auto mt-3 h-10 w-px overflow-hidden bg-white/15">
+            <div className="absolute inset-x-0 top-0 h-1/2 animate-[scrollcue_2s_cubic-bezier(0.65,0,0.35,1)_infinite] bg-white/80" />
+          </div>
         </div>
       </section>
-    </main>
+    </div>
   );
 }

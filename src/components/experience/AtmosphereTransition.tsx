@@ -246,32 +246,7 @@ const AtmosphereTransition = forwardRef<AtmosphereHandle>(
       // O ponto de fuga sobe de 69% (foco da Terra) até ~55%.
       const focalY = lerp(0.69, 0.55, smooth(seg(p, 0.4, 0.8)));
 
-      /*
-       * 1. HALO DE ATMOSFERA
-       * Azul nas bordas: a atmosfera se adensando.
-       */
-      const hazeOp =
-        smooth(seg(p, 0.56, 0.68)) * (1 - smooth(seg(p, 0.74, 0.86)));
-
-      if (hazeOp > 0.003) {
-        const R = Math.hypot(W, H) / 2;
-
-        const g = ctx.createRadialGradient(
-          W / 2,
-          H * focalY,
-          R * 0.35,
-          W / 2,
-          H * focalY,
-          R
-        );
-
-        g.addColorStop(0, "rgba(110,160,215,0)");
-        g.addColorStop(1, "rgba(110,160,215,0.30)");
-
-        ctx.globalAlpha = hazeOp;
-        ctx.fillStyle = g;
-        ctx.fillRect(0, 0, W, H);
-      }
+      /* (O halo azul das bordas agora vem da atmosfera 3D real.) */
 
       /*
        * 2. VÉU DE NUVEM
@@ -397,7 +372,6 @@ const AtmosphereTransition = forwardRef<AtmosphereHandle>(
       window.addEventListener("resize", resize);
 
       return () => window.removeEventListener("resize", resize);
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     /* Texturas: geradas quando o navegador estiver ocioso */
@@ -445,7 +419,6 @@ const AtmosphereTransition = forwardRef<AtmosphereHandle>(
           window.clearTimeout(timeoutId);
         }
       };
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useImperativeHandle(ref, () => ({
