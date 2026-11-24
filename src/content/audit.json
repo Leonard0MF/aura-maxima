@@ -1,0 +1,53 @@
+{
+  "target": "aura-maxima.vercel.app",
+  "tool": "Aegis",
+  "toolVersion": null,
+  "checkedAt": null,
+  "source": "curl -I local (pré-deploy). Substitua pela saída do Aegis após o deploy.",
+  "score": null,
+  "grade": null,
+  "headers": [
+    {
+      "id": "content-security-policy",
+      "label": "Content-Security-Policy",
+      "status": "warn",
+      "detail": "Restritiva (default-src 'self', object-src 'none', sem 'unsafe-eval'), mas com 'unsafe-inline' em script-src."
+    },
+    {
+      "id": "strict-transport-security",
+      "label": "Strict-Transport-Security",
+      "status": "pass",
+      "detail": "max-age=63072000; includeSubDomains; preload"
+    },
+    {
+      "id": "x-content-type-options",
+      "label": "X-Content-Type-Options",
+      "status": "pass",
+      "detail": "nosniff"
+    },
+    {
+      "id": "referrer-policy",
+      "label": "Referrer-Policy",
+      "status": "pass",
+      "detail": "strict-origin-when-cross-origin"
+    },
+    {
+      "id": "permissions-policy",
+      "label": "Permissions-Policy",
+      "status": "pass",
+      "detail": "camera, microphone, geolocation, payment e usb desativados"
+    },
+    {
+      "id": "frame-ancestors",
+      "label": "frame-ancestors",
+      "status": "pass",
+      "detail": "'none' na CSP + X-Frame-Options: DENY"
+    }
+  ],
+  "tls": {
+    "valid": null,
+    "issuer": null,
+    "protocol": null,
+    "expiresAt": null
+  }
+}
