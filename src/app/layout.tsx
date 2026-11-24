@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 
-import { ScanIntro } from "@/components/ScanIntro";
 import { SITE_URL, profile } from "@/content/profile";
 import { t } from "@/lib/i18n";
 
@@ -39,10 +38,10 @@ export const viewport: Viewport = {
 /*
  * Roda antes da primeira pintura:
  *  - aplica o modo salvo (terminal/clean);
- *  - liga o scan só na home, na 1ª visita da sessão e sem reduced-motion.
+ *  - pula a animação do scan em visitas repetidas na sessão ou com reduced-motion.
  * Storage pode lançar exceção (aba privada, bloqueio): tudo em try/catch.
  */
-const boot = `(function(){var d=document.documentElement;d.dataset.js="1";try{if(localStorage.getItem("recon:mode")==="clean")d.dataset.mode="clean"}catch(e){}try{if(location.pathname==="/"&&!sessionStorage.getItem("recon:intro-seen")&&!matchMedia("(prefers-reduced-motion: reduce)").matches)d.dataset.intro="on"}catch(e){}})()`;
+const boot = `(function(){var d=document.documentElement;d.dataset.js="1";try{if(localStorage.getItem("recon:mode")==="clean")d.dataset.mode="clean"}catch(e){}try{if(sessionStorage.getItem("recon:scan-seen")||matchMedia("(prefers-reduced-motion: reduce)").matches)d.dataset.scan="instant"}catch(e){}})()`;
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
@@ -50,8 +49,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <head>
         <script dangerouslySetInnerHTML={{ __html: boot }} />
       </head>
-      <body className="bg-bg text-fg">
-        <ScanIntro />
+      <body className="text-fg">
         <a
           href="#conteudo"
           className="sr-only z-40 rounded-md bg-accent px-4 py-2 font-mono text-sm text-bg focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
