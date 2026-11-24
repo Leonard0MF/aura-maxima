@@ -1,21 +1,152 @@
 @import "tailwindcss";
 
-html,
-body {
-  margin: 0;
-  padding: 0;
-  min-height: 100%;
-  background: #000;
+@theme {
+  --color-bg: #0b0d10;
+  --color-surface: #12151a;
+  --color-line: #232931;
+  --color-fg: #e6e8eb;
+  --color-muted: #a3acb6;
+  --color-dim: #8a939e;
+  --color-accent: #f5a524;
+  --color-accent-soft: rgb(245 165 36 / 0.12);
+  --color-ok: #6fcf97;
+
+  --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, "SFMono-Regular", monospace;
+}
+
+html {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  color-scheme: dark;
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
+  margin: 0;
+  min-height: 100dvh;
   overflow-x: hidden;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
 }
-@keyframes scrollcue {
-  0% { transform: translateY(-100%); }
-  100% { transform: translateY(200%); }
+
+::selection {
+  background: var(--color-accent);
+  color: var(--color-bg);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+/* ---------- Modo terminal / clean ----------
+ * O HTML estático traz os dois textos; o atributo em <html>
+ * (definido antes da pintura pelo script de boot) escolhe qual aparece.
+ * display:none também tira o texto oculto da árvore de acessibilidade. */
+html:not([data-mode="clean"]) .t-clean,
+html[data-mode="clean"] .t-term {
+  display: none !important;
+}
+
+/* ---------- Scan inicial ----------
+ * Todo o timing é CSS: funciona antes da hidratação e termina sozinho
+ * mesmo se o JS falhar. O JS só cuida de "pular" e do sessionStorage. */
+.scan {
+  display: none;
+}
+html[data-intro="on"] .scan {
+  display: flex;
+  animation: scan-out 300ms ease-out 2.2s forwards;
+}
+.scan-line {
+  opacity: 0;
+  animation: scan-in 1ms linear forwards;
+  animation-delay: calc(var(--i) * 300ms + 150ms);
+}
+.scan-dots {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--color-line);
+}
+.scan-dots::before {
+  content: "........................................................................";
+}
+html[data-intro="on"] .dossier {
+  animation: dossier-in 400ms ease-out 2.2s both;
+}
+
+@keyframes scan-in {
+  to {
+    opacity: 1;
+  }
+}
+@keyframes scan-out {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+@keyframes dossier-in {
+  /* Sem opacity: o hero precisa estar "pintado" desde o início (LCP). */
+  from {
+    transform: translateY(10px) scale(0.99);
+  }
+  to {
+    transform: none;
+  }
+}
+
+/* ---------- Entradas de seção ----------
+ * Só esconde quando há JS (data-js, posto pelo boot) e movimento permitido.
+ * Fallback: se o observer nunca rodar, o conteúdo aparece sozinho em 3s. */
+@media (prefers-reduced-motion: no-preference) {
+  html[data-js] [data-reveal] {
+    transition:
+      opacity 300ms ease-out var(--d, 0ms),
+      transform 300ms ease-out var(--d, 0ms);
+  }
+  html[data-js] [data-reveal]:not(.is-in) {
+    opacity: 0;
+    transform: translateY(12px);
+    animation: reveal-fallback 1ms 3s forwards;
+  }
+}
+@keyframes reveal-fallback {
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.cursor::after {
+  content: "▋";
+  margin-left: 2px;
+  color: var(--color-accent);
+  animation: blink 1s steps(1) infinite;
+}
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  * { animation: none !important; }
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+  html[data-intro="on"] .scan {
+    display: none;
+  }
 }
