@@ -7,10 +7,12 @@ export const sans = Geist({
   variable: "--font-geist",
 });
 
-/* Terminal, labels e campos do relatório. */
+/* Terminal, labels e campos do relatório.
+ * Variável (sem `weight`): um arquivo cobre 100–800. Pedir pesos fixos fazia
+ * o Google devolver para o 700 uma URL `l/font?kit=…&skey=…`, que o Turbopack
+ * em dev não resolve ("next/font/google queries have exactly one entry"). */
 export const mono = JetBrains_Mono({
   subsets: ["latin"],
-  weight: ["400", "500", "700"],
   display: "swap",
   variable: "--font-jetbrains",
 });
