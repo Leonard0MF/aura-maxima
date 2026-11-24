@@ -15,7 +15,7 @@ const nav = [
 export function SiteHeader() {
   return (
     <header className="sticky top-0 z-30 border-b border-line/70 bg-bg/85 backdrop-blur supports-[backdrop-filter]:bg-bg/70">
-      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
+      <div className="mx-auto flex h-14 max-w-[75rem] items-center justify-between gap-3 px-4 sm:px-6">
         <Link href="/" className="font-mono text-sm font-medium text-fg hover:text-accent">
           <Dual term={<><span className="text-accent">~/</span>leo</>} clean={profile.name} />
         </Link>

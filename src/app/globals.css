@@ -51,23 +51,22 @@ html[data-mode="clean"] .t-term {
   display: none !important;
 }
 
-/* ---------- Scan inicial ----------
- * Todo o timing é CSS: funciona antes da hidratação e termina sozinho
- * mesmo se o JS falhar. O JS só cuida de "pular" e do sessionStorage. */
-.scan {
-  display: none;
-}
-html[data-intro="on"] .scan {
-  display: flex;
-  animation: scan-out 300ms ease-out 2.2s forwards;
-}
+/* ---------- Scan no terminal do hero ----------
+ * Timing 100% CSS: as linhas aparecem antes da hidratação. O boot põe
+ * data-scan="instant" em visitas repetidas na sessão (ou reduced-motion),
+ * e aí tudo aparece de uma vez. */
 .scan-line {
   opacity: 0;
   animation: scan-in 1ms linear forwards;
-  animation-delay: calc(var(--i) * 300ms + 150ms);
+  animation-delay: calc(var(--i) * 280ms + 200ms);
+}
+html[data-scan="instant"] .scan-line {
+  animation: none;
+  opacity: 1;
 }
 .scan-dots {
   flex: 1;
+  min-width: 1ch;
   overflow: hidden;
   white-space: nowrap;
   color: var(--color-line);
@@ -75,29 +74,49 @@ html[data-intro="on"] .scan {
 .scan-dots::before {
   content: "........................................................................";
 }
-html[data-intro="on"] .dossier {
-  animation: dossier-in 400ms ease-out 2.2s both;
-}
-
 @keyframes scan-in {
   to {
     opacity: 1;
   }
 }
-@keyframes scan-out {
-  to {
-    opacity: 0;
-    visibility: hidden;
-  }
+
+/* O foco do input é indicado pela borda da janela (focus-within). */
+.term-input:focus-visible {
+  outline: none;
 }
-@keyframes dossier-in {
-  /* Sem opacity: o hero precisa estar "pintado" desde o início (LCP). */
-  from {
-    transform: translateY(10px) scale(0.99);
-  }
-  to {
-    transform: none;
-  }
+
+/* Cursor de bloco piscando enquanto o prompt está vazio e sem foco. */
+.term-cursor {
+  display: none;
+}
+.term-input:placeholder-shown:not(:focus) + .term-cursor {
+  display: block;
+}
+
+/* ---------- Findings: hover ---------- */
+.finding:hover .preview-inner,
+.finding:focus-within .preview-inner {
+  transform: translateY(-6px);
+}
+
+/* ---------- Grão de fundo ----------
+ * SVG de ~400 bytes, fixo, abaixo de todo o conteúdo. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.07;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .6 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(60rem 30rem at 85% -10%, rgb(245 165 36 / 0.06), transparent 70%);
 }
 
 /* ---------- Entradas de seção ----------
@@ -122,9 +141,8 @@ html[data-intro="on"] .dossier {
   }
 }
 
-.cursor::after {
+.term-cursor::after {
   content: "▋";
-  margin-left: 2px;
   color: var(--color-accent);
   animation: blink 1s steps(1) infinite;
 }
@@ -145,8 +163,5 @@ html[data-intro="on"] .dossier {
     animation-delay: 0ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 1ms !important;
-  }
-  html[data-intro="on"] .scan {
-    display: none;
   }
 }

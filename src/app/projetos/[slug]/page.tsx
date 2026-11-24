@@ -65,7 +65,7 @@ export default async function CaseStudyPage({ params }: { params: Promise<{ slug
   return (
     <>
       <SiteHeader />
-      <main id="conteudo" className="mx-auto max-w-6xl px-4 pt-12 pb-20 sm:px-6 sm:pt-16">
+      <main id="conteudo" className="mx-auto max-w-[75rem] px-4 pt-12 pb-20 sm:px-6 sm:pt-16">
         <Link href="/#findings" className="font-mono text-xs text-muted hover:text-accent">
           <Dual term="cd ../findings" clean="← Voltar aos projetos" />
         </Link>

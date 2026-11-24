@@ -5,10 +5,10 @@ import { t } from "@/lib/i18n";
 
 export function Activity() {
   return (
-    <section aria-labelledby="historico" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-20 sm:px-6">
+    <section aria-labelledby="historico" className="mx-auto max-w-[75rem] px-4 py-14 sm:px-6">
       <SectionHeading
         id="historico"
-        index="03 · Experiência"
+        index="Experiência"
         command="tail -n 20 activity.log"
         title="Histórico de atividade"
       />

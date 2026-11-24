@@ -10,10 +10,10 @@ export function Contact() {
     { key: "github", label: "GitHub", href: contact.github, value: `github.com/${contact.githubHandle}`, external: true },
   ];
   return (
-    <section aria-labelledby="contato" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-20 sm:px-6">
+    <section aria-labelledby="contato" className="mx-auto max-w-[75rem] px-4 py-14 sm:px-6">
       <SectionHeading
         id="contato"
-        index="04 · Contato"
+        index="Contato"
         command="connect --to leo"
         title="Vamos conversar"
         lead="Aberto a oportunidades como dev full-stack com foco em segurança."
