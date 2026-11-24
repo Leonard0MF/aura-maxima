@@ -2,21 +2,28 @@ import { Reveal } from "@/components/Reveal";
 import { SectionHeading } from "@/components/SectionHeading";
 import { projects } from "@/content/profile";
 
-import { FindingCard } from "./FindingCard";
+import { FeaturedFinding, FindingCard } from "./FindingCard";
 
+/* Bento: o finding CRITICAL ocupa a largura toda; os demais, lado a lado. */
 export function Findings() {
+  const [featured, ...rest] = [...projects].sort((a, b) => (a.severity === "critical" ? -1 : b.severity === "critical" ? 1 : 0));
   return (
-    <section aria-labelledby="findings" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-20 sm:px-6">
+    <section aria-labelledby="findings" className="mx-auto max-w-[75rem] px-4 py-14 sm:px-6">
       <SectionHeading
         id="findings"
-        index="02 · Projetos"
+        index="Projetos"
         command="recon --findings --sort=severity"
         title="Findings"
-        lead="Projetos selecionados. Cada um tem um estudo de caso com problema, solução e decisões de segurança."
+        lead="Projetos selecionados, cada um com estudo de caso: problema, solução e decisões de segurança."
       />
-      <ul className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {projects.map((p, i) => (
-          <li key={p.id} className={p.severity === "critical" ? "md:col-span-2 lg:col-span-1" : undefined}>
+      <ul className="grid gap-4 md:grid-cols-2">
+        <li className="md:col-span-2">
+          <Reveal className="h-full">
+            <FeaturedFinding project={featured} />
+          </Reveal>
+        </li>
+        {rest.map((p, i) => (
+          <li key={p.id}>
             <Reveal delay={i * 0.05} className="h-full">
               <FindingCard project={p} />
             </Reveal>

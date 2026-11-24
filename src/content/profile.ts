@@ -9,6 +9,8 @@
  */
 import type { Localized } from "@/lib/i18n";
 
+import { audit } from "./audit";
+
 export type Link = { label: Localized; href: string; external?: boolean };
 
 export type Severity = "critical" | "high" | "medium";
@@ -27,9 +29,13 @@ export type Project = {
   severity: Severity;
   title: string;
   summary: Localized;
+  highlights?: Localized[]; // usado no card grande (CRITICAL)
   stack: string[];
   links: { demo?: string; repo?: string };
-  image?: { src: string; alt: Localized }; // TODO: prints reais/anonimizados
+  /* TODO: prints reais (BUMPHUB anonimizado). Coloque em public/projects/ e
+     preencha, ex.: { src: "/projects/aegis.png", alt: { pt: "..." } }.
+     Sem `image`, o card mostra um placeholder estilizado. */
+  image?: { src: string; alt: Localized };
   caseStudy: CaseStudy;
 };
 
@@ -61,6 +67,12 @@ export const profile = {
   } satisfies Localized,
   location: { pt: "Brasil" } satisfies Localized,
   status: { pt: "Disponível para oportunidades" } satisfies Localized,
+  /* Saída do comando `whoami` no terminal do hero (3 linhas). */
+  whoami: [
+    { pt: "Léo Machmann · Dev Full-Stack & Security · Brasil" },
+    { pt: "Construo aplicações web de ponta a ponta (React, Next.js, Node.js)." },
+    { pt: "Faço pentest autorizado e code review com foco em segurança na BUMP." },
+  ] satisfies Localized[],
   lastScan: "2026-11", // atualize quando mexer no conteúdo
 
   contact: {
@@ -148,6 +160,11 @@ export const projects: Project[] = [
     summary: {
       pt: "Scanner de segurança de URLs e domínios: identifica vulnerabilidades, verifica certificados, atribui uma nota e gera um relatório completo.",
     },
+    highlights: [
+      { pt: "Identifica vulnerabilidades e atribui uma nota de segurança" },
+      { pt: "Verifica certificados TLS e headers de segurança" },
+      { pt: "Gera um relatório completo e compartilhável" },
+    ],
     stack: ["Next.js", "TypeScript", "Node.js", "Vercel"], // TODO: confirmar stack real
     links: {
       repo: "https://github.com/Leonard0MF/aegis",
@@ -235,9 +252,18 @@ export const activity: Activity[] = [
   },
 ];
 
+/* TODO: preencher com os números reais. */
+export const metrics: { value: string; label: Localized }[] = [
+  { value: "TODO", label: { pt: "pentests internos realizados" } },
+  { value: "TODO", label: { pt: "vulnerabilidades encontradas e corrigidas" } },
+  { value: "TODO", label: { pt: "PRs de correção" } },
+  { value: "3", label: { pt: "setores atendidos com suporte de TI" } },
+];
+
 export const scanLines: { label: string; result: string }[] = [
   { label: "resolving target", result: "ok" },
   { label: "enumerating stack", result: `${services.filter((s) => s.state === "open").reduce((n, s) => n + s.items.length, 0)} services` },
   { label: "scanning projects", result: `${projects.length} findings` },
-  { label: "checking security posture", result: "A+" },
+  /* Vem da auditoria real; sem nota, mostra "pending" em vez de inventar. */
+  { label: "checking security posture", result: audit.grade ?? "pending" },
 ];
