@@ -1,4 +1,4 @@
-import { Geist, JetBrains_Mono } from "next/font/google";
+import { Archivo_Black, Geist, JetBrains_Mono } from "next/font/google";
 
 /* Texto corrido. */
 export const sans = Geist({
@@ -13,4 +13,12 @@ export const mono = JetBrains_Mono({
   weight: ["400", "500", "700"],
   display: "swap",
   variable: "--font-jetbrains",
+});
+
+/* Display editorial do hero (um único peso). */
+export const display = Archivo_Black({
+  subsets: ["latin"],
+  weight: "400",
+  display: "swap",
+  variable: "--font-archivo",
 });

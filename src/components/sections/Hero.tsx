@@ -1,128 +1,123 @@
+import Image from "next/image";
+
 import { Dual } from "@/components/Dual";
-import { ReconTerminal } from "@/components/terminal/ReconTerminal";
-import type { TerminalData } from "@/components/terminal/types";
-import { profile, projects, scanLines, services } from "@/content/profile";
+import { LensController } from "@/components/hero/LensController";
+import { LocalTime } from "@/components/hero/LocalTime";
+import { OrbStage } from "@/components/hero/OrbStage";
+import { ModeToggle } from "@/components/ModeToggle";
+import { profile } from "@/content/profile";
 import { t } from "@/lib/i18n";
 
-const fields = [
-  { term: "TARGET", clean: "Nome", value: profile.fullName },
-  { term: "ROLE", clean: "Cargo", value: t(profile.role) },
-  { term: "LOCATION", clean: "Local", value: t(profile.location) },
-  { term: "LAST SCAN", clean: "Atualizado", value: profile.lastScan },
+const nav = [
+  { n: "01", label: "Work", href: "#findings" },
+  { n: "02", label: "Audit", href: "#auditoria" },
+  { n: "03", label: "About", href: "#historico" },
+  { n: "04", label: "Contact", href: "#contato" },
 ];
 
-const btn =
-  "inline-flex min-h-11 items-center justify-center gap-2 rounded-md px-4 font-mono text-sm transition-colors duration-150";
-
-/* Só o necessário para o terminal (vai no payload, não no bundle). */
-const terminalData: TerminalData = {
-  name: profile.name,
-  whoami: profile.whoami.map((l) => t(l)),
-  projects: projects.map((p) => ({
-    id: p.id,
-    slug: p.slug,
-    title: p.title,
-    severity: p.severity,
-    summary: t(p.summary),
-    stack: p.stack,
-    repo: p.links.repo,
-    demo: p.links.demo,
-  })),
-  skills: services.map((g) => ({ port: g.port, title: t(g.title.term), state: g.state, items: g.items })),
-  contact: { email: profile.contact.email, linkedin: profile.contact.linkedin, github: profile.contact.github },
-  cv: profile.contact.cv,
-  scan: scanLines,
-};
-
+/*
+ * Hero editorial: "veja por baixo da superfície".
+ *
+ * Camadas (de baixo para cima):
+ *   0  superfície: fundo claro + tipografia display
+ *   1  janela da lente: fundo escuro, código esmaecido, tipografia mono
+ *      (um círculo que se move via transform; o conteúdo interno faz a
+ *      contra-translação, então tudo é compositado, sem repaint)
+ *   2  canvas WebGL: vidro âmbar fora da lente, wireframe dentro
+ *   3  aro da lente
+ *   4  metadados e navegação
+ */
 export function Hero() {
-  const { contact } = profile;
   return (
-    <section
-      aria-labelledby="hero-title"
-      className="mx-auto grid max-w-[75rem] items-center gap-10 px-4 pt-10 pb-14 sm:px-6 sm:pt-16 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:gap-12 lg:pt-20 lg:pb-16"
-    >
-      <div>
-        <p className="mb-5 font-mono text-xs tracking-wide text-dim">
-          <Dual term="RECON REPORT · CONFIDENTIAL-ISH · v2026.11" clean="Portfólio" />
-        </p>
+    <section id="hero" aria-labelledby="hero-title" className="hero relative isolate overflow-hidden bg-paper text-ink">
+      <h1 id="hero-title" className="sr-only">
+        {profile.name}, Full-Stack Developer &amp; Pentester
+      </h1>
 
-        <h1 id="hero-title" className="text-[clamp(2.75rem,7.2vw,6rem)] leading-[0.95] font-bold tracking-[-0.04em] text-fg">
-          {profile.name}
-        </h1>
-        <p className="mt-4 font-mono text-lg font-medium text-accent sm:text-xl">{t(profile.role)}</p>
-        <p className="mt-5 max-w-xl text-lg leading-relaxed text-muted">{t(profile.tagline)}</p>
+      {/* 0 · superfície */}
+      <div aria-hidden="true" className="hero-display font-display text-ink">
+        <span className="hl hl-top">FULL-STACK</span>
+        <span className="hl hl-bot">DEVELOPER</span>
+      </div>
 
-        <dl className="mt-8 grid grid-cols-1 border-y border-line font-mono text-[13px] sm:grid-cols-2">
-          {fields.map((f) => (
-            <div key={f.term} className="flex gap-4 border-b border-line py-2.5">
-              <dt className="w-24 shrink-0 text-dim">
-                <Dual term={f.term} clean={f.clean} />
-              </dt>
-              <dd className="text-fg">{f.value}</dd>
-            </div>
-          ))}
-          <div className="flex gap-4 py-2.5 sm:col-span-2">
-            <dt className="w-24 shrink-0 text-dim">
-              <Dual term="STATUS" clean="Status" />
-            </dt>
-            <dd className="flex items-center gap-2 text-fg">
-              <span aria-hidden="true" className="relative flex size-2">
-                <span className="absolute inline-flex size-full animate-ping rounded-full bg-accent opacity-60 motion-reduce:hidden" />
-                <span className="relative inline-flex size-2 rounded-full bg-accent" />
-              </span>
-              {t(profile.status)}
-            </dd>
+      {/* fallback estático (sem WebGL / reduced-motion / aparelho fraco) */}
+      <div aria-hidden="true" className="orb-static">
+        <Image src="/hero/orb.webp" alt="" width={720} height={720} sizes="(min-width: 768px) 60vh, 78vw" />
+      </div>
+
+      {/* 1 · janela da lente */}
+      <div aria-hidden="true" className="lens-window">
+        <div className="lens-inner">
+          <div className="lens-code" />
+          <div className="hero-display font-mono font-bold">
+            <span className="hl hl-top hl-mono text-paper">FULL-STACK</span>
+            <span className="hl hl-bot hl-mono text-accent">
+              <Dual term="PENTESTER" clean="SECURITY" />
+            </span>
           </div>
-        </dl>
+          <div className="orb-static orb-static-wire">
+            <Image src="/hero/orb-wire.webp" alt="" width={720} height={720} sizes="(min-width: 768px) 60vh, 78vw" />
+          </div>
+        </div>
+      </div>
 
-        <div className="mt-8 flex flex-wrap gap-3">
-          <a href="#findings" className={`${btn} bg-accent font-medium text-bg hover:bg-accent/90`}>
-            Ver projetos
-          </a>
-          <a href={contact.cv} download className={`${btn} border border-line text-fg hover:border-accent`}>
-            Baixar currículo (PDF)
+      {/* 2 · objeto 3D */}
+      <OrbStage />
+
+      {/* 3 · aro */}
+      <div aria-hidden="true" className="lens-ring">
+        <span className="lens-tick" />
+      </div>
+
+      {/* 4 · metadados */}
+      <div className="hero-meta relative z-10 flex h-full flex-col justify-between p-4 font-mono text-[11px] tracking-wide uppercase sm:p-6 sm:text-xs">
+        <div className="flex items-start justify-between gap-4">
+          <div className="leading-relaxed">
+            <p>{profile.name}</p>
+            <p className="flex flex-wrap items-center gap-x-2">
+              <span className="text-ink-soft">Portfolio 2026</span>
+              <span aria-hidden="true" className="text-ink-soft">·</span>
+              <span className="inline-flex items-center gap-1.5">
+                <span aria-hidden="true" className="size-2 rounded-full bg-accent" />
+                {t(profile.status).split(" ")[0]}
+              </span>
+            </p>
+          </div>
+          <nav aria-label="Seções" className="hidden md:block">
+            <ul className="flex gap-6">
+              {nav.map((i) => (
+                <li key={i.n}>
+                  <a href={i.href} className="group inline-flex gap-1.5 hover:text-accent-ink">
+                    <span className="text-ink-soft group-hover:text-accent-ink">{i.n}</span>
+                    {i.label}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </nav>
+          <ModeToggle tone="light" />
+        </div>
+
+        <div className="grid grid-cols-1 items-end gap-4 pr-32 sm:grid-cols-3 sm:pr-0">
+          <dl className="leading-relaxed">
+            <div className="flex gap-1.5">
+              <dt className="text-ink-soft">Location:</dt>
+              <dd>{t(profile.location)}</dd>
+            </div>
+            <div className="flex gap-1.5">
+              <dt className="text-ink-soft">Local time:</dt>
+              <dd>
+                <LocalTime />
+              </dd>
+            </div>
+          </dl>
+          <a href="#auditoria" className="hidden justify-self-center hover:text-accent-ink sm:block">
+            (Scroll) <span aria-hidden="true">↓</span>
           </a>
         </div>
-        <ul className="mt-5 flex flex-wrap gap-x-6 gap-y-2 font-mono text-sm text-muted">
-          <li>
-            <a href={contact.github} target="_blank" rel="noopener noreferrer" className="hover:text-accent">
-              GitHub<span className="sr-only"> (abre em nova aba)</span>
-            </a>
-          </li>
-          <li>
-            <a href={contact.linkedin} target="_blank" rel="noopener noreferrer" className="hover:text-accent">
-              LinkedIn<span className="sr-only"> (abre em nova aba)</span>
-            </a>
-          </li>
-          <li>
-            <a href={`mailto:${contact.email}`} className="hover:text-accent">
-              {contact.email}
-            </a>
-          </li>
-        </ul>
       </div>
 
-      <div className="t-term min-w-0">
-        <ReconTerminal data={terminalData} />
-      </div>
-
-      {/* Modo clean: resumo direto no lugar do terminal. */}
-      <aside aria-label="Resumo" className="t-clean rounded-xl border border-line bg-surface p-6 sm:p-8">
-        <h2 className="text-sm font-medium text-dim">Resumo</h2>
-        <ul className="mt-4 space-y-3 text-muted">
-          {profile.whoami.map((l) => (
-            <li key={t(l)} className="flex gap-3">
-              <span aria-hidden="true" className="mt-2.5 size-1.5 shrink-0 rounded-full bg-accent" />
-              {t(l)}
-            </li>
-          ))}
-        </ul>
-        <p className="mt-6 text-sm text-dim">Projeto principal</p>
-        <a href={`/projetos/${projects[0].slug}`} className="mt-1 block text-lg font-semibold text-fg hover:text-accent">
-          {projects[0].title} →
-        </a>
-        <p className="mt-1 text-sm text-muted">{t(projects[0].summary)}</p>
-      </aside>
+      <LensController targetId="hero" />
     </section>
   );
 }

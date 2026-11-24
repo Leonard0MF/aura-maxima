@@ -3,7 +3,7 @@ import type { Metadata, Viewport } from "next";
 import { SITE_URL, profile } from "@/content/profile";
 import { t } from "@/lib/i18n";
 
-import { mono, sans } from "./fonts";
+import { display, mono, sans } from "./fonts";
 import "./globals.css";
 
 const title = `${profile.name} · ${t(profile.role)}`;
@@ -38,14 +38,15 @@ export const viewport: Viewport = {
 /*
  * Roda antes da primeira pintura:
  *  - aplica o modo salvo (terminal/clean);
- *  - pula a animação do scan em visitas repetidas na sessão ou com reduced-motion.
+ *  - pula a animação do scan em visitas repetidas na sessão ou com reduced-motion;
+ *  - usa a imagem estática do objeto 3D com reduced-motion ou CPU fraca (≤ 4 núcleos).
  * Storage pode lançar exceção (aba privada, bloqueio): tudo em try/catch.
  */
-const boot = `(function(){var d=document.documentElement;d.dataset.js="1";try{if(localStorage.getItem("recon:mode")==="clean")d.dataset.mode="clean"}catch(e){}try{if(sessionStorage.getItem("recon:scan-seen")||matchMedia("(prefers-reduced-motion: reduce)").matches)d.dataset.scan="instant"}catch(e){}})()`;
+const boot = `(function(){var d=document.documentElement;d.dataset.js="1";try{if(localStorage.getItem("recon:mode")==="clean")d.dataset.mode="clean"}catch(e){}try{if(sessionStorage.getItem("recon:scan-seen")||matchMedia("(prefers-reduced-motion: reduce)").matches)d.dataset.scan="instant"}catch(e){}try{if(matchMedia("(prefers-reduced-motion: reduce)").matches||(navigator.hardwareConcurrency||8)<=4)d.dataset.orb="static"}catch(e){}})()`;
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="pt-BR" data-mode="terminal" className={`${sans.variable} ${mono.variable}`} suppressHydrationWarning>
+    <html lang="pt-BR" data-mode="terminal" className={`${sans.variable} ${mono.variable} ${display.variable}`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: boot }} />
       </head>

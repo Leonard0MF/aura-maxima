@@ -11,8 +11,15 @@
   --color-accent-soft: rgb(245 165 36 / 0.12);
   --color-ok: #6fcf97;
 
+  /* superfície clara (hero editorial) */
+  --color-paper: #e9e7e2;
+  --color-ink: #141414;
+  --color-ink-soft: #57544e;
+  --color-accent-ink: #8a5000;
+
   --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-jetbrains), ui-monospace, "SFMono-Regular", monospace;
+  --font-display: var(--font-archivo), "Arial Black", "Helvetica Neue", sans-serif;
 }
 
 html {
@@ -97,6 +104,120 @@ html[data-scan="instant"] .scan-line {
 .finding:hover .preview-inner,
 .finding:focus-within .preview-inner {
   transform: translateY(-6px);
+}
+
+/* ---------- Hero editorial + lente ---------- */
+.hero {
+  height: max(100svh, 600px);
+  container-type: size;
+  --lr: 90px;
+  --lx: 62cqw;
+  --ly: 50cqh;
+}
+.hero-display {
+  position: absolute;
+  inset: 0;
+}
+.hl {
+  position: absolute;
+  left: 1rem;
+  right: 1rem;
+  /* "FULL-STACK" ≈ 6.9em em Archivo Black: cabe na largura útil */
+  font-size: min(calc((100cqw - 2rem) / 6.95), 24cqh);
+  line-height: 0.8;
+  letter-spacing: -0.035em;
+  white-space: nowrap;
+}
+/* Em telas em pé, aproxima as linhas do objeto (sem vazio no meio). */
+.hl-top {
+  top: max(4.75rem, calc(50cqh - 42cqw - 0.7em));
+}
+.hl-bot {
+  bottom: max(4.75rem, calc(50cqh - 42cqw - 0.7em));
+  text-align: right;
+}
+.hl-mono {
+  /* 10 caracteres mono (0.6em − tracking) na mesma largura */
+  font-size: min(calc((100cqw - 2rem) / 5.65), 24cqh);
+  letter-spacing: -0.035em;
+}
+@media (min-width: 640px) {
+  .hl {
+    left: 1.5rem;
+    right: 1.5rem;
+    font-size: min(calc((100cqw - 3rem) / 6.95), 24cqh);
+  }
+  .hl-mono {
+    font-size: min(calc((100cqw - 3rem) / 5.65), 24cqh);
+  }
+}
+
+.lens-window,
+.lens-ring {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: calc(var(--lr) * 2);
+  height: calc(var(--lr) * 2);
+  border-radius: 50%;
+  pointer-events: none;
+  transform: translate3d(calc(var(--lx) - var(--lr)), calc(var(--ly) - var(--lr)), 0);
+  will-change: transform;
+}
+.lens-window {
+  z-index: 1;
+  overflow: hidden;
+  background: #0d0f12;
+}
+.lens-inner {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100cqw;
+  height: 100cqh;
+  transform: translate3d(calc(var(--lr) - var(--lx)), calc(var(--lr) - var(--ly)), 0);
+  will-change: transform;
+}
+.lens-code {
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='520' height='208' font-family='ui-monospace,monospace' font-size='11' fill='rgb(233,231,226)' fill-opacity='0.16'%3E%3Ctext x='8' y='18'%3E0x7f3a: 48 8b 45 f8 48 89 c7 e8  %7CH.E.H...%7C%3C/text%3E%3Ctext x='8' y='38'%3EGET /api/session HTTP/1.1  Host: leo.dev%3C/text%3E%3Ctext x='8' y='58'%3Eif (%21req.user%3F.roles.includes('admin')) return 403%3B%3C/text%3E%3Ctext x='8' y='78'%3Ecsp: default-src 'self'%3B frame-ancestors 'none'%3C/text%3E%3Ctext x='8' y='98'%3E0x7f42: 00 00 00 00 c3 0f 1f 44  %7C.......D%7C%3C/text%3E%3Ctext x='8' y='118'%3ESELECT id, email FROM users WHERE id = %241%3B%3C/text%3E%3Ctext x='8' y='138'%3EStrict-Transport-Security: max-age=63072000%3C/text%3E%3Ctext x='8' y='158'%3Enmap -sV -p 22,80,443 target  %23 authorized%3C/text%3E%3Ctext x='8' y='178'%3Ejwt.verify(token, key, %7B algorithms: %5B'RS256'%5D %7D)%3C/text%3E%3Ctext x='8' y='198'%3E0x7f4a: 55 48 89 e5 48 83 ec 10  %7CUH..H...%7C%3C/text%3E%3C/svg%3E");
+}
+.lens-ring {
+  z-index: 3;
+  border: 1px solid rgb(20 20 20 / 0.9);
+  box-shadow:
+    inset 0 0 0 1px rgb(233 231 226 / 0.18),
+    0 10px 40px -10px rgb(0 0 0 / 0.35);
+}
+.lens-tick {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  translate: -50% -50%;
+  background:
+    linear-gradient(var(--color-accent), var(--color-accent)) center / 1px 100% no-repeat,
+    linear-gradient(var(--color-accent), var(--color-accent)) center / 100% 1px no-repeat;
+  opacity: 0.8;
+}
+
+/* Fallback estático do objeto: só com data-orb="static" (ou sem JS). */
+.orb-static {
+  display: none;
+  position: absolute;
+  inset: 0;
+  place-items: center;
+  pointer-events: none;
+}
+.orb-static img {
+  width: min(62cqh, 92cqw);
+  height: auto;
+}
+html[data-orb="static"] .orb-static,
+html:not([data-js]) .orb-static {
+  display: grid;
 }
 
 /* ---------- Grão de fundo ----------
