@@ -12,7 +12,7 @@ export function Contact() {
   return (
     <section id="contato" aria-labelledby="contact-title" className="bg-paper text-ink">
       <SectionHead n="05" label="Contact" title="Vamos conversar" id="contact-title" meta={profile.status.pt}>
-        Vagas, projetos ou um pentest autorizado: me chame.
+        Aberto a oportunidades em cibersegurança e desenvolvimento seguro.
       </SectionHead>
 
       <div className="sec-end px-4 sm:px-6">

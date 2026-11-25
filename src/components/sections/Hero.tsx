@@ -60,7 +60,7 @@ export async function Hero() {
               <span aria-hidden="true" className="text-ink-soft">·</span>
               <span className="inline-flex items-center gap-1.5">
                 <span aria-hidden="true" className="size-2 rounded-full bg-accent" />
-                {t(profile.status).split(" ")[0]}
+                {t(profile.status)}
               </span>
             </p>
           </div>
