@@ -14,10 +14,10 @@
  *            restrição ponto-a-ponto (soltar = arremessar)
  *   geleia = mola amortecida por ficha: no impacto, achata no eixo da batida
  *            e estica no plano perpendicular (~400 ms para assentar)
- *   luz    = RoomEnvironment (PMREM, gerado uma vez) + 1 direcional; sombra
- *            de contato barata (um quad com gradiente radial por ficha) que
- *            segue a sua peça: no chão sob ela, nítida apoiada, maior e mais
- *            fraca subindo, invisível longe do chão (e antes de a peça cair)
+ *   luz    = RoomEnvironment (PMREM, gerado uma vez) + 1 direcional com
+ *            shadow map (1024, PCF com radius: o PCFSoft foi removido do three). Só as fichas projetam sombra e só o
+ *            chão (ShadowMaterial transparente) recebe: a sombra existe
+ *            apenas onde há peça, nunca solta na cena
  *   foco   = clicar numa peça: ela sai da física, voa (~500 ms) até a frente
  *            da câmera, cresce e flutua; um véu cor de papel apaga as outras.
  *            Ao fechar, volta para o mundo e cai de novo com a física.
@@ -26,7 +26,6 @@
  */
 import {
   ACESFilmicToneMapping,
-  CanvasTexture,
   Color,
   DirectionalLight,
   ExtrudeGeometry,
@@ -36,6 +35,7 @@ import {
   Mesh,
   MeshBasicMaterial,
   MeshPhysicalMaterial,
+  PCFShadowMap,
   PerspectiveCamera,
   Plane,
   PlaneGeometry,
@@ -43,6 +43,7 @@ import {
   Quaternion,
   Raycaster,
   Scene,
+  ShadowMaterial,
   SRGBColorSpace,
   Vector2,
   Vector3,
@@ -83,7 +84,6 @@ const PUSH_MIN_SPEED = 900; // px/s: abaixo disso o cursor não empurra nada
 const PUSH_MAX = 9; // velocidade máxima da esfera do cursor (unidades/s)
 const MAX_SPEED = 14; // velocidade máxima de qualquer peça
 const CLICK_PX = 5; // até isso de movimento entre down e up = clique
-const SHADOW_FADE = 1.8; // altura (acima do apoio) em que a sombra some
 /* grupos de colisão: o cursor nunca toca a peça que está sendo arrastada */
 const G_PIECE = 1;
 const G_DRAGGED = 2;
@@ -137,26 +137,11 @@ function tone(hex: string) {
 }
 const lum = (c: Color) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
 
-function shadowTexture() {
-  const c = document.createElement("canvas");
-  c.width = c.height = 64;
-  const g = c.getContext("2d")!;
-  const grd = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-  grd.addColorStop(0, "rgba(20,16,10,0.55)");
-  grd.addColorStop(0.6, "rgba(20,16,10,0.18)");
-  grd.addColorStop(1, "rgba(20,16,10,0)");
-  g.fillStyle = grd;
-  g.fillRect(0, 0, 64, 64);
-  return new CanvasTexture(c);
-}
-
 type Piece = {
   token: Token;
   body: Body;
   group: Group;
   hit: Mesh;
-  shadow: Mesh;
-  shadowMat: MeshBasicMaterial;
   /* mola da geleia */
   x: number;
   v: number;
@@ -179,6 +164,8 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = ACESFilmicToneMapping;
   renderer.toneMappingExposure = 0.95;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = PCFShadowMap;
 
   const scene = new Scene();
   const pmrem = new PMREMGenerator(renderer);
@@ -187,8 +174,23 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
   pmrem.dispose();
   await yieldMain();
   const sun = new DirectionalLight(0xfff1dc, 1.4);
-  sun.position.set(-4, 10, 6);
-  scene.add(sun);
+  sun.position.set(-5, 9, 6.5);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(1024, 1024);
+  sun.shadow.bias = -0.0006;
+  sun.shadow.normalBias = 0.03;
+  sun.shadow.radius = 3;
+  sun.shadow.camera.near = 1;
+  sun.shadow.camera.far = 30;
+  sun.target.position.set(0, 0, 0);
+  scene.add(sun, sun.target);
+
+  /* chão visual: invisível, só recebe sombra; mesmo plano y = 0 do chão da física */
+  const floorMat = new ShadowMaterial({ color: new Color("#2a2015"), opacity: 0.3, depthWrite: false });
+  const floorMesh = new Mesh(new PlaneGeometry(60, 60), floorMat);
+  floorMesh.rotation.x = -Math.PI / 2;
+  floorMesh.receiveShadow = true;
+  scene.add(floorMesh);
 
   const camera = new PerspectiveCamera(30, 1, 1, 80);
   camera.position.set(0, 19, 11);
@@ -243,10 +245,7 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
 
   /* ---------- fichas ---------- */
   const coin = coinGeometry();
-  const shadowGeo = new PlaneGeometry(2.7, 2.7);
-  shadowGeo.rotateX(-Math.PI / 2);
-  const shadowTex = shadowTexture();
-  const disposables: { dispose(): void }[] = [coin, shadowGeo, shadowTex, envRT];
+  const disposables: { dispose(): void }[] = [coin, envRT, floorMat, floorMesh.geometry];
 
   const build = (token: Token): Piece => {
     const base = tone(token.hex);
@@ -269,23 +268,20 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
     group.matrixAutoUpdate = false;
     group.visible = false;
     const hit = new Mesh(coin, bodyMat);
+    hit.castShadow = true;
     group.add(hit);
     const lg = logoGeometry(token.path);
     if (lg) {
       /* logo nas duas faces: a ficha pode cair (ou ser jogada) de cabeça para baixo */
       const under = lg.clone().rotateX(Math.PI);
-      group.add(new Mesh(lg, logoMat), new Mesh(under, logoMat));
+      const top = new Mesh(lg, logoMat), bottom = new Mesh(under, logoMat);
+      top.castShadow = bottom.castShadow = true;
+      group.add(top, bottom);
       disposables.push(lg, under);
     }
     scene.add(group);
 
-    const shadowMat = new MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false, opacity: 0 });
-    const shadow = new Mesh(shadowGeo, shadowMat);
-    shadow.position.y = 0.01;
-    shadow.renderOrder = -1;
-    shadow.visible = false; // só existe enquanto a peça está no mundo
-    scene.add(shadow);
-    disposables.push(bodyMat, logoMat, shadowMat);
+    disposables.push(bodyMat, logoMat);
 
     const body = new Body({
       mass: 1,
@@ -297,7 +293,7 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
       collisionFilterGroup: G_PIECE,
       collisionFilterMask: G_PIECE | G_DRAGGED | G_CURSOR,
     });
-    const piece: Piece = { token, body, group, hit, shadow, shadowMat, x: 0, v: 0, n: new Vector3(0, 1, 0) };
+    const piece: Piece = { token, body, group, hit, x: 0, v: 0, n: new Vector3(0, 1, 0) };
     hit.userData.piece = piece;
 
     const q = new Quaternion();
@@ -366,6 +362,14 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
       b.position.set(x, 0, z);
       b.quaternion.setFromEuler(0, ry, 0);
     };
+    /* frustum da sombra cobrindo o palco (+ folga para peças empinadas) */
+    const sc = sun.shadow.camera;
+    const span = Math.max(bounds.x, Math.abs(bounds.z0), Math.abs(bounds.z1)) + 2.5;
+    sc.left = -span;
+    sc.right = span;
+    sc.top = span;
+    sc.bottom = -span;
+    sc.updateProjectionMatrix();
     set(walls[0], -bounds.x, 0, Math.PI / 2);
     set(walls[1], bounds.x, 0, -Math.PI / 2);
     set(walls[2], 0, bounds.z0, 0);
@@ -378,6 +382,12 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
     }
     wake();
   };
+
+  function castShadow(p: Piece, on: boolean) {
+    p.group.traverse((o) => {
+      if ((o as Mesh).isMesh) o.castShadow = on;
+    });
+  }
 
   /* ---------- queda ---------- */
   let dropped = false;
@@ -582,14 +592,6 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
       }
       p.group.matrix.copy(M);
       p.group.matrixWorldNeedsUpdate = true;
-      /* sombra de contato da PRÓPRIA peça: no chão sob ela; nítida apoiada,
-       * maior e mais fraca subindo, invisível a partir de SHADOW_FADE */
-      const hgt = Math.max(0, b.position.y - T / 2);
-      const k = Math.max(0, 1 - hgt / SHADOW_FADE);
-      p.shadow.position.set(b.position.x, 0.01, b.position.z);
-      p.shadowMat.opacity = 0.9 * k * k;
-      p.shadow.scale.setScalar(1 + hgt * 0.35);
-      p.shadow.visible = inWorld.has(b) && p.shadowMat.opacity > 0.01;
       if (b.sleepState !== Body.SLEEPING) active = true;
     }
 
@@ -658,6 +660,7 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
     press = null;
     piece.x = piece.v = 0;
     veilFrom = veilMat.opacity;
+    castShadow(piece, false); // voando até a câmera: a sombra gigante no chão confundiria
     focus = { piece, t0: performance.now(), home, from, fromQ, fromS: 1, to: t.p, toQ: t.q, toS: t.s, out: false };
     veil.visible = true;
     hovered = null;
@@ -682,7 +685,7 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
     world.addBody(b);
     inWorld.add(b);
     b.wakeUp();
-    f.piece.shadowMat.opacity = 0;
+    castShadow(f.piece, true);
   };
   const focusOff = () => {
     if (!focus) return;
@@ -706,8 +709,6 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
     fs.set(sc, sc, sc);
     f.piece.group.matrix.compose(pos, fq, fs);
     f.piece.group.matrixWorldNeedsUpdate = true;
-    f.piece.shadowMat.opacity = Math.max(0, f.piece.shadowMat.opacity - 0.08);
-    f.piece.shadow.visible = f.piece.shadowMat.opacity > 0.01;
     /* véu logo atrás da peça, de frente para a câmera */
     const dir = f.to.clone().sub(camera.position).normalize();
     veil.position.copy(f.to).addScaledVector(dir, R * f.toS * 1.6);
