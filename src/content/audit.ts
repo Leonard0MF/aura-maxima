@@ -1,49 +1,58 @@
 /*
- * Auditoria de segurança deste site (seção 04 · AUDIT).
+ * Demo "Escaneie este site" (seção 03 · AUDIT): replay de um scan REAL do
+ * Aegis sobre o domínio do portfólio.
  *
- * Os dados vêm de `audit.json`, atualizado à mão a partir da saída do Aegis.
- * NUNCA infle a nota: o card mostra exatamente o que estiver no JSON, e
- * campos `null` aparecem como "pendente".
+ * Os dados vêm de `audit.json`, gerado rodando o Aegis no domínio publicado.
+ * NUNCA invente nem infle a nota: a seção mostra exatamente o JSON. Enquanto
+ * `example` for true, os dados são de EXEMPLO: a seção avisa isso e NÃO
+ * mostra nota (score/grade são ignorados).
  *
- * Formato de audit.json:
+ * Formato de audit.json
+ * ---------------------
  * {
- *   "target":      string                // domínio verificado, ex.: "leo.dev"
- *   "tool":        string                // "Aegis"
- *   "toolVersion": string | null         // versão/commit do Aegis usado
- *   "checkedAt":   string | null         // data ISO 8601 da verificação, ex.: "2026-12-01"
- *   "source":      string                // de onde vieram os dados (texto livre)
- *   "score":       number | null         // 0–100, como o Aegis reporta
- *   "grade":       string | null         // ex.: "A", "A+", "B"
- *   "headers": [                         // ordem = ordem de exibição
+ *   "example":     boolean        // true = dados de exemplo (sem nota na tela)
+ *   "target":      string         // domínio escaneado, ex.: "leo.dev"
+ *   "tool":        "Aegis"
+ *   "toolVersion": string | null  // versão/commit do Aegis
+ *   "scannedAt":   string | null  // data ISO 8601 do scan, ex.: "2026-12-01T14:03:00Z"
+ *   "score":       number | null  // 0–100, como o Aegis reporta
+ *   "grade":       string | null  // "A" | "B" | "C" | "D" | "F"
+ *   "categories": [               // ordem = ordem do replay (7 no Aegis)
  *     {
- *       "id":     string                 // chave estável, ex.: "strict-transport-security"
- *       "label":  string                 // nome exibido
- *       "status": "pass" | "warn" | "fail" | "unknown"
- *       "detail": string                 // valor/observação curta
+ *       "id":      "tls" | "headers" | "cookies" | "dns" | "vulns" | "reputation" | "surface"
+ *       "label":   string         // nome exibido, ex.: "TLS"
+ *       "status":  "pass" | "warn" | "fail" | "info"
+ *       "summary": string         // resultado em uma linha, ex.: "TLS 1.3 · cadeia válida · expira em 62 dias"
  *     }
  *   ],
- *   "tls": {
- *     "valid":     boolean | null
- *     "issuer":    string | null         // ex.: "Let's Encrypt R11"
- *     "protocol":  string | null         // ex.: "TLS 1.3"
- *     "expiresAt": string | null         // data ISO 8601
- *   }
+ *   "servers": [                  // onde o domínio resolve (mini-mapa)
+ *     { "ip": string, "city": string, "country": string, "lat": number, "lon": number, "provider": string | null }
+ *   ],
+ *   "notes": string[]             // observações curtas exibidas abaixo do resultado (opcional)
  * }
  */
 import data from "./audit.json";
 
-export type CheckStatus = "pass" | "warn" | "fail" | "unknown";
+export type CheckStatus = "pass" | "warn" | "fail" | "info";
+
+export type AuditCategory = { id: string; label: string; status: CheckStatus; summary: string };
+export type AuditServer = { ip: string; city: string; country: string; lat: number; lon: number; provider: string | null };
 
 export type Audit = {
+  example: boolean;
   target: string;
   tool: string;
   toolVersion: string | null;
-  checkedAt: string | null;
-  source: string;
+  scannedAt: string | null;
   score: number | null;
   grade: string | null;
-  headers: { id: string; label: string; status: CheckStatus; detail: string }[];
-  tls: { valid: boolean | null; issuer: string | null; protocol: string | null; expiresAt: string | null };
+  categories: AuditCategory[];
+  servers: AuditServer[];
+  notes?: string[];
 };
 
 export const audit = data as Audit;
+
+/* nota só existe para dados reais */
+export const auditGrade = audit.example ? null : audit.grade;
+export const auditScore = audit.example ? null : audit.score;

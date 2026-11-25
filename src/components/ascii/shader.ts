@@ -26,9 +26,7 @@ uniform vec2 uLevels;  // preto, branco (níveis automáticos do build)
 uniform sampler2D uAtlas;
 uniform sampler2D uImg;
 uniform sampler2D uGrid;
-uniform sampler2D uText; // texto da lente: r = FULL-STACK (papel), g = PENTESTER (âmbar), b = halo
 uniform vec3 uPtr;     // x, y, atividade 0..1
-uniform vec3 uLens;    // x, y, raio
 uniform float uAccent; // 1 = destaques em âmbar; 0 = só tinta (blocos com inversão de cor)
 uniform float uKnock;  // 1 = o rosto cobre a tipografia; 0 = desenha por cima (telas estreitas)
 out vec4 o;
@@ -42,7 +40,6 @@ ${arr("TOK3", TOK3_IDX)}
 
 const vec3 INK = vec3(0.078);
 const vec3 AMBER = vec3(0.80, 0.50, 0.06);
-const vec3 RING = vec3(0.96, 0.65, 0.14);
 const vec3 PAPER = vec3(0.914, 0.906, 0.886);
 
 uint hash3(uint x, uint y, uint z) {
@@ -180,23 +177,4 @@ void main() {
     }
   }
 
-  /* lente: por trás do código, a foto */
-  if (uLens.z > 0.0) {
-    float ld = distance(p, uLens.xy);
-    float inside = 1.0 - smoothstep(uLens.z - uDpr, uLens.z, ld);
-    o += vec4(0.0, 0.0, 0.0, 0.16) * (1.0 - smoothstep(uLens.z, uLens.z + 24.0 * uDpr, ld)) * (1.0 - inside) * (1.0 - o.a);
-    if (inside > 0.0) {
-      vec2 uv = (p - uRect.xy) / uRect.zw;
-      vec3 col = vec3(0.05, 0.055, 0.07);
-      if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0) col = texture(uImg, uv).rgb * PAPER;
-      /* por baixo da superfície: a outra leitura das duas linhas, em mono */
-      vec4 tx = texture(uText, p / uRes);
-      col *= 1.0 - 0.55 * tx.b;
-      col = mix(col, PAPER, tx.r);
-      col = mix(col, RING, tx.g);
-      o = mix(o, vec4(col, 1.0), inside);
-    }
-    float ring = 1.0 - smoothstep(0.0, 1.1 * uDpr, abs(ld - uLens.z));
-    o = mix(o, vec4(RING, 1.0), ring);
-  }
 }`;

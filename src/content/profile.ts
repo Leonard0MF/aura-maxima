@@ -9,19 +9,11 @@
  */
 import type { Localized } from "@/lib/i18n";
 
-import { audit } from "./audit";
+import { auditGrade } from "./audit";
 
 export type Link = { label: Localized; href: string; external?: boolean };
 
 export type Severity = "critical" | "high" | "medium";
-
-export type CaseStudy = {
-  problem: Localized;
-  solution: Localized;
-  architecture: Localized[];
-  decisions: Localized[];
-  result: Localized;
-};
 
 export type Project = {
   id: string; // FND-001
@@ -33,7 +25,7 @@ export type Project = {
   year?: string;
   role?: Localized;
   summary: Localized;
-  highlights?: Localized[]; // usado no card grande (CRITICAL)
+  highlights?: Localized[]; // 3 destaques numerados no WORK
   stack: string[];
   links: { demo?: string; repo?: string };
   /* TODO: prints reais (BUMPHUB anonimizado). Coloque em public/projects/ e
@@ -43,7 +35,6 @@ export type Project = {
   image?: { src: string; width: number; height: number; alt: Localized };
   /** sistema interno: sem links externos, mostra a etiqueta "privado" */
   private?: boolean;
-  caseStudy: CaseStudy;
 };
 
 export type ServiceGroup = {
@@ -192,40 +183,22 @@ export const projects: Project[] = [
     severity: "critical",
     title: "Aegis",
     display: "AEGIS",
-    year: undefined, // TODO: ano
-    role: undefined, // TODO: papel, ex.: { pt: "solo · full-stack + security" }
+    year: "2026",
+    role: { pt: "Projeto solo · produto, front, back e segurança" },
     summary: {
-      pt: "Scanner de segurança de URLs e domínios: identifica vulnerabilidades, verifica certificados, atribui uma nota e gera um relatório completo.",
+      pt: "Scanner da postura de segurança de um domínio. Analisa TLS, headers HTTP, cookies, DNS e e-mail, vulnerabilidades conhecidas das tecnologias detectadas, reputação e superfície de ataque, e dá uma nota de 0 a 100 com o que corrigir.",
     },
     highlights: [
-      { pt: "Identifica vulnerabilidades e atribui uma nota de segurança" },
-      { pt: "Verifica certificados TLS e headers de segurança" },
-      { pt: "Gera um relatório completo e compartilhável" },
+      { pt: "Cruza as tecnologias detectadas com OSV, NVD e o catálogo CISA KEV de vulnerabilidades exploradas ativamente." },
+      { pt: "Passivo por padrão. Testes ativos só depois de o dono provar a posse do domínio (registro TXT ou arquivo), com token HMAC e sem banco de dados." },
+      { pt: "O próprio scanner é blindado: proteção contra SSRF com revalidação do IP a cada conexão (anti DNS rebinding), detecção sem ReDoS e rate limit na API." },
     ],
-    stack: ["Next.js", "TypeScript", "Node.js", "Vercel"], // TODO: confirmar stack real
+    stack: ["Next.js 16", "React 19", "TypeScript", "Tailwind CSS 4", "Canvas 2D", "SVG", "Vercel (gru1)", "Vercel Firewall"],
     links: {
       repo: "https://github.com/Leonard0MF/aegis",
       demo: "https://aegis-ten-zeta.vercel.app/",
     },
     image: { src: "/aegis.png", width: 1896, height: 914, alt: { pt: "Painel do Aegis: nota de segurança, certificado TLS e verificações de um domínio" } },
-    caseStudy: {
-      problem: {
-        pt: "TODO: descrever o problema (ex.: avaliar a postura de segurança de um site exige várias ferramentas separadas e conhecimento técnico).",
-      },
-      solution: {
-        pt: "Um scanner que recebe uma URL ou domínio, executa verificações de segurança (headers, certificado TLS, vulnerabilidades conhecidas) e consolida tudo em uma nota e um relatório.",
-      },
-      architecture: [
-        { pt: "TODO: fluxo de requisição (entrada → validação → verificações → relatório)." },
-        { pt: "TODO: onde roda cada verificação (funções serverless, filas etc.)." },
-      ],
-      decisions: [
-        { pt: "TODO: proteção contra SSRF ao escanear URLs de terceiros (bloqueio de IPs privados/metadata)." },
-        { pt: "TODO: rate limiting e prevenção de abuso." },
-        { pt: "TODO: critérios da nota de segurança." },
-      ],
-      result: { pt: "TODO: resultado (uso, métricas, aprendizados)." },
-    },
   },
   {
     id: "FND-002",
@@ -236,19 +209,17 @@ export const projects: Project[] = [
     year: undefined, // TODO: ano
     role: undefined, // TODO: papel
     summary: {
-      pt: "Sistema interno da BUMP no estilo Discord/Slack, com canais, tasks e integração com GitHub para o time acompanhar o trabalho em um só lugar.",
+      pt: "Plataforma interna da BUMP que junta comunicação e gestão: canais de conversa no estilo Discord/Slack, tasks e integração com o GitHub para o time acompanhar o trabalho num lugar só.",
     },
+    highlights: [
+      { pt: "Canais e conversas do time em tempo real." },
+      { pt: "Tasks ligadas ao trabalho no GitHub." },
+      { pt: "Em desenvolvimento: acesso remoto aos computadores da empresa (Windows e Linux), inclusive pelo celular." },
+    ],
     stack: ["TODO: stack"],
     links: {},
     private: true,
     image: { src: "/bumphub.png", width: 1922, height: 976, alt: { pt: "Tela de login do BUMPHUB (entrar com GitHub)" } },
-    caseStudy: {
-      problem: { pt: "TODO: problema de comunicação/organização que o BUMPHUB resolve." },
-      solution: { pt: "TODO: visão geral da solução (chat, tasks, integração GitHub)." },
-      architecture: [{ pt: "TODO: arquitetura (tempo real, banco, autenticação)." }],
-      decisions: [{ pt: "TODO: decisões de segurança (controle de acesso por setor, sessões, webhooks do GitHub)." }],
-      result: { pt: "TODO: resultado no time (adoção, ganhos)." },
-    },
   },
 ];
 
@@ -287,5 +258,5 @@ export const scanLines: { label: string; result: string }[] = [
   { label: "enumerating stack", result: `${services.filter((s) => s.state === "open").reduce((n, s) => n + s.items.length, 0)} services` },
   { label: "scanning projects", result: `${projects.length} findings` },
   /* Vem da auditoria real; sem nota, mostra "pending" em vez de inventar. */
-  { label: "checking security posture", result: audit.grade ?? "pending" },
+  { label: "checking security posture", result: auditGrade ?? "pending" },
 ];

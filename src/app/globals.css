@@ -130,18 +130,11 @@ html[data-scan="instant"] .scan-line {
   bottom: max(4.75rem, calc(50cqh - 42cqw - 0.7em));
   text-align: right;
 }
-.hl-mono {
-  /* 10 caracteres mono (0.6em − tracking) na mesma largura */
-  font-size: min(calc((100cqw - 2rem) / 5.65), 24cqh);
-}
 @media (min-width: 640px) {
   .hl {
     left: 1.5rem;
     right: 1.5rem;
     font-size: min(calc((100cqw - 3rem) / 6.95), 24cqh);
-  }
-  .hl-mono {
-    font-size: min(calc((100cqw - 3rem) / 5.65), 24cqh);
   }
 }
 /* Entrada: a tipografia sobe enquanto o retrato se monta (só na 1ª carga da
@@ -152,10 +145,10 @@ html[data-scan="instant"] .scan-line {
     transform: translateY(0.3em);
   }
 }
-html[data-intro] .hero > .hero-display .hl {
+html[data-intro] .hero .hl {
   animation: hl-in 1.3s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
-html[data-intro] .hero > .hero-display .hl-bot {
+html[data-intro] .hero .hl-bot {
   animation-delay: 0.15s;
 }
 
@@ -168,16 +161,73 @@ html[data-intro] .hero > .hero-display .hl-bot {
   height: 100%;
   pointer-events: none;
 }
-/* Fallback estático: mesma caixa que o shader usa (70% da altura, ≤ 95% da largura). */
-.ascii-fallback {
+/* As duas camadas do hero: mesmo container, mesmo layout. A caixa do
+ * retrato vem de portraitBoxStyle() (mesma conta do shader). */
+.hero-layer {
   position: absolute;
+  inset: 0;
+}
+/* Fallback estático (camada surface) */
+.ascii-fallback {
   z-index: 2;
-  left: 50%;
-  top: 50%;
-  height: min(70cqh, calc(95cqw / var(--pa)));
-  aspect-ratio: var(--pa);
-  translate: -50% -50%;
   overflow: hidden;
+}
+
+/* ---------- Lente: camada "under" recortada por um círculo ----------
+ * --lx/--ly/--lr (px) e --ls (escala do aro) vêm do loop do canvas, 1×
+ * por frame. Sem JS / modo estático: a camada nem aparece. */
+.hero-layer--under {
+  display: none;
+  z-index: 3;
+  background: #0e0e10;
+  color: #f5a524;
+  clip-path: circle(var(--lr, 0px) at var(--lx, 50%) var(--ly, 50%));
+  pointer-events: none;
+}
+.hero[data-lens] .hero-layer--under {
+  display: block;
+}
+.hero-layer--under .hero-display {
+  z-index: 2;
+}
+.hero-layer--under .hl-top {
+  color: transparent;
+  -webkit-text-stroke: 2px #f5a524;
+}
+/* PENTESTER: cada letra na caixa da letra de DEVELOPER (largura via JS) */
+.hl-ch {
+  display: inline-block;
+  text-align: center;
+  letter-spacing: 0;
+}
+/* foto em negativo ("raio-x"): o fundo branco vira preto e o blend
+ * "lighten" (contra o fundo da camada, sem z-index para não isolar) some com
+ * ele: nenhum retângulo dentro da lente */
+.hero-photo {
+  mix-blend-mode: lighten;
+}
+.hero-photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  filter: grayscale(1) invert(1) contrast(1.05);
+  opacity: 0.85;
+}
+.lens-ring {
+  display: none;
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 4;
+  width: 200px;
+  height: 200px;
+  border: 1.5px solid #f5a524;
+  border-radius: 50%;
+  pointer-events: none;
+  transform: translate(calc(var(--lx, 0px) - 100px), calc(var(--ly, 0px) - 100px)) scale(var(--ls, 0));
+}
+.hero[data-lens] .lens-ring {
+  display: block;
 }
 /* Com JS: aparece desde o 1º paint como um esboço quase transparente (é o LCP);
  * some quando o canvas assume ou vira o retrato inteiro no modo estático. */
@@ -227,40 +277,53 @@ html[data-js] .hero[data-live] .ascii-fallback {
 
 /* ================= Sistema editorial (seções abaixo do hero) ================= */
 
-/* Cabeçalho de seção: nome gigante à esquerda; todos no mesmo corpo
- * (CONTACT, o mais largo, ≈ 5.1em, ocupa a largura útil). */
-.sec-head {
-  container-type: inline-size;
-  position: relative;
-  padding: 5rem 1rem 2.5rem;
+/* Cabeçalho compacto (SectionHead). Ritmo: 48px acima do cabeçalho e
+ * 56px no fim de cada seção → ~105px entre seções (≤ 120px). */
+.sh {
+  padding: 3rem 1rem 1.25rem;
   border-top: 1px solid color-mix(in srgb, currentColor 18%, transparent);
 }
 @media (min-width: 640px) {
-  .sec-head {
-    padding: 7rem 1.5rem 3.5rem;
+  .sh {
+    padding: 3rem 1.5rem 1.5rem;
   }
 }
-.sec-meta {
+.sh-label {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 1.5rem;
   font-family: var(--font-mono);
   font-size: 11px;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 @media (min-width: 640px) {
-  .sec-meta {
+  .sh-label {
     font-size: 12px;
   }
 }
-.sec-title {
-  font-size: calc(100cqw / 5.2);
-  line-height: 0.8;
-  letter-spacing: -0.035em;
-  white-space: nowrap;
-  margin-left: -0.04em;
+.sh-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem 2.5rem;
+  margin-top: 0.75rem;
+}
+.sh-title {
+  font-size: clamp(48px, 7vw, 112px);
+  line-height: 0.85;
+  letter-spacing: -0.03em;
+  margin-left: -0.03em;
+}
+.sh-lede {
+  max-width: 40ch;
+  padding-bottom: 0.35em;
+  font-size: clamp(1rem, 1.3vw, 1.25rem);
+  line-height: 1.4;
+}
+.sec-end {
+  padding-bottom: 3.5rem;
 }
 
 /* Decrypt: o glifo aleatório fica por cima do original (largura estável) */
@@ -352,28 +415,40 @@ html[data-js] .hero[data-live] .ascii-fallback {
     transform: none;
   }
 }
-.work-item {
+/* a coluna de texto é um container: o nome nunca passa da coluna
+ * (BUMPHUB ≈ 5.2em em Archivo Black) */
+.work-info {
   container-type: inline-size;
 }
 .work-name {
-  font-size: calc(100cqw / var(--w));
-  line-height: 0.8;
+  font-size: min(clamp(56px, 8vw, 128px), 100cqw / 5.3);
+  line-height: 0.85;
   letter-spacing: -0.035em;
-  white-space: nowrap;
   margin-left: -0.04em;
+}
+.chip {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid rgb(20 20 20 / 0.3);
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
 /* ---------- 02 · STACK ---------- */
+/* a seção inteira cabe em 100svh: cabeçalho compacto (~12rem) + canvas */
 .stack-box {
   position: relative;
-  height: clamp(480px, 70vh, 820px);
+  height: clamp(360px, calc(100svh - 13rem), 820px);
   overflow: hidden;
   border-top: 1px solid rgb(20 20 20 / 0.2);
   border-bottom: 1px solid rgb(20 20 20 / 0.2);
 }
 @media (max-width: 639px) {
   .stack-box {
-    height: 70svh;
+    height: 66svh;
   }
 }
 .stack-stage,
@@ -524,139 +599,6 @@ html[data-js] .hero[data-live] .ascii-fallback {
   color: var(--color-accent-ink);
 }
 
-/* ---------- 03 · HACK ME ---------- */
-.hack-input {
-  min-height: 2.75rem;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid rgb(20 20 20 / 0.35);
-  border-radius: 2px;
-  background: #f3f1ec;
-  font-family: var(--font-mono);
-  font-size: 15px;
-  letter-spacing: 0;
-  text-transform: none;
-  color: var(--color-ink);
-}
-.hack-input:focus-visible {
-  outline: 2px solid var(--color-ink);
-  outline-offset: 0;
-}
-.hack-btn {
-  min-height: 2.5rem;
-  padding: 0 1rem;
-  border: 1px solid var(--color-ink);
-  border-radius: 2px;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-.hack-btn:disabled {
-  opacity: 0.45;
-}
-.hack-btn-solid {
-  background: var(--color-ink);
-  color: var(--color-paper);
-}
-.hack-switch {
-  display: inline-flex;
-  min-height: 2rem;
-  align-items: center;
-  gap: 0.5rem;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-.hack-switch > span {
-  position: relative;
-  width: 2rem;
-  height: 1.1rem;
-  border: 1px solid var(--color-ink);
-  border-radius: 999px;
-}
-.hack-switch > span::after {
-  content: "";
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: calc(1.1rem - 6px);
-  height: calc(1.1rem - 6px);
-  border-radius: 50%;
-  background: var(--color-ink);
-  transition: transform 0.2s ease;
-}
-.hack-switch[aria-checked="true"] > span {
-  background: var(--color-accent);
-}
-.hack-switch[aria-checked="true"] > span::after {
-  transform: translateX(0.9rem);
-}
-.hack-sql {
-  min-height: 7.5rem;
-  padding: 0.9rem 1rem;
-  border-left: 2px solid rgb(20 20 20 / 0.25);
-  background: #e2dfd9;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.q-kw {
-  font-weight: 700;
-}
-.q-str {
-  color: #5b4a2e;
-}
-.q-num,
-.q-op,
-.q-id,
-.q-plain {
-  color: var(--color-ink);
-}
-.q-comment {
-  color: #8a867e;
-  text-decoration: line-through;
-}
-.q-inj {
-  background: rgb(179 38 30 / 0.12);
-  color: #b3261e;
-  font-weight: 700;
-}
-.hack-param {
-  background: rgb(245 165 36 / 0.22);
-  padding: 0 0.25rem;
-}
-.hack-row-hit {
-  background: rgb(179 38 30 / 0.1);
-  box-shadow: inset 3px 0 0 #b3261e;
-}
-.hack-row-hit td:first-child {
-  padding-left: 0.5rem;
-}
-.hack-row-hit td {
-  color: #b3261e;
-}
-.hack-granted {
-  animation: granted 0.6s steps(6) both;
-}
-@keyframes granted {
-  0% {
-    opacity: 0;
-    clip-path: inset(0 100% 0 0);
-  }
-  to {
-    opacity: 1;
-    clip-path: inset(0 0 0 0);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .hack-granted {
-    animation: none;
-  }
-}
-
 /* ---------- 04 · AUDIT (camada de baixo) ----------
  * Fundo: círculo escuro numa camada sticky de 100vh. Cresce na entrada e
  * fecha na saída da seção (scroll-driven animation, só transform). */
@@ -688,51 +630,38 @@ html[data-js] .hero[data-live] .ascii-fallback {
   margin: -75vmax 0 0 -75vmax;
   border-radius: 50%;
   background: #0b0d10;
-  /* o círculo entra no hit-test (é o fundo real do texto da seção); só cobre
-   * conteúdo de outra seção quando já o escondeu visualmente */
-  pointer-events: auto;
 }
 .audit-body {
   position: relative;
-  /* respiro para o círculo crescer antes do conteúdo e fechar depois dele */
-  padding: 30vh 0 30vh;
-}
-/* nota pendente: um traço fino, não um bloco */
-.audit-dash {
-  display: inline-block;
-  width: 0.55em;
-  height: 0.022em;
-  margin: 0.4em 0;
-  background: var(--color-dim);
-  vertical-align: middle;
-}
-.audit-dash > span {
-  display: none;
+  /* sem respiro extra: o conteúdo cabe em 100svh e o círculo cresce por
+   * cima do fim da seção anterior (a camada sobe 1 tela) */
+  padding: 0;
 }
 @supports (animation-timeline: view()) {
   @media (prefers-reduced-motion: no-preference) {
+    /* sobe 1 tela (o círculo nasce por cima do fim da STACK), mas para
+     * no fim da própria seção: na saída nunca cobre o título da ABOUT */
     .audit-bg {
-      inset: -100vh 0;
+      inset: -100vh 0 0;
     }
     .audit-pin > span {
       animation:
-        audit-in linear forwards,
+        audit-in linear both,
         audit-out linear both;
       animation-timeline: --audit, --audit;
       animation-range:
-        entry -100vh entry 65%,
-        exit 0% exit 50%;
+        entry 0% entry 60%,
+        exit 0% exit 55%;
     }
   }
 }
 /* entrada mexe em `scale`, saída em `transform`: as duas se multiplicam,
  * então cada uma pode ficar presa no seu valor final (fill both) */
-/* faixa da entrada começa 1 tela antes (a camada já está fora da vista);
- * antes dela, sem efeito = círculo cheio: quem mede contraste de longe vê o
- * texto claro sobre o escuro, como de fato aparece. 66.7% = entry 10%. */
+/* segura em 0 no início: com a STACK inteira na tela a AUDIT já "entrou"
+ * alguns px, e o círculo não deve aparecer por cima do canvas */
 @keyframes audit-in {
   0%,
-  66.7% {
+  20% {
     scale: 0;
   }
   to {
@@ -749,14 +678,7 @@ html[data-js] .hero[data-live] .ascii-fallback {
 }
 
 
-/* ---------- 06 · CONTACT ---------- */
-.contact-title {
-  /* CONVERSAR ≈ 6.69em: ocupa a largura útil */
-  font-size: calc(100cqw / 6.75);
-  line-height: 0.82;
-  letter-spacing: -0.035em;
-  margin-left: -0.04em;
-}
+/* ---------- CONTACT ---------- */
 .contact-big {
   font-size: clamp(1.75rem, 5vw, 4rem);
   font-weight: 500;
@@ -768,4 +690,78 @@ html[data-js] .hero[data-live] .ascii-fallback {
 .contact-big:hover,
 .contact-big:focus-visible {
   background-size: 100% 2px;
+}
+
+.audit-btn {
+  min-height: 3rem;
+  padding: 0 1.5rem;
+  border: 1px solid var(--color-accent);
+  border-radius: 2px;
+  background: var(--color-accent);
+  color: #0b0d10;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transition: background 0.2s, color 0.2s;
+}
+.audit-btn:hover:not(:disabled) {
+  background: transparent;
+  color: var(--color-accent);
+}
+.audit-btn:disabled {
+  opacity: 0.7;
+  cursor: progress;
+}
+.audit-row {
+  display: flex;
+  gap: 1rem;
+  align-items: baseline;
+  padding: 0.42rem 0;
+  border-bottom: 1px solid var(--color-line);
+}
+.audit-row.is-done > span:first-child {
+  animation: row-in 0.35s ease-out both;
+}
+@keyframes row-in {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+}
+.audit-stamp {
+  position: absolute;
+  right: 0;
+  bottom: -0.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.5rem 1.1rem;
+  border: 3px solid var(--color-accent);
+  color: var(--color-accent);
+  background: #0b0d10;
+  rotate: -8deg;
+  animation: stamp 0.45s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+@keyframes stamp {
+  from {
+    opacity: 0;
+    scale: 1.8;
+  }
+}
+.audit-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: clamp(1.25rem, 2.4vw, 2rem);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--color-paper);
+  background: linear-gradient(var(--color-accent), var(--color-accent)) 0 100% / 100% 2px no-repeat;
+  padding-bottom: 0.2rem;
+  transition: color 0.2s;
+}
+.audit-cta:hover {
+  color: var(--color-accent);
 }

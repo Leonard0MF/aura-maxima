@@ -4,7 +4,6 @@ import { TerminalDock } from "@/components/TerminalDock";
 import { About } from "@/components/sections/About";
 import { Audit } from "@/components/sections/Audit";
 import { Contact } from "@/components/sections/Contact";
-import { HackMe } from "@/components/sections/HackMe";
 import { Hero } from "@/components/sections/Hero";
 import { Stack } from "@/components/sections/Stack";
 import { Work } from "@/components/sections/Work";
@@ -17,7 +16,6 @@ export default function Home() {
         <Hero />
         <Work />
         <Stack />
-        <HackMe />
         <Audit />
         <About />
         <Contact />

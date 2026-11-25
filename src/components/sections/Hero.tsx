@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 
 import { AsciiStage } from "@/components/hero/AsciiStage";
+import { HeroLayer } from "@/components/hero/HeroLayer";
 import { LocalTime } from "@/components/hero/LocalTime";
 import { profile } from "@/content/profile";
 import { getPortrait } from "@/lib/ascii/image";
@@ -9,23 +10,21 @@ import { t } from "@/lib/i18n";
 const nav = [
   { n: "01", label: "Work", href: "#findings" },
   { n: "02", label: "Stack", href: "#stack" },
-  { n: "03", label: "Hack me", href: "#hackme" },
-  { n: "04", label: "Audit", href: "#auditoria" },
-  { n: "05", label: "About", href: "#about" },
-  { n: "06", label: "Contact", href: "#contato" },
+  { n: "03", label: "Audit", href: "#auditoria" },
+  { n: "04", label: "About", href: "#about" },
+  { n: "05", label: "Contact", href: "#contato" },
 ];
 
 /*
  * Hero: "desenho feito de código" + "veja por baixo da superfície".
  *
  * Camadas (de baixo para cima):
- *   0  tipografia display: FULL-STACK / DEVELOPER
- *   1  fallback estático: o retrato em ASCII gerado no build (<pre>), visível
- *      só sem JS, com reduced-motion ou se o WebGL falhar
- *   2  canvas WebGL: o retrato em ASCII ao vivo (cobre a tipografia onde há
- *      rosto) e, dentro da lente, a foto real
- *      dentro da lente, também desenha FULL-STACK / PENTESTER em mono (textura)
- *   3  metadados e navegação
+ *   0–1  HeroLayer surface: FULL-STACK / DEVELOPER + fallback estático
+ *   2    canvas WebGL: o retrato em ASCII ao vivo
+ *   3    HeroLayer under: mesmo layout, fundo escuro, FULL-STACK / PENTESTER
+ *        em âmbar e a foto; recortada por clip-path: circle() nas variáveis
+ *        --lx/--ly/--lr, que o loop do canvas escreve 1× por frame
+ *   4    metadados e navegação
  */
 export async function Hero() {
   const portrait = await getPortrait();
@@ -41,29 +40,18 @@ export async function Hero() {
         {profile.name}, Full-Stack Developer &amp; Pentester
       </h1>
 
-      {/* 0 · tipografia */}
-      <div aria-hidden="true" className="hero-display font-display text-ink">
-        <span className="hl hl-top">FULL-STACK</span>
-        <span className="hl hl-bot">DEVELOPER</span>
-      </div>
+      {/* 0–1 · superfície: tipografia + fallback estático do retrato */}
+      <HeroLayer variant="surface" portrait={portrait} />
 
-      {/* 1 · fallback estático (SVG gerado no build) */}
-      <div className="ascii-fallback">
-        {/* eslint-disable-next-line @next/next/no-img-element -- data URI gerado no build, nada a otimizar */}
-        <img
-          src={portrait.svg.src}
-          width={portrait.svg.width}
-          height={portrait.svg.height}
-          alt={`Retrato de ${profile.name} desenhado com caracteres de código (ASCII art)`}
-          decoding="async"
-        />
-      </div>
-
-      {/* 2 · retrato ao vivo */}
+      {/* 2 · retrato ASCII ao vivo (WebGL) */}
       <AsciiStage src={portrait.src} aspect={portrait.aspect} levels={portrait.levels} />
 
-      {/* 3 · metadados */}
-      <div className="hero-meta relative z-10 flex h-full flex-col justify-between p-4 font-mono text-[11px] tracking-wide uppercase sm:p-6 sm:text-xs">
+      {/* 3 · por baixo da superfície, recortada pela lente (clip-path + vars CSS) */}
+      <HeroLayer variant="under" portrait={portrait} />
+      <div className="lens-ring" aria-hidden="true" />
+
+      {/* 4 · metadados */}
+            <div className="hero-meta relative z-10 flex h-full flex-col justify-between p-4 font-mono text-[11px] tracking-wide uppercase sm:p-6 sm:text-xs">
         <div className="flex items-start justify-between gap-4">
           <div className="leading-relaxed">
             <p>{profile.name}</p>

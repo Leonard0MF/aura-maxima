@@ -10,7 +10,7 @@ const HELP: [string, string][] = [
   ["whoami", "quem é o alvo"],
   ["ls projects", "lista os findings"],
   ["cat <projeto>", "detalha um finding (ex.: cat aegis)"],
-  ["skills", "serviços expostos (stack)"],
+  ["skills", "stack técnica"],
   ["contact", "canais de contato"],
   ["cv", "baixa o currículo (PDF)"],
   ["history", "comandos anteriores"],

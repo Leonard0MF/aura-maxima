@@ -1,9 +1,9 @@
-import { Decrypt } from "@/components/Decrypt";
+import { SectionHead } from "@/components/SectionHead";
 import { profile } from "@/content/profile";
 
 const isTodo = (s: string) => /TODO/.test(s);
 
-/* 06 · CONTACT. Canais com TODO (e-mail, LinkedIn) não aparecem até existirem. */
+/* 05 · CONTACT (cabe em 100svh). Canais com TODO (e-mail, LinkedIn) não aparecem até existirem. */
 export function Contact() {
   const { contact } = profile;
   const email = isTodo(contact.email) ? null : contact.email;
@@ -11,21 +11,12 @@ export function Contact() {
 
   return (
     <section id="contato" aria-labelledby="contact-title" className="bg-paper text-ink">
-      <header className="sec-head">
-        <div className="sec-meta">
-          <span>06</span>
-          <span className="text-ink-soft">connect --to leo</span>
-          <span>{profile.status.pt}</span>
-        </div>
-        <h2 id="contact-title" className="contact-title font-display">
-          <Decrypt text="VAMOS" />
-          <br />
-          <Decrypt text="CONVERSAR" />
-        </h2>
-      </header>
+      <SectionHead n="05" label="Contact" title="Vamos conversar" id="contact-title" meta={profile.status.pt}>
+        Vagas, projetos ou um pentest autorizado: me chame.
+      </SectionHead>
 
-      <div className="px-4 pb-16 sm:px-6 sm:pb-24">
-        <div className="flex flex-col gap-6 border-t border-ink/20 pt-8">
+      <div className="sec-end px-4 sm:px-6">
+        <div className="flex flex-col gap-5 border-t border-ink/20 pt-6">
           {email ? (
             <a href={`mailto:${email}`} className="contact-big w-fit break-all">
               {email}
@@ -51,7 +42,7 @@ export function Contact() {
             )}
           </p>
         </div>
-        <p className="mt-16 font-mono text-xs tracking-wide sm:text-sm">
+        <p className="mt-10 font-mono text-xs tracking-wide sm:text-sm">
           <span className="text-[#1f7a43]">[✓]</span> scan complete · 0 vulnerabilidades críticas no candidato
         </p>
       </div>

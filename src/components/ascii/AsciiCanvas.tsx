@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
-import { GLYPHS, PORTRAIT_H, PORTRAIT_MAX_W, RATIO, cellWidth, type Levels } from "@/lib/ascii/core";
+import { GLYPHS, RATIO, cellWidth, portraitRect, type Levels } from "@/lib/ascii/core";
 
 import { FRAG, GRID_FRAG, VERT } from "./shader";
 
@@ -53,8 +53,8 @@ function texture(gl: WebGL2RenderingContext, unit: number, source: TexImageSourc
  * Imagem ASCII ao vivo: um canvas WebGL2 do tamanho do bloco pai.
  *   passe de grade  → textura (1 texel por célula): glifo, destaque, opacidade
  *   passe por frame → atlas de glifos + embaralhamento perto do cursor + lente
- * Também é dono da interação (ponteiro, lente, passeio sozinho) e escreve
- * transform/clip-path direto na camada de texto da lente (PENTESTER).
+ * Também é dono da interação (ponteiro, lente, passeio sozinho): a lente em
+ * si é HTML (HeroLayer under + aro); daqui saem só --lx/--ly/--lr/--ls.
  */
 export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -104,64 +104,20 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
     let lastStep = -1;
     /* posição da página do bloco, medida no resize (sem getBoundingClientRect por evento) */
     let boxTop = 0, boxLeft = 0;
-    /* texto da lente: desenhado numa textura (unidade 3) alinhada às linhas do
-     * DOM; refeito só no resize. Nada de DOM extra se movendo por frame. */
-    const textTex = gl.createTexture();
-    let monoFamily = "monospace";
-    const drawLensText = () => {
-      const c = document.createElement("canvas");
-      c.width = Math.max(1, Math.round(W * dpr));
-      c.height = Math.max(1, Math.round(H * dpr));
-      const ctx = c.getContext("2d")!;
-      ctx.scale(dpr, dpr);
-      const gut = W >= 640 ? 24 : 16;
-      const fs = Math.min((W - 2 * gut) / 5.65, 0.24 * H);
-      ctx.font = `700 ${fs}px ${monoFamily}`;
-      (ctx as unknown as { letterSpacing: string }).letterSpacing = `${(-0.035 * fs).toFixed(2)}px`;
-      ctx.textBaseline = "middle";
-      /* y: offsetTop (ignora o transform da entrada das linhas);
-       * x: extensão real das letras (Range), para o texto mono cobrir a
-       * linha gigante de ponta a ponta, sem disco vazio nas pontas */
-      const br = box.getBoundingClientRect();
-      const line = (sel: string) => {
-        const el = box.querySelector<HTMLElement>(sel);
-        if (!el) return null;
-        const rg = document.createRange();
-        rg.selectNodeContents(el);
-        const rr = rg.getBoundingClientRect();
-        return { cy: el.offsetTop + el.offsetHeight / 2, l: rr.left - br.left, w: rr.width };
-      };
-      const words = [
-        { l: line(".hero-display .hl-top"), text: "FULL-STACK", ch: "#ff0000" },
-        { l: line(".hero-display .hl-bot"), text: "PENTESTER", ch: "#00ff00" },
-      ];
-      ctx.globalCompositeOperation = "lighter";
-      ctx.textAlign = "left";
-      const draw = (blur: boolean) => {
-        for (const w of words) {
-          if (!w.l || w.l.w < 10) continue;
-          const nat = ctx.measureText(w.text).width;
-          ctx.save();
-          ctx.translate(w.l.l, w.l.cy + fs * 0.04);
-          ctx.scale(w.l.w / nat, 1);
-          ctx.fillStyle = blur ? "#0000ff" : w.ch;
-          ctx.fillText(w.text, 0, 0);
-          ctx.restore();
-        }
-      };
-      /* halo (canal azul) para ler sobre a foto */
-      ctx.filter = `blur(${Math.round(fs * 0.06)}px)`;
-      draw(true);
-      ctx.filter = "none";
-      draw(false);
-      gl.activeTexture(gl.TEXTURE3);
-      gl.bindTexture(gl.TEXTURE_2D, textTex);
-      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    /* PENTESTER (camada under): cada letra na largura da letra de DEVELOPER
+     * (camada surface). Medido por Range no nó de texto, sem mexer no DOM da
+     * superfície; refeito no resize e quando a fonte display chega. */
+    const fitLetters = () => {
+      const src = box.querySelector(".hero-layer--surface .hl-bot")?.firstChild;
+      const dst = box.querySelectorAll<HTMLElement>(".hero-layer--under .hl-ch");
+      if (!src || src.nodeType !== Node.TEXT_NODE || !dst.length) return;
+      const rg = document.createRange();
+      const n = Math.min(dst.length, (src.textContent ?? "").length);
+      for (let i = 0; i < n; i++) {
+        rg.setStart(src, i);
+        rg.setEnd(src, i + 1);
+        dst[i].style.width = `${rg.getBoundingClientRect().width}px`;
+      }
     };
 
     const resize = () => {
@@ -177,10 +133,7 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
       const cw = cellWidth(W);
       gridCols = Math.ceil(W / cw);
       gridRows = Math.ceil(H / (cw * RATIO));
-      rect.h = Math.min(PORTRAIT_H * H, (PORTRAIT_MAX_W * W) / aspect);
-      rect.w = rect.h * aspect;
-      rect.x = (W - rect.w) / 2;
-      rect.y = (H - rect.h) / 2;
+      Object.assign(rect, portraitRect(W, H, aspect));
       lensR = W < 640 ? 66 : 100;
 
       gl.activeTexture(gl.TEXTURE2);
@@ -208,7 +161,7 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
         gl.uniform2f(loc(p, "uRes"), canvas.width, canvas.height);
       }
       gl.viewport(0, 0, canvas.width, canvas.height);
-      drawLensText();
+      fitLetters();
       lastStep = -1;
       schedule();
     };
@@ -247,8 +200,9 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
 
     let raf = 0;
     let visible = true;
+    let shownX = NaN, shownY = NaN, shownR = NaN, lensOn = false;
     let lastDraw = 0;
-    let U: Record<"time" | "ptr" | "lens", WebGLUniformLocation | null>;
+    let U: Record<"time" | "ptr", WebGLUniformLocation | null>;
 
     /* ~30 fps; se o frame custa caro na main thread (aparelho fraco, GL por
      * software), cai para ~16 fps sozinho em vez de travar a página */
@@ -286,7 +240,22 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
       const r = lensR * (1 - Math.pow(1 - open, 3));
       gl.uniform1f(U.time, t);
       gl.uniform3f(U.ptr, px * dpr, (H - py) * dpr, pa);
-      gl.uniform3f(U.lens, lx * dpr, (H - ly) * dpr, r * dpr);
+      /* lente: só variáveis CSS (a camada under e o aro leem daqui) */
+      const lr = Math.round(r * 10) / 10;
+      if (lr !== shownR || Math.abs(lx - shownX) > 0.05 || Math.abs(ly - shownY) > 0.05) {
+        shownR = lr;
+        shownX = lx;
+        shownY = ly;
+        const st = box.style;
+        st.setProperty("--lx", `${lx.toFixed(1)}px`);
+        st.setProperty("--ly", `${ly.toFixed(1)}px`);
+        st.setProperty("--lr", `${lr}px`);
+        st.setProperty("--ls", (lr / 100).toFixed(3));
+        if (lr > 0 && !lensOn) {
+          lensOn = true;
+          box.dataset.lens = "";
+        }
+      }
       gl.clear(gl.COLOR_BUFFER_BIT);
       /* só sombreia onde há algo: retrato ∪ lente ∪ entorno do cursor */
       let x0 = rect.x, y0 = rect.y, x1 = rect.x + rect.w, y1 = rect.y + rect.h;
@@ -296,7 +265,6 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
         x1 = Math.max(x1, cx + rr);
         y1 = Math.max(y1, cy + rr);
       };
-      if (r > 0) grow(lx, ly, r + 26);
       if (pa > 0.01) grow(px, py, 132);
       x0 = Math.max(0, x0);
       y0 = Math.max(0, y0);
@@ -359,11 +327,10 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
       if (![prog, gridProg].every((p) => gl.getProgramParameter(p, gl.LINK_STATUS))) return onFail();
 
       const family = getComputedStyle(canvas).fontFamily;
-      monoFamily = family;
       const img = new Image();
       img.src = src;
       const [, ok] = await Promise.all([
-        Promise.all([document.fonts.load(`500 64px ${family}`), document.fonts.load(`700 64px ${family}`)]).catch(() => {}),
+        document.fonts.load(`500 64px ${family}`).catch(() => {}),
         img.decode().then(
           () => true,
           () => false,
@@ -382,18 +349,14 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
       gl.useProgram(prog);
       gl.uniform1i(loc(prog, "uAtlas"), 0);
       gl.uniform1i(loc(prog, "uGrid"), 2);
-      gl.uniform1i(loc(prog, "uText"), 3);
-      U = { time: loc(prog, "uTime"), ptr: loc(prog, "uPtr"), lens: loc(prog, "uLens") };
+      U = { time: loc(prog, "uTime"), ptr: loc(prog, "uPtr") };
 
       ro.observe(box);
       io.observe(box);
       resize();
-      /* a fonte display pode chegar depois: refaz a textura da lente */
+      /* a fonte display pode chegar depois: remede as letras */
       void document.fonts.ready.then(() => {
-        if (!alive) return;
-        drawLensText();
-        lastStep = -1;
-        schedule();
+        if (alive) fitLetters();
       });
       const f = face();
       lx = tx = f.x;
@@ -419,6 +382,7 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
       canvas.removeEventListener("webglcontextlost", onLost);
       document.removeEventListener("visibilitychange", onVis);
       delete box.dataset.live;
+      delete box.dataset.lens;
       /* desmontado de vez (bloco saiu de cena): libera o contexto já, sem esperar o GC */
       setTimeout(() => {
         if (!canvas.isConnected) gl.getExtension("WEBGL_lose_context")?.loseContext();

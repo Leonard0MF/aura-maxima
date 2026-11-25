@@ -22,6 +22,26 @@ export const MIN_DENSITY = 0.08;
 /* Retrato centralizado: 70% da altura do hero, limitado a 95% da largura. */
 export const PORTRAIT_H = 0.7;
 export const PORTRAIT_MAX_W = 0.95;
+/*
+ * Retângulo do retrato: FONTE ÚNICA do posicionamento. O shader (via
+ * portraitRect, em px) e as camadas HTML do hero (via portraitBoxStyle, em
+ * unidades de container do .hero) usam exatamente a mesma conta:
+ *   altura = min(70% da altura, 95% da largura / proporção), centralizado.
+ */
+export function portraitRect(W: number, H: number, aspect: number) {
+  const h = Math.min(PORTRAIT_H * H, (PORTRAIT_MAX_W * W) / aspect);
+  const w = h * aspect;
+  return { x: (W - w) / 2, y: (H - h) / 2, w, h };
+}
+export const portraitBoxStyle = (aspect: number) =>
+  ({
+    position: "absolute",
+    left: "50%",
+    top: "50%",
+    height: `min(${PORTRAIT_H * 100}cqh, ${PORTRAIT_MAX_W * 100}cqw / ${aspect})`,
+    aspectRatio: String(aspect),
+    translate: "-50% -50%",
+  }) as const;
 /* Largura da célula ao vivo, em px CSS: ~W/220, entre 5 e 7. */
 export const cellWidth = (w: number) => Math.min(7, Math.max(5, w / 220));
 /* Colunas do <pre> estático (fallback), na largura do retrato. */

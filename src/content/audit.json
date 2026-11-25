@@ -1,53 +1,23 @@
 {
+  "example": true,
   "target": "aura-maxima.vercel.app",
   "tool": "Aegis",
   "toolVersion": null,
-  "checkedAt": null,
-  "source": "curl -I local (pré-deploy). Substitua pela saída do Aegis após o deploy.",
+  "scannedAt": null,
   "score": null,
   "grade": null,
-  "headers": [
-    {
-      "id": "content-security-policy",
-      "label": "Content-Security-Policy",
-      "status": "warn",
-      "detail": "Restritiva (default-src 'self', object-src 'none', sem 'unsafe-eval'), mas com 'unsafe-inline' em script-src."
-    },
-    {
-      "id": "strict-transport-security",
-      "label": "Strict-Transport-Security",
-      "status": "pass",
-      "detail": "max-age=63072000; includeSubDomains; preload"
-    },
-    {
-      "id": "x-content-type-options",
-      "label": "X-Content-Type-Options",
-      "status": "pass",
-      "detail": "nosniff"
-    },
-    {
-      "id": "referrer-policy",
-      "label": "Referrer-Policy",
-      "status": "pass",
-      "detail": "strict-origin-when-cross-origin"
-    },
-    {
-      "id": "permissions-policy",
-      "label": "Permissions-Policy",
-      "status": "pass",
-      "detail": "camera, microphone, geolocation, payment e usb desativados"
-    },
-    {
-      "id": "frame-ancestors",
-      "label": "frame-ancestors",
-      "status": "pass",
-      "detail": "'none' na CSP + X-Frame-Options: DENY"
-    }
+  "categories": [
+    { "id": "tls", "label": "TLS", "status": "pass", "summary": "EXEMPLO · TLS 1.3 e 1.2 · cadeia válida · sem cifras fracas" },
+    { "id": "headers", "label": "Headers", "status": "warn", "summary": "EXEMPLO · HSTS, nosniff, Referrer e Permissions ok · CSP com 'unsafe-inline'" },
+    { "id": "cookies", "label": "Cookies", "status": "info", "summary": "EXEMPLO · nenhum cookie definido" },
+    { "id": "dns", "label": "DNS e e-mail", "status": "warn", "summary": "EXEMPLO · subdomínio da Vercel: sem SPF/DMARC próprios" },
+    { "id": "vulns", "label": "Vulnerabilidades", "status": "pass", "summary": "EXEMPLO · nenhuma CVE conhecida nas tecnologias detectadas" },
+    { "id": "reputation", "label": "Reputação", "status": "pass", "summary": "EXEMPLO · fora de Spamhaus e SURBL" },
+    { "id": "surface", "label": "Superfície", "status": "info", "summary": "EXEMPLO · 1 host · nenhum subdomínio sensível" }
   ],
-  "tls": {
-    "valid": null,
-    "issuer": null,
-    "protocol": null,
-    "expiresAt": null
-  }
+  "servers": [
+    { "ip": "203.0.113.10", "city": "São Paulo", "country": "BR", "lat": -23.55, "lon": -46.63, "provider": "EXEMPLO" },
+    { "ip": "203.0.113.20", "city": "Washington, D.C.", "country": "US", "lat": 38.9, "lon": -77.04, "provider": "EXEMPLO" }
+  ],
+  "notes": []
 }
