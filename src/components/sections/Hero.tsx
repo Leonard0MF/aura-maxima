@@ -10,9 +10,10 @@ import { t } from "@/lib/i18n";
 
 const nav = [
   { n: "01", label: "Work", href: "#findings" },
-  { n: "02", label: "Audit", href: "#auditoria" },
-  { n: "03", label: "About", href: "#historico" },
-  { n: "04", label: "Contact", href: "#contato" },
+  { n: "02", label: "Stack", href: "#stack" },
+  { n: "03", label: "Audit", href: "#auditoria" },
+  { n: "04", label: "About", href: "#historico" },
+  { n: "05", label: "Contact", href: "#contato" },
 ];
 
 /*

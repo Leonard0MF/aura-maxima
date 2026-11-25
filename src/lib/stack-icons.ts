@@ -1,0 +1,41 @@
+import {
+  siCss,
+  siDocker,
+  siGit,
+  siHtml5,
+  siJavascript,
+  siKalilinux,
+  siLinux,
+  siNextdotjs,
+  siNodedotjs,
+  siPostgresql,
+  siPython,
+  siReact,
+  siSupabase,
+  siTailwindcss,
+  siTypescript,
+  siVercel,
+  siVite,
+} from "simple-icons";
+
+/* Logos (simple-icons, viewBox 24×24). Importados um a um: o resto do pacote
+ * fica fora do bundle. A chave é o `id` de `stackTokens` em content/profile.ts. */
+export const STACK_ICONS: Record<string, { path: string; hex: string }> = {
+  react: siReact,
+  nextjs: siNextdotjs,
+  typescript: siTypescript,
+  nodejs: siNodedotjs,
+  tailwind: siTailwindcss,
+  python: siPython,
+  docker: siDocker,
+  postgresql: siPostgresql,
+  linux: siLinux,
+  kali: siKalilinux,
+  javascript: siJavascript,
+  supabase: siSupabase,
+  git: siGit,
+  vite: siVite,
+  html5: siHtml5,
+  css3: siCss,
+  vercel: siVercel,
+};

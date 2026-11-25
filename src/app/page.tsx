@@ -8,6 +8,7 @@ import { Contact } from "@/components/sections/Contact";
 import { Hero } from "@/components/sections/Hero";
 import { Metrics } from "@/components/sections/Metrics";
 import { Services } from "@/components/sections/Services";
+import { Stack } from "@/components/sections/Stack";
 import { Work } from "@/components/sections/Work";
 import { terminalData } from "@/lib/terminal-data";
 
@@ -17,6 +18,7 @@ export default function Home() {
       <main id="conteudo">
         <Hero />
         <Work />
+        <Stack />
         <Audit />
         <Services />
         <Metrics />

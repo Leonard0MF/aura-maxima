@@ -411,3 +411,94 @@ body::after {
   white-space: nowrap;
   margin-left: -0.04em;
 }
+
+/* ---------- 02 · STACK ---------- */
+.stack-box {
+  position: relative;
+  height: max(100svh, 560px);
+}
+@media (max-width: 639px) {
+  .stack-box {
+    height: 80svh;
+  }
+}
+.stack-stage,
+.stack-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+/* o palco vazio (modo estático) não pode bloquear o grid por baixo */
+.stack-stage {
+  pointer-events: none;
+}
+.stack-canvas {
+  display: block;
+  pointer-events: auto;
+  /* vertical continua rolando a página no toque; o resto empurra/arrasta */
+  touch-action: pan-y;
+}
+[data-stack][data-live] .stack-grid {
+  visibility: hidden;
+}
+.stack-grid {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+  align-content: center;
+  padding: 0 1rem;
+  border-top: 1px solid rgb(20 20 20 / 0.2);
+}
+@media (min-width: 640px) {
+  .stack-grid {
+    padding: 0 1.5rem;
+  }
+}
+.stack-cell {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.9rem;
+  padding: 1.4rem 0.25rem;
+  border-bottom: 1px solid rgb(20 20 20 / 0.15);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+}
+.stack-cell svg {
+  width: 2.25rem;
+  height: 2.25rem;
+  fill: currentColor;
+  transition: transform 0.3s cubic-bezier(0.2, 0.7, 0.2, 1), color 0.2s;
+}
+.stack-cell:hover svg,
+.stack-cell:focus-visible svg,
+.stack-cell[aria-pressed="true"] svg {
+  color: var(--color-accent-ink);
+  transform: translateY(-3px);
+}
+.stack-index [aria-pressed="true"] {
+  color: var(--color-accent-ink);
+  background-size: 100% 1px;
+}
+.stack-tip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 2;
+  padding: 0.3rem 0.5rem;
+  background: var(--color-ink);
+  color: var(--color-paper);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  pointer-events: none;
+  white-space: nowrap;
+}

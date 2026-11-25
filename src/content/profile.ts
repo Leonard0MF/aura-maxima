@@ -156,6 +156,31 @@ export const services: ServiceGroup[] = [
   },
 ];
 
+/*
+ * Seção 02 · STACK (peças 3D). A ordem é a prioridade: no celular entram só
+ * as 10 primeiras. `match` são os nomes usados em `projects[].stack` (para
+ * mostrar quais projetos usam cada tecnologia).
+ */
+export const stackTokens: { id: string; name: string; match?: string[] }[] = [
+  { id: "react", name: "React" },
+  { id: "nextjs", name: "Next.js" },
+  { id: "typescript", name: "TypeScript" },
+  { id: "nodejs", name: "Node.js" },
+  { id: "tailwind", name: "Tailwind CSS", match: ["Tailwind", "Tailwind CSS"] },
+  { id: "python", name: "Python" },
+  { id: "docker", name: "Docker" },
+  { id: "postgresql", name: "PostgreSQL", match: ["PostgreSQL", "Postgres", "SQL"] },
+  { id: "linux", name: "Linux" },
+  { id: "kali", name: "Kali Linux" },
+  { id: "javascript", name: "JavaScript" },
+  { id: "supabase", name: "Supabase" },
+  { id: "git", name: "Git" },
+  { id: "vite", name: "Vite" },
+  { id: "html5", name: "HTML5", match: ["HTML", "HTML5"] },
+  { id: "css3", name: "CSS3", match: ["CSS", "CSS3"] },
+  { id: "vercel", name: "Vercel" },
+];
+
 export const projects: Project[] = [
   {
     id: "FND-001",
