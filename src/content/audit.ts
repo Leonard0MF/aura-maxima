@@ -1,8 +1,8 @@
 /*
- * Demo "Escaneie este site" (seção 03 · AUDIT): replay de um scan REAL do
- * Aegis sobre o domínio do portfólio.
+ * 03 · AUDIT: a constelação mostra a postura de segurança REAL deste site,
+ * vinda de um scan do Aegis sobre o domínio publicado.
  *
- * Os dados vêm de `audit.json`, gerado rodando o Aegis no domínio publicado.
+ * Os dados vêm de `audit.json` (gerado rodando o Aegis no domínio publicado).
  * NUNCA invente nem infle a nota: a seção mostra exatamente o JSON. Enquanto
  * `example` for true, os dados são de EXEMPLO: a seção avisa isso e NÃO
  * mostra nota (score/grade são ignorados).
@@ -17,26 +17,24 @@
  *   "scannedAt":   string | null  // data ISO 8601 do scan, ex.: "2026-12-01T14:03:00Z"
  *   "score":       number | null  // 0–100, como o Aegis reporta
  *   "grade":       string | null  // "A" | "B" | "C" | "D" | "F"
- *   "categories": [               // ordem = ordem do replay (7 no Aegis)
+ *   "nodes": [                    // 8–10 "nós principais" da constelação, na ordem do cartão
  *     {
- *       "id":      "tls" | "headers" | "cookies" | "dns" | "vulns" | "reputation" | "surface"
- *       "label":   string         // nome exibido, ex.: "TLS"
- *       "status":  "pass" | "warn" | "fail" | "info"
- *       "summary": string         // resultado em uma linha, ex.: "TLS 1.3 · cadeia válida · expira em 62 dias"
+ *       "id":     string          // único, ex.: "tls", "hsts", "csp", "hosting", "dns"
+ *       "label":  string          // nome exibido, ex.: "Certificado TLS"
+ *       "value":  string          // o dado em uma linha, ex.: "Let's Encrypt R11 · TLS 1.3 · até 2027-02-01"
+ *       "status": "pass" | "warn" | "fail" | "info"
  *     }
- *   ],
- *   "servers": [                  // onde o domínio resolve (mini-mapa)
- *     { "ip": string, "city": string, "country": string, "lat": number, "lon": number, "provider": string | null }
- *   ],
- *   "notes": string[]             // observações curtas exibidas abaixo do resultado (opcional)
+ *   ]
  * }
+ *
+ * O nó da nota geral é gerado a partir de score/grade (não precisa estar em
+ * `nodes`). Nós sugeridos: certificado TLS (emissor, versão, validade), cada
+ * header de segurança, CDN/hospedagem e DNS (CAA, DNSSEC).
  */
 import data from "./audit.json";
 
 export type CheckStatus = "pass" | "warn" | "fail" | "info";
-
-export type AuditCategory = { id: string; label: string; status: CheckStatus; summary: string };
-export type AuditServer = { ip: string; city: string; country: string; lat: number; lon: number; provider: string | null };
+export type AuditNode = { id: string; label: string; value: string; status: CheckStatus };
 
 export type Audit = {
   example: boolean;
@@ -46,9 +44,7 @@ export type Audit = {
   scannedAt: string | null;
   score: number | null;
   grade: string | null;
-  categories: AuditCategory[];
-  servers: AuditServer[];
-  notes?: string[];
+  nodes: AuditNode[];
 };
 
 export const audit = data as Audit;
@@ -56,3 +52,16 @@ export const audit = data as Audit;
 /* nota só existe para dados reais */
 export const auditGrade = audit.example ? null : audit.grade;
 export const auditScore = audit.example ? null : audit.score;
+
+/* todos os nós da constelação: os do JSON + a nota geral */
+export const auditNodes: AuditNode[] = [
+  ...audit.nodes,
+  {
+    id: "grade",
+    label: "Nota geral",
+    value: auditGrade ? `${auditGrade} · ${auditScore ?? "—"}/100` : audit.example ? "— · dados de exemplo, sem nota" : "— · pendente",
+    status: "info",
+  },
+];
+
+export const auditDate = audit.scannedAt ? new Date(audit.scannedAt).toLocaleDateString("pt-BR", { timeZone: "UTC" }) : null;
