@@ -15,14 +15,16 @@ const STATUS: Record<CheckStatus, { label: string; cls: string }> = {
 };
 
 /*
- * Camada interativa do AUDIT: a constelação (WebGL) atrás do texto da seção.
+ * Camada interativa do AUDIT: buraco negro + constelação (WebGL) atrás do
+ * texto da seção.
  * - hover/toque num nó brilhante: cartão com o dado
- * - arrastar: gira (o scroll vertical nunca é capturado: touch-action pan-y,
- *   nenhum listener de wheel)
- * - clique no vazio: onda de scan; os nós acendem em sequência e a nota
- *   aparece grande ao lado
+ * - arrastar: gira o sistema em volta do buraco negro (o scroll vertical nunca
+ *   é capturado: touch-action pan-y, nenhum listener de wheel)
+ * - clique no vazio: onda de scan saindo do horizonte; os nós acendem em
+ *   sequência e a nota aparece grande ao lado
+ * Celular e máquinas fracas: versão simplificada (sem o pass de lente).
  * Fallback (reduced-motion, aparelho fraco, sem WebGL): imagem estática da
- * mesma rede + a lista dos dados em texto (que sempre existe para leitores
+ * mesma cena + a lista dos dados em texto (que sempre existe para leitores
  * de tela).
  */
 export function AuditField({ nodes, grade, score, example }: { nodes: AuditNode[]; grade: string | null; score: number | null; example: boolean }) {
@@ -48,7 +50,7 @@ export function AuditField({ nodes, grade, score, example }: { nodes: AuditNode[
     })();
     const fallback = () => {
       section.dataset.static = "";
-      void import("./layout").then(({ makeLayout, projectStatic }) => setSvg(staticSvg(makeLayout, projectStatic, nodes.length)));
+      void import("./layout").then((lay) => setSvg(staticSvg(lay, nodes.length)));
     };
     if (document.documentElement.dataset.fx === "static" || !gl) {
       fallback();
@@ -56,6 +58,9 @@ export function AuditField({ nodes, grade, score, example }: { nodes: AuditNode[
     }
 
     const mobile = matchMedia("(max-width: 639px)").matches;
+    /* sem o pass de lente: celular/toque e máquinas com poucos núcleos (o resto
+     * a cena decide sozinha medindo o fps) */
+    const simple = mobile || matchMedia("(pointer: coarse)").matches || (navigator.hardwareConcurrency || 8) <= 4;
     let scene: Constellation | null = null;
     let canvas: HTMLCanvasElement | null = null;
     let want = false; // esta seção é a dona do WebGL
@@ -73,7 +78,7 @@ export function AuditField({ nodes, grade, score, example }: { nodes: AuditNode[
       canvas.setAttribute("aria-hidden", "true");
       field.prepend(canvas);
       try {
-        scene = createConstellation(canvas, nodes.length, { count: mobile ? 1500 : 4500, onLost: () => {
+        scene = createConstellation(canvas, nodes.length, { count: mobile ? 1500 : 4500, simple, onLost: () => {
             unmount();
             fallback();
           },
@@ -198,8 +203,6 @@ export function AuditField({ nodes, grade, score, example }: { nodes: AuditNode[
       setReveal(false);
       setScanning(true);
       scene.wave(
-        p.x,
-        p.y,
         (k) => setLit((l) => [...l, k]),
         () => {
           setScanning(false);
@@ -269,32 +272,57 @@ export function AuditField({ nodes, grade, score, example }: { nodes: AuditNode[
   );
 }
 
-/* imagem estática: a mesma rede, projetada sem rotação, em SVG */
-function staticSvg(
-  makeLayout: typeof import("./layout").makeLayout,
-  projectStatic: typeof import("./layout").projectStatic,
-  n: number,
-) {
+/* imagem estática: a mesma cena no instante 0 (buraco negro + rede), em SVG */
+function staticSvg(lay: typeof import("./layout"), n: number) {
+  const { makeLayout, orbitPos, projectStatic, HALF_H, DUST_TILT } = lay;
   const W = 1600;
   const H = 800;
   const L = makeLayout(n, 1400);
-  const P = (i: number, a: Float32Array) => projectStatic(a[i * 3], a[i * 3 + 1], a[i * 3 + 2], W, H);
+  const bx = -0.5 * HALF_H * (W / H); // buraco negro no terço esquerdo
+  const P = (x: number, y: number, z: number) => projectStatic(x + bx, y, z, W, H);
+  const nodes = L.orbits.map((o) => orbitPos(o, 0));
+  const c = Math.cos(DUST_TILT), s = Math.sin(DUST_TILT);
   let dots = "";
   for (let i = 0; i < L.count; i++) {
-    const p = P(i, L.points);
-    const c = L.tones[i] > 0.5 ? "#f5a524" : "#ece9e0";
-    dots += `<circle cx="${p.x.toFixed(0)}" cy="${p.y.toFixed(0)}" r="${(L.sizes[i] * 1.1 * p.s).toFixed(1)}" fill="${c}" fill-opacity="${L.tones[i] > 0.5 ? 0.55 : 0.4}"/>`;
+    const [px, py, pz] = L.points.subarray(i * 3, i * 3 + 3);
+    const [kind, a, b, t] = L.ref.subarray(i * 4, i * 4 + 4);
+    let q: number[];
+    if (kind === 0) q = [nodes[a][0] + px, nodes[a][1] + py, nodes[a][2] + pz];
+    else if (kind === 1) q = [0, 1, 2].map((k) => nodes[a][k] + (nodes[b][k] - nodes[a][k]) * t + [px, py, pz][k]);
+    else {
+      const r0 = kind === 2 ? px : px * Math.sqrt(1 - L.seeds[i]);
+      const h = kind === 2 ? pz : 0;
+      q = [Math.cos(py) * r0, Math.sin(py) * r0 * c - h * s, Math.sin(py) * r0 * s + h * c];
+      if (Math.hypot(q[0], q[1]) < 0.5) continue; // dentro da sombra
+    }
+    const p = P(q[0], q[1], q[2]);
+    const col = L.tones[i] > 0.5 ? "#f5a524" : "#ece9e0";
+    dots += `<circle cx="${p.x.toFixed(0)}" cy="${p.y.toFixed(0)}" r="${(L.sizes[i] * 1.1 * p.s).toFixed(1)}" fill="${col}" fill-opacity="${L.tones[i] > 0.5 ? 0.55 : 0.4}"/>`;
   }
-  const lines = L.links
+  const lines = L.pairs
     .map(([a, b]) => {
-      const p = P(a, L.nodes);
-      const q = P(b, L.nodes);
+      const p = P(nodes[a][0], nodes[a][1], nodes[a][2]);
+      const q = P(nodes[b][0], nodes[b][1], nodes[b][2]);
       return `<line x1="${p.x.toFixed(0)}" y1="${p.y.toFixed(0)}" x2="${q.x.toFixed(0)}" y2="${q.y.toFixed(0)}"/>`;
     })
     .join("");
-  const nodes = Array.from({ length: n }, (_, i) => {
-    const p = P(i, L.nodes);
-    return `<circle cx="${p.x.toFixed(0)}" cy="${p.y.toFixed(0)}" r="14" fill="#f5a524" fill-opacity=".18"/><circle cx="${p.x.toFixed(0)}" cy="${p.y.toFixed(0)}" r="4" fill="#fff3d6"/>`;
-  }).join("");
-  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg"><g stroke="#f5a524" stroke-opacity=".22" stroke-width="1">${lines}</g>${dots}${nodes}</svg>`;
+  const nodeDots = nodes
+    .map(([x, y, z]) => {
+      const p = P(x, y, z);
+      return `<circle cx="${p.x.toFixed(0)}" cy="${p.y.toFixed(0)}" r="14" fill="#f5a524" fill-opacity=".18"/><circle cx="${p.x.toFixed(0)}" cy="${p.y.toFixed(0)}" r="4" fill="#fff3d6"/>`;
+    })
+    .join("");
+  /* buraco negro: arco de trás (imagem curvada do disco), horizonte, anel de fótons, frente do disco */
+  const o = P(0, 0, 0);
+  const rs = H * 0.026;
+  const sh = 2.6 * rs;
+  const hole = `<defs>
+<radialGradient id="bh-arc" cx="${o.x}" cy="${o.y}" r="${(7.7 * rs).toFixed(0)}" gradientUnits="userSpaceOnUse"><stop offset="${(sh / (7.7 * rs)).toFixed(2)}" stop-color="#fff3d6"/><stop offset=".5" stop-color="#f5a524" stop-opacity=".7"/><stop offset="1" stop-color="#f5a524" stop-opacity="0"/></radialGradient>
+<radialGradient id="bh-disk" cx="${o.x}" cy="${o.y}" r="${(9 * rs).toFixed(0)}" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 ${o.y}) scale(1 0.16) translate(0 ${-o.y})"><stop offset=".29" stop-color="#fff8e8"/><stop offset=".55" stop-color="#f5a524" stop-opacity=".8"/><stop offset="1" stop-color="#f5a524" stop-opacity="0"/></radialGradient>
+<clipPath id="bh-top"><rect x="0" y="0" width="${W}" height="${o.y}"/></clipPath><clipPath id="bh-bottom"><rect x="0" y="${o.y}" width="${W}" height="${H}"/></clipPath></defs>
+<circle cx="${o.x}" cy="${o.y}" r="${(7.7 * rs).toFixed(0)}" fill="url(#bh-arc)" clip-path="url(#bh-top)"/>
+<circle cx="${o.x}" cy="${o.y}" r="${sh.toFixed(0)}" fill="#000"/>
+<circle cx="${o.x}" cy="${o.y}" r="${(sh + 1).toFixed(0)}" fill="none" stroke="#fff3d6" stroke-width="2"/>
+<ellipse cx="${o.x}" cy="${o.y}" rx="${(9 * rs).toFixed(0)}" ry="${(9 * rs * 0.16).toFixed(0)}" fill="url(#bh-disk)" clip-path="url(#bh-bottom)"/>`;
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg"><g stroke="#f5a524" stroke-opacity=".22" stroke-width="1">${lines}</g>${dots}${nodeDots}${hole}</svg>`;
 }
