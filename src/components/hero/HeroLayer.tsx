@@ -24,7 +24,13 @@ export function HeroLayer({ variant, portrait }: { variant: "surface" | "under";
       <div className={under ? "hero-photo" : "ascii-fallback"} style={portraitBoxStyle(portrait.aspect)}>
         {under ? (
           // eslint-disable-next-line @next/next/no-img-element -- mesma URL da textura do shader (já em cache)
-          <img src={portrait.src} alt="" decoding="async" loading="lazy" />
+          <img
+            src={portrait.src}
+            alt=""
+            decoding="async"
+            loading="lazy"
+            style={{ maskImage: `url(${portrait.mask})`, WebkitMaskImage: `url(${portrait.mask})` }}
+          />
         ) : (
           // eslint-disable-next-line @next/next/no-img-element -- data URI gerado no build, nada a otimizar
           <img
