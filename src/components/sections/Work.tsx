@@ -35,7 +35,7 @@ function WorkItem({ p, i, total }: { p: Project; i: number; total: number }) {
   const flip = i % 2 === 1;
 
   return (
-    <li className="work-item border-t border-ink/20 py-8 lg:py-10" aria-labelledby={`w-${p.slug}`}>
+    <li className="work-item border-t border-ink/20 py-8" aria-labelledby={`w-${p.slug}`}>
       <div className="grid items-center gap-8 lg:grid-cols-12 lg:gap-10">
         <figure className={`lg:col-span-7 ${flip ? "lg:order-2" : ""}`}>
           <Link href={`/projetos/${p.slug}`} tabIndex={-1} aria-hidden="true" className="work-win block">
@@ -63,7 +63,7 @@ function WorkItem({ p, i, total }: { p: Project; i: number; total: number }) {
           </figcaption>
         </figure>
 
-        <div className={`work-info flex flex-col gap-4 lg:col-span-5 ${flip ? "lg:order-1" : ""}`}>
+        <div className={`work-info flex flex-col gap-3 lg:col-span-5 xl:gap-4 ${flip ? "lg:order-1" : ""}`}>
           <div className={`${meta} flex items-center justify-between gap-4`}>
             <p className="flex items-center gap-2">
               <span
@@ -84,6 +84,13 @@ function WorkItem({ p, i, total }: { p: Project; i: number; total: number }) {
           <p className={`${meta} text-ink-soft`}>
             {[p.role ? t(p.role) : "Papel: —", known(p.year)].filter(Boolean).join(" · ")}
           </p>
+
+          {p.usage && (
+            <p className={`${meta} flex items-center gap-2`}>
+              <span aria-hidden="true" className="size-1.5 rounded-full bg-[#17633a]" />
+              {t(p.usage)}
+            </p>
+          )}
 
           <p className="text-[15px] leading-relaxed xl:text-base">{t(p.summary)}</p>
 

@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import type { CSSProperties } from "react";
 
 import Image from "next/image";
 
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
-import { cases, type Block } from "@/content/cases";
+import { cases, type Block, type FlowNode } from "@/content/cases";
 import { projects } from "@/content/profile";
 import { t } from "@/lib/i18n";
 
@@ -91,31 +92,42 @@ function ScoreScale({ bands }: { bands: { grade: string; min: number }[] }) {
 }
 
 /* diagrama do fluxo em HTML: caixas com hairlines e setas */
-function Flow({ flow, sources }: { flow: { label: string; note: string }[]; sources?: string[] }) {
+function Flow({ flow, link = "→", caption, sources }: { flow: (FlowNode | FlowNode[])[]; link?: "→" | "↔"; caption?: string; sources?: string[] }) {
+  const stages = flow.map((f) => (Array.isArray(f) ? f : [f]));
+  let n = 0;
+  const describe = stages.map((st) => st.map((f) => f.label).join(" + ")).join(` ${link} `);
   return (
     <figure className="mt-8">
-      <ol className="grid gap-3 md:grid-cols-[repeat(4,1fr)] md:gap-0">
-        {flow.map((f, i) => (
-          <li key={f.label} className="relative flex md:items-stretch">
-            <div className="w-full border border-ink/40 p-4">
-              <p className="font-mono text-[11px] tracking-wide text-ink-soft uppercase">{pad(i + 1)}</p>
-              <p className="mt-1 font-display text-xl leading-tight">{f.label}</p>
-              <p className={`mt-2 text-sm ${isTodo(f.note) || f.note === "TODO" ? "text-ink-soft" : ""}`}>{f.note}</p>
+      <ol
+        className="grid gap-3 md:grid-cols-[repeat(var(--n),1fr)] md:gap-0"
+        style={{ "--n": stages.length } as CSSProperties}
+      >
+        {stages.map((st, i) => (
+          <li key={st[0].label} className="relative flex md:items-center">
+            <div className="flex w-full flex-col gap-2">
+              {st.map((f) => (
+                <div key={f.label} className="w-full border border-ink/40 p-4">
+                  <p className="font-mono text-[11px] tracking-wide text-ink-soft uppercase">{pad(++n)}</p>
+                  <p className="mt-1 font-display text-xl leading-tight">{f.label}</p>
+                  <p className={`mt-2 text-sm ${isTodo(f.note) || f.note === "TODO" ? "text-ink-soft" : ""}`}>{f.note}</p>
+                </div>
+              ))}
             </div>
-            {i < flow.length - 1 && (
+            {i < stages.length - 1 && (
               <span aria-hidden="true" className="hidden w-8 shrink-0 items-center justify-center font-mono text-lg md:flex">
-                →
+                {link}
               </span>
             )}
           </li>
         ))}
       </ol>
+      {caption && <p className="mt-3 font-mono text-[11px] tracking-wide text-ink-soft uppercase">{caption}</p>}
       {sources && (
         <p className="mt-4 font-mono text-[11px] tracking-wide text-ink-soft uppercase">
           Fontes: <span className="text-ink">{sources.join(" · ")}</span>
         </p>
       )}
-      <figcaption className="sr-only">Fluxo: {flow.map((f) => f.label).join(" → ")}</figcaption>
+      <figcaption className="sr-only">Diagrama: {describe}</figcaption>
     </figure>
   );
 }
@@ -181,7 +193,7 @@ function render(b: Block) {
               ))}
             </p>
           )}
-          <Flow flow={b.flow} sources={b.sources} />
+          <Flow flow={b.flow} link={b.link} caption={b.caption} sources={b.sources} />
         </>
       );
   }
@@ -199,11 +211,11 @@ export default async function CaseStudyPage({ params }: { params: Promise<{ slug
       <SiteHeader />
       <main id="conteudo" className="bg-paper px-4 pt-8 pb-20 text-ink sm:px-6 sm:pt-12">
         <header className="grid gap-8 pb-12 lg:grid-cols-12 lg:gap-10">
-          <div className="lg:col-span-5">
+          <div className="work-info lg:col-span-5">
             <p className="font-mono text-[11px] tracking-wide text-ink-soft uppercase sm:text-xs">
               {project.id} · {project.severity.toUpperCase()} · Estudo de caso
             </p>
-            <h1 className="mt-4 font-display text-[clamp(56px,8vw,128px)] leading-[0.85] tracking-[-0.035em]">{project.display}</h1>
+            <h1 className="case-title mt-4 font-display leading-[0.85] tracking-[-0.035em]">{project.display}</h1>
             <p className="mt-6 max-w-[48ch] text-lg leading-relaxed">{t(project.summary)}</p>
             <dl className="mt-6 divide-y divide-ink/15 border-y border-ink/15 font-mono text-xs tracking-wide uppercase">
               <div className="grid grid-cols-[5rem_1fr] gap-4 py-2">
@@ -214,6 +226,12 @@ export default async function CaseStudyPage({ params }: { params: Promise<{ slug
                 <dt className="text-ink-soft">Ano</dt>
                 <dd>{project.year ?? "—"}</dd>
               </div>
+              {project.usage && (
+                <div className="grid grid-cols-[5rem_1fr] gap-4 py-2">
+                  <dt className="text-ink-soft">Uso</dt>
+                  <dd>{t(project.usage)}</dd>
+                </div>
+              )}
               <div className="grid grid-cols-[5rem_1fr] gap-4 py-2">
                 <dt className="text-ink-soft">Stack</dt>
                 <dd>{stack.length ? stack.join(" · ") : "—"}</dd>

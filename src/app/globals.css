@@ -422,6 +422,10 @@ html[data-js] .hero[data-live] .ascii-fallback {
 .work-info {
   container-type: inline-size;
 }
+/* título do estudo de caso: mesmo limite do WORK (nunca passa da coluna) */
+.case-title {
+  font-size: min(clamp(56px, 8vw, 128px), 100cqw / 5.3);
+}
 .work-name {
   font-size: min(clamp(56px, 8vw, 128px), 100cqw / 5.3);
   line-height: 0.85;
