@@ -6,6 +6,7 @@
   "scannedAt": null,
   "score": null,
   "grade": null,
+  "band": null,
   "nodes": [
     { "id": "tls", "label": "Certificado TLS", "value": "EXEMPLO · emissor, versão e validade entram com o scan real", "status": "info" },
     { "id": "hsts", "label": "Strict-Transport-Security", "value": "EXEMPLO · max-age=63072000; includeSubDomains; preload", "status": "pass" },
@@ -14,7 +15,8 @@
     { "id": "nosniff", "label": "X-Content-Type-Options", "value": "EXEMPLO · nosniff", "status": "pass" },
     { "id": "referrer", "label": "Referrer-Policy", "value": "EXEMPLO · strict-origin-when-cross-origin", "status": "pass" },
     { "id": "permissions", "label": "Permissions-Policy", "value": "EXEMPLO · camera=(), microphone=(), geolocation=(), payment=(), usb=()", "status": "pass" },
-    { "id": "hosting", "label": "CDN / hospedagem", "value": "EXEMPLO · Vercel", "status": "info" },
-    { "id": "dns", "label": "DNS", "value": "EXEMPLO · CAA e DNSSEC entram com o scan real", "status": "info" }
+    { "id": "cookies", "label": "Cookies", "value": "EXEMPLO · Secure, HttpOnly e SameSite entram com o scan real", "status": "info" },
+    { "id": "dns", "label": "DNS / e-mail", "value": "EXEMPLO · CAA, DNSSEC, SPF e DMARC entram com o scan real", "status": "info" },
+    { "id": "hosting", "label": "CDN / hospedagem", "value": "EXEMPLO · Vercel", "status": "info" }
   ]
 }

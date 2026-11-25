@@ -151,13 +151,16 @@
     "labels": {
       "tls": "Certificado TLS",
       "hosting": "CDN / hosting",
-      "dns": "DNS"
+      "dns": "DNS / correo",
+      "cookies": "Cookies"
     },
     "exampleValues": {
       "tls": "emisor, versión y vigencia llegan con el scan real",
-      "dns": "CAA y DNSSEC llegan con el scan real",
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' (sin nonce)"
-    }
+      "dns": "CAA, DNSSEC, SPF y DMARC llegan con el escaneo real",
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' (sin nonce)",
+      "cookies": "Secure, HttpOnly y SameSite llegan con el escaneo real"
+    },
+    "band": { "ok": "postura excelente", "warn": "postura moderada", "bad": "postura débil" }
   },
   "about": {
     "title": "Sobre mí",

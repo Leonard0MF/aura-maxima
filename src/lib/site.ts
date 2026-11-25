@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { getTranslations } from "next-intl/server";
 
-import { audit, auditGrade, auditScore, type AuditNode } from "@/content/audit";
+import { audit, auditBand, auditGrade, auditScore, type AuditNode } from "@/content/audit";
 import { projects, services } from "@/content/profile";
 import type { Locale } from "@/i18n/routing";
 
@@ -49,7 +49,9 @@ export async function auditView(locale: Locale) {
   nodes.push({
     id: "grade",
     label: t("overall"),
-    value: auditGrade ? `${auditGrade} · ${auditScore ?? "—"}/100` : audit.example ? t("overallExample") : t("overallPending"),
+    value: auditGrade
+      ? [`${auditGrade} · ${auditScore ?? "—"}/100`, auditBand && t(`band.${auditBand}`)].filter(Boolean).join(" · ")
+      : audit.example ? t("overallExample") : t("overallPending"),
     status: "info",
   });
   const date = audit.scannedAt ? new Date(audit.scannedAt).toLocaleDateString(locale === "pt" ? "pt-BR" : locale, { timeZone: "UTC" }) : null;
