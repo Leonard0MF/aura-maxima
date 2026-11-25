@@ -43,7 +43,7 @@ export function Contact() {
           </p>
         </div>
         <p className="mt-10 font-mono text-xs tracking-wide sm:text-sm">
-          <span className="text-[#1f7a43]">[✓]</span> scan complete · 0 vulnerabilidades críticas no candidato
+          <span className="text-[#17633a]">[✓]</span> scan complete · 0 vulnerabilidades críticas no candidato
         </p>
       </div>
     </section>
