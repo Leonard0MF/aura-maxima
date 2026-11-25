@@ -225,8 +225,8 @@ export const projects: Project[] = [
 
 export const activity: Activity[] = [
   {
-    org: "BUMP",
-    role: { pt: "Dev / TI" },
+    org: "Bump Amortecedores",
+    role: { pt: "TI e Desenvolvimento" },
     period: { pt: "out/2026 → atual" },
     current: true,
     bullets: [
@@ -239,11 +239,36 @@ export const activity: Activity[] = [
   },
   {
     org: "Elyra Studio",
-    role: { pt: "Fundador / Dev" },
-    period: { pt: "TODO: período · encerrada" },
+    role: { pt: "Fundador" },
+    period: { pt: "TODO: período" },
     bullets: [{ pt: "TODO: descrição da Elyra Studio (startup própria, encerrada)." }],
   },
 ];
+
+/*
+ * 04 · ABOUT. Texto em primeira pessoa. Os `facts` com "TODO:" não aparecem
+ * no site até serem preenchidos.
+ */
+export const about = {
+  /** public/portrait.png: foto do Léo (P&B é aplicado no CSS). Enquanto o
+   * arquivo não existir, a seção mostra uma moldura marcada como pendente. */
+  photo: "/portrait.png",
+  opening: { pt: "Construo aplicações web de ponta a ponta e depois tento quebrá-las antes que alguém de fora tente." },
+  body: {
+    pt: "Sou o Léo, desenvolvedor full-stack com foco em segurança. Hoje cuido de TI e desenvolvimento na Bump Amortecedores: faço pentest interno toda semana, QA, revisão de código e correções via Pull Request, e criei e mantenho sozinho o BumpHub, o workspace interno da equipe de TI. Antes disso, fundei a Elyra Studio, minha própria startup. Uso Linux no dia a dia, gosto de entender como as coisas funcionam por baixo e acredito que segurança se resolve no código, não depois do deploy.",
+  },
+  principles: [
+    { pt: "Segurança desde o primeiro commit" },
+    { pt: "Code review e PRs pequenos" },
+    { pt: "Entender o problema antes de escolher a ferramenta" },
+  ],
+  facts: [
+    { label: { pt: "Cidade" }, value: { pt: "TODO: cidade" } },
+    { label: { pt: "Formação" }, value: { pt: "TODO: formação / cursos" } },
+    { label: { pt: "Idiomas" }, value: { pt: "TODO: idiomas" } },
+    { label: { pt: "Fora do código" }, value: { pt: "TODO: algo fora do código" } },
+  ],
+};
 
 /* TODO: preencher com os números reais. */
 export const metrics: { value: string; label: Localized }[] = [
