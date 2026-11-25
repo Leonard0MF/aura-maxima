@@ -30,13 +30,15 @@ export function getPortrait() {
 }
 
 const cache = new Map<string, Promise<AsciiImageData>>();
-export function getAsciiImage(name: string) {
-  let p = cache.get(name);
-  if (!p) cache.set(name, (p = build(name.replace(/^\//, ""))));
+/** `cols`: colunas do fallback em SVG (o hero usa PRE_COLS; o ABOUT, menor, usa menos) */
+export function getAsciiImage(name: string, cols = PRE_COLS) {
+  const key = `${name}@${cols}`;
+  let p = cache.get(key);
+  if (!p) cache.set(key, (p = build(name.replace(/^\//, ""), cols)));
   return p;
 }
 
-async function build(name: string): Promise<AsciiImageData> {
+async function build(name: string, cols: number): Promise<AsciiImageData> {
   const { default: sharp } = await import("sharp");
   const W = 256;
   const file = path.join(PUBLIC, name);
@@ -57,11 +59,11 @@ async function build(name: string): Promise<AsciiImageData> {
   const idx = (x: number, y: number) =>
     Math.min(info.height - 1, Math.max(0, Math.round(y))) * info.width + Math.min(info.width - 1, Math.max(0, Math.round(x)));
   const at = (x: number, y: number) => data[idx(x, y)] / 255;
-  const rows = Math.ceil(PRE_COLS / aspect / RATIO);
-  const cellPx = info.width / PRE_COLS;
+  const rows = Math.ceil(cols / aspect / RATIO);
+  const cellPx = info.width / cols;
 
-  const text = renderText(PRE_COLS, rows, (c, r) => {
-    const u = (c + 0.5) / PRE_COLS;
+  const text = renderText(cols, rows, (c, r) => {
+    const u = (c + 0.5) / cols;
     const v = (r + 0.5) / rows;
     if (u < 0 || u > 1 || v < 0 || v > 1) return 0;
     const x = u * info.width;
@@ -79,7 +81,7 @@ async function build(name: string): Promise<AsciiImageData> {
     mask,
     src: `/_next/image?url=${encodeURIComponent(`/${name}`)}&w=1080&q=75`,
     aspect,
-    svg: toSvg(text, rows),
+    svg: toSvg(text, cols, rows),
     levels,
   };
 }
@@ -135,10 +137,10 @@ async function figureMask(sharp: typeof import("sharp").default, grey: Buffer, a
 }
 
 /* Texto → SVG monoespaçado (célula 6 × 10,8; mesma proporção da grade ao vivo). */
-function toSvg(text: string, rows: number) {
+function toSvg(text: string, cols: number, rows: number) {
   const fs = 10;
   const lh = fs * RATIO * 0.6;
-  const width = Math.round(PRE_COLS * fs * 0.6);
+  const width = Math.round(cols * fs * 0.6);
   const height = Math.round(rows * lh);
   const esc = (l: string) => l.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const lines = text

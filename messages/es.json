@@ -163,11 +163,8 @@
     "title": "Sobre mí",
     "heading": "Aprendo construyendo. Y construyo para entender.",
     "body": [
-      "Soy Leonardo, desarrollador full-stack con foco en seguridad. No esperé a que alguien me lo enseñara todo para empezar: aprendí en la práctica, creando proyectos, rompiendo cosas e investigando por qué se rompen.",
-      "Veo el desarrollo y la seguridad como partes del mismo trabajo. Me gusta entender cómo funciona un sistema por dentro, descubrir dónde puede fallar y dejarlo mejor de lo que lo encontré.",
-      "Hoy me encargo de TI y desarrollo en Bump Amortecedores: hago un pentest interno cada semana, QA, revisión de código y correcciones mediante pull requests. También creé y mantengo yo solo BumpHub, el workspace interno del equipo de TI. Fuera del trabajo, construyo proyectos propios como Aegis, un escáner de seguridad de dominios.",
-      "Aunque mi día a día hoy es el desarrollo, es hacia la ciberseguridad que oriento mis estudios y mi carrera. Programar me da la base para entender los sistemas por dentro; la seguridad es donde quiero aplicarlo.",
-      "Siempre estoy construyendo, aprendiendo y en busca del próximo desafío."
+      "Soy Leonardo, desarrollador full-stack con foco en seguridad. Aprendí en la práctica: creando proyectos, rompiendo cosas e investigando por qué se rompen. Hoy trabajo en desarrollo, pero es hacia la ciberseguridad que dirijo mis estudios y mi carrera.",
+      "En Bump Amortecedores hago pentest interno cada semana, QA, revisión de código y correcciones vía Pull Request, y creé solo el BumpHub, el workspace interno del equipo de TI."
     ],
     "howTitle": "Cómo trabajo",
     "principles": [
@@ -182,12 +179,17 @@
     "quote": "No quiero solo saber cómo funcionan las cosas. Quiero entender por qué, cómo mejorarlas y qué puedo construir después.",
     "photoAlt": "Foto de {name}",
     "photoPending": "Foto pendiente",
-    "experience": "Experiencia",
-    "current": " (actual)",
-    "roles": {
-      "bump": { "role": "TI y Desarrollo", "period": "oct/2026 → actual" },
-      "elyra": { "role": "Fundador", "period": "TODO: período" }
-    },
+    "photoHint": "pasa el ratón o toca la foto",
+    "journeyKicker": "git log --reverse",
+    "journeyTitle": "Trayectoria",
+    "journey": [
+      { "date": "TODO: ano", "title": "Primeras líneas de código", "phrase": "TODO: frase sobre o começo" },
+      { "date": "TODO: período", "title": "Fundé Elyra Studio", "phrase": "TODO: frase sobre a Elyra Studio" },
+      { "date": "2026", "title": "Aegis: escáner de seguridad de dominios", "phrase": "Analiza TLS, headers, DNS, correo y CVEs conocidas de un dominio y lo resume todo en una nota." },
+      { "date": "oct/2026", "title": "Bump Amortecedores: TI y Desarrollo", "phrase": "Pentest interno cada semana, QA, revisión de código y correcciones vía Pull Request." },
+      { "date": "2026", "title": "BumpHub: workspace interno de TI", "phrase": "Lo creé y lo mantengo solo: el workspace interno del equipo de TI." },
+      { "date": "Próximo", "title": "CompTIA Security+", "phrase": "El próximo paso: validar mi base en seguridad con una certificación reconocida." }
+    ],
     "facts": [
       { "label": "Ciudad", "value": "TODO: ciudad" },
       { "label": "Formación", "value": "TODO: formación / cursos" },

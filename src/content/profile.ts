@@ -125,13 +125,11 @@ export const projects: Project[] = [
   },
 ];
 
-/* Experiência (ABOUT). Cargo e período em messages: about.roles.<id>. */
-export const activity: { id: "bump" | "elyra"; org: string; current?: boolean }[] = [
-  { id: "bump", org: "Bump Amortecedores", current: true }, // pentest interno semanal, QA, code review, correções via PR, suporte a 3 setores
-  { id: "elyra", org: "Elyra Studio" }, // TODO: período e descrição da Elyra Studio (startup própria, encerrada)
-];
+/* Trajetória (ABOUT): os marcos ficam em messages (about.journey), com
+ * TODO no ano do primeiro código, no período e na descrição da Elyra Studio
+ * (startup própria, encerrada) e nas frases desses dois marcos. */
 
-/* 04 · ABOUT. public/portrait.png: foto do Léo (P&B é aplicado no CSS).
+/* 04 · ABOUT. public/portrait.png: foto do Léo, de preferência sem fundo (vira ASCII no build).
  * Enquanto o arquivo não existir, a seção mostra uma moldura pendente. */
 export const about = { photo: "/portrait.png", author: "Leonardo Machmann" };
 

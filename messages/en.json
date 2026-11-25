@@ -163,11 +163,8 @@
     "title": "About me",
     "heading": "I learn by building. And I build to understand.",
     "body": [
-      "I'm Leonardo, a full-stack developer focused on security. I didn't wait for someone to teach me everything before getting started: I learned by doing, building projects, breaking things and digging into why they break.",
-      "I see development and security as parts of the same job. I like understanding how a system works on the inside, finding where it can fail and leaving it better than I found it.",
-      "Today I handle IT and development at Bump Amortecedores: I run an internal pentest every week, do QA and code review, and ship fixes through pull requests. I also built and single-handedly maintain BumpHub, the IT team's internal workspace. Outside work, I build my own projects, like Aegis, a domain security scanner.",
-      "Although my day-to-day today is development, cybersecurity is where I'm steering my studies and my career. Programming gives me the foundation to understand systems from the inside; security is where I want to put that to use.",
-      "I'm always building, learning and chasing the next challenge."
+      "I'm Leonardo, a full-stack developer focused on security. I learned by doing: building projects, breaking things and digging into why they break. Today I work in development, but cybersecurity is where I direct my studies and my career.",
+      "At Bump Amortecedores, I run internal pentests every week, do QA, code review and fixes via Pull Request, and I single-handedly built BumpHub, the IT team's internal workspace."
     ],
     "howTitle": "How I work",
     "principles": [
@@ -182,12 +179,17 @@
     "quote": "I don't just want to know how things work. I want to understand why, how to make them better and what I can build next.",
     "photoAlt": "Photo of {name}",
     "photoPending": "Photo pending",
-    "experience": "Experience",
-    "current": " (current)",
-    "roles": {
-      "bump": { "role": "IT & Development", "period": "Oct 2026 → now" },
-      "elyra": { "role": "Founder", "period": "TODO: period" }
-    },
+    "photoHint": "hover or tap the photo",
+    "journeyKicker": "git log --reverse",
+    "journeyTitle": "Journey",
+    "journey": [
+      { "date": "TODO: ano", "title": "First lines of code", "phrase": "TODO: frase sobre o começo" },
+      { "date": "TODO: período", "title": "Founded Elyra Studio", "phrase": "TODO: frase sobre a Elyra Studio" },
+      { "date": "2026", "title": "Aegis: domain security scanner", "phrase": "Checks a domain's TLS, headers, DNS, e-mail and known CVEs and sums it all up in one grade." },
+      { "date": "Oct 2026", "title": "Bump Amortecedores: IT and Development", "phrase": "Internal pentests every week, QA, code review and fixes via Pull Request." },
+      { "date": "2026", "title": "BumpHub: the IT team's internal workspace", "phrase": "I built it and maintain it on my own: the IT team's internal workspace." },
+      { "date": "Next", "title": "CompTIA Security+", "phrase": "The next step: validating my security foundations with a recognized certification." }
+    ],
     "facts": [
       { "label": "City", "value": "TODO: city" },
       { "label": "Education", "value": "TODO: education / courses" },
