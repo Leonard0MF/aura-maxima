@@ -35,6 +35,8 @@ export type Project = {
   image?: { src: string; width: number; height: number; alt: Localized };
   /** sistema interno: sem links externos, mostra a etiqueta "privado" */
   private?: boolean;
+  /** onde/como está em uso, ex.: "Em produção na equipe de TI da empresa." */
+  usage?: Localized;
 };
 
 export type ServiceGroup = {
@@ -207,16 +209,27 @@ export const projects: Project[] = [
     title: "BUMPHUB",
     display: "BUMPHUB",
     year: undefined, // TODO: ano
-    role: undefined, // TODO: papel
+    role: { pt: "Projeto solo · arquitetura, front, back, desktop e segurança" },
+    usage: { pt: "Em produção na equipe de TI da empresa." },
     summary: {
-      pt: "Plataforma interna da BUMP que junta comunicação e gestão: canais de conversa no estilo Discord/Slack, tasks e integração com o GitHub para o time acompanhar o trabalho num lugar só.",
+      pt: "Workspace interno da equipe de TI da Bump Amortecedores. Junta chat em tempo real, gestão de tarefas, integração com o GitHub, inventário das máquinas da empresa e um cofre de senhas, tudo num app desktop próprio.",
     },
     highlights: [
-      { pt: "Canais e conversas do time em tempo real." },
-      { pt: "Tasks ligadas ao trabalho no GitHub." },
-      { pt: "Em desenvolvimento: acesso remoto aos computadores da empresa (Windows e Linux), inclusive pelo celular." },
+      { pt: "Chat estilo Discord em tempo real (canais, DMs, menções, reações, anexos) com cards de PRs e issues do GitHub direto na conversa." },
+      { pt: "Inventário dos PCs da empresa com status online/offline e acesso remoto em um clique, mais histórico de manutenção de cada máquina." },
+      { pt: "Cofre de senhas criptografado no navegador (AES-256) com 2FA/TOTP: nem o banco de dados vê as senhas." },
     ],
-    stack: ["TODO: stack"],
+    stack: [
+      "Next.js 16",
+      "TypeScript",
+      "Supabase (Postgres, RLS, Realtime, Auth com GitHub)",
+      "Electron",
+      "Extensão de VS Code",
+      "GitHub API + webhooks",
+      "Tailscale API",
+      "Web Crypto",
+      "Vercel",
+    ],
     links: {},
     private: true,
     image: { src: "/bumphub.png", width: 1922, height: 976, alt: { pt: "Tela de login do BUMPHUB (entrar com GitHub)" } },
