@@ -750,3 +750,32 @@ html[data-js] .hero[data-live] .ascii-fallback {
 .audit-cta:hover {
   color: var(--color-accent);
 }
+
+/* ---------- 04 · ABOUT ---------- */
+/* foto editorial: P&B com contraste; no hover, um pouco mais de contraste */
+.about-photo img {
+  filter: grayscale(1) contrast(1.08);
+  transition: filter 0.4s ease;
+}
+.about-photo:hover img {
+  filter: grayscale(1) contrast(1.25);
+}
+.about-cv {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 2.75rem;
+  padding: 0 1.25rem;
+  border: 1px solid var(--color-ink);
+  background: var(--color-ink);
+  color: var(--color-paper);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transition: background 0.2s, color 0.2s;
+}
+.about-cv:hover {
+  background: transparent;
+  color: var(--color-ink);
+}
