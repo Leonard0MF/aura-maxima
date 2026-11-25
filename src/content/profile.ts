@@ -66,7 +66,7 @@ export const profile = {
     pt: "Construo aplicações web de ponta a ponta e testo como um atacante faria: pentest autorizado e revisão de código com foco em segurança.",
   } satisfies Localized,
   location: { pt: "Brasil" } satisfies Localized,
-  status: { pt: "Disponível para oportunidades" } satisfies Localized,
+  status: { pt: "Disponível · foco em cibersegurança" } satisfies Localized,
   /* Saída do comando `whoami` no terminal do hero (3 linhas). */
   whoami: [
     { pt: "Léo Machmann · Dev Full-Stack & Security · Brasil" },
@@ -266,15 +266,40 @@ export const about = {
   /** public/portrait.png: foto do Léo (P&B é aplicado no CSS). Enquanto o
    * arquivo não existir, a seção mostra uma moldura marcada como pendente. */
   photo: "/portrait.png",
-  opening: { pt: "Construo aplicações web de ponta a ponta e depois tento quebrá-las antes que alguém de fora tente." },
-  body: {
-    pt: "Sou o Léo, desenvolvedor full-stack com foco em segurança. Hoje cuido de TI e desenvolvimento na Bump Amortecedores: faço pentest interno toda semana, QA, revisão de código e correções via Pull Request, e criei e mantenho sozinho o BumpHub, o workspace interno da equipe de TI. Antes disso, fundei a Elyra Studio, minha própria startup. Uso Linux no dia a dia, gosto de entender como as coisas funcionam por baixo e acredito que segurança se resolve no código, não depois do deploy.",
-  },
+  title: { pt: "Aprendo construindo. E construo para entender." },
+  body: [
+    {
+      pt: "Sou o Leonardo, desenvolvedor full-stack com foco em segurança. Não esperei alguém me ensinar tudo para começar: aprendi na prática, criando projetos, quebrando coisas e investigando por que elas quebram.",
+    },
+    {
+      pt: "Vejo desenvolvimento e segurança como partes do mesmo trabalho. Gosto de entender como um sistema funciona por dentro, descobrir onde ele pode falhar e deixá-lo melhor do que encontrei.",
+    },
+    {
+      pt: "Hoje cuido de TI e desenvolvimento na Bump Amortecedores: faço pentest interno toda semana, QA, revisão de código e correções via Pull Request. Também criei e mantenho sozinho o BumpHub, o workspace interno da equipe de TI. Fora do trabalho, construo projetos próprios como o Aegis, um scanner de segurança de domínios.",
+    },
+    {
+      pt: "Embora meu dia a dia hoje seja de desenvolvimento, é para a cibersegurança que direciono meus estudos e minha carreira. Programar me dá a base para entender sistemas por dentro; segurança é onde quero aplicar isso.",
+    },
+    { pt: "Estou sempre construindo, aprendendo e atrás do próximo desafio." },
+  ] satisfies Localized[],
   principles: [
-    { pt: "Segurança desde o primeiro commit" },
-    { pt: "Code review e PRs pequenos" },
-    { pt: "Entender o problema antes de escolher a ferramenta" },
+    { title: { pt: "Aprendo na prática." }, body: { pt: "Cada tecnologia que listo aqui entrou num projeto real." } },
+    { title: { pt: "Segurança desde o primeiro commit." }, body: { pt: "Penso em quem vai tentar quebrar antes de entregar." } },
+    { title: { pt: "Investigo antes de corrigir." }, body: { pt: "Entender a causa vale mais do que esconder o sintoma." } },
   ],
+  studying: {
+    now: [
+      {
+        title: { pt: "Segurança de Redes e Infraestrutura" },
+        body: { pt: "protocolos TCP/IP, análise de tráfego, monitoramento de conexões e hardening de redes locais." },
+      },
+    ],
+    next: [{ title: { pt: "Certificação CompTIA Security+" } }],
+  },
+  signature: {
+    quote: { pt: "Não quero só saber como as coisas funcionam. Quero entender por quê, como melhorá-las e o que posso construir em seguida." },
+    author: "Leonardo Machmann",
+  },
   facts: [
     { label: { pt: "Cidade" }, value: { pt: "TODO: cidade" } },
     { label: { pt: "Formação" }, value: { pt: "TODO: formação / cursos" } },
