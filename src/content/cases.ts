@@ -9,7 +9,20 @@ export type Block =
   | { kind: "groups"; title: string; groups: { label: string; items: string }[] }
   | { kind: "score"; title: string; body: string[]; caps: string[]; bands: { grade: string; min: number }[] }
   | { kind: "bullets"; title: string; body?: string[]; items: string[] }
-  | { kind: "arch"; title: string; body: string[]; routes?: string[]; flow: { label: string; note: string }[]; sources?: string[] };
+  | {
+      kind: "arch";
+      title: string;
+      body: string[];
+      routes?: string[];
+      /** etapas do diagrama; uma etapa pode ser uma coluna de caixas em paralelo */
+      flow: (FlowNode | FlowNode[])[];
+      /** conector entre etapas: "→" (fluxo, padrão) ou "↔" (se conectam, sem ordem) */
+      link?: "→" | "↔";
+      caption?: string;
+      sources?: string[];
+    };
+
+export type FlowNode = { label: string; note: string };
 
 export const cases: Record<string, Block[]> = {
   aegis: [
@@ -104,48 +117,73 @@ export const cases: Record<string, Block[]> = {
     {
       kind: "text",
       title: "O problema",
-      body: ["TODO: o problema de comunicação e organização do time que o BUMPHUB resolve."],
+      body: [
+        "A TI precisava de um lugar só para conversar, distribuir tarefas, acompanhar o trabalho no GitHub e gerenciar as máquinas da empresa, sem depender de várias ferramentas soltas.",
+      ],
     },
     {
       kind: "groups",
-      title: "O que faz",
+      title: "O que tem no sistema",
       groups: [
-        { label: "Conversa", items: "Canais e conversas do time em tempo real, no estilo Discord/Slack." },
-        { label: "Gestão", items: "Tasks ligadas ao trabalho no GitHub." },
-        { label: "Acesso remoto", items: "Em desenvolvimento: acesso remoto aos computadores da empresa (Windows e Linux), inclusive pelo celular." },
-        { label: "TODO", items: "TODO: outros módulos." },
+        { label: "Chat em tempo real", items: "Canais, DMs, Markdown e código, reações, menções, \"digitando...\", anexos, não lidas e notificações." },
+        { label: "Tópicos", items: "Tópicos por canal, com status e link para a issue ou o PR." },
+        { label: "Atribuições", items: "4 níveis de urgência, prazo e notificação, para uma pessoa ou para um cargo." },
+        { label: "GitHub", items: "PRs, issues, merges, commits e eventos ao vivo." },
+        { label: "Streak", items: "Dias úteis com entregas, com mapa de calor no estilo do GitHub." },
+        { label: "Codando agora", items: "Status \"codando agora\" via extensão própria do VS Code." },
+        { label: "Inventário de máquinas", items: "Setor, sala, responsável, hardware e rede, com online/offline e acesso remoto." },
+        { label: "Equipe e cargos", items: "Equipe e cargos no estilo do Discord." },
+        { label: "Status automático", items: "Disponível, ausente e não perturbe." },
+        { label: "Diário do time", items: "Diário do time com mini agenda." },
+        { label: "Busca", items: "Busca global com Ctrl+K." },
+        { label: "Tema", items: "Preto e amarelo, com modo claro." },
       ],
-    },
-    {
-      kind: "text",
-      title: "Como funciona",
-      body: ["TODO: fluxo principal (login com GitHub, canais, tasks)."],
-    },
-    {
-      kind: "text",
-      title: "Acesso e permissões",
-      body: ["TODO: quem acessa o quê (setores, papéis) e como isso é garantido."],
-    },
-    {
-      kind: "bullets",
-      title: "Segurança do próprio BUMPHUB",
-      items: ["TODO: autenticação e sessões.", "TODO: controle de acesso.", "TODO: proteção do acesso remoto."],
     },
     {
       kind: "arch",
-      title: "Arquitetura",
-      body: ["TODO: stack, onde roda e como os dados são guardados."],
+      title: "Três apps num monorepo",
+      body: [
+        "web (Next.js): a interface e a API.",
+        "desktop (Electron para Linux): distribuído em .deb, com bandeja, notificações nativas e início automático.",
+        "vscode-extension: publica o status \"codando agora\", autenticada por token individual.",
+      ],
+      link: "↔",
       flow: [
-        { label: "Navegador", note: "TODO" },
-        { label: "API", note: "TODO" },
-        { label: "Tempo real", note: "TODO" },
-        { label: "GitHub", note: "integração de tasks" },
+        [
+          { label: "web", note: "Next.js: interface + API" },
+          { label: "desktop", note: "Electron (Linux, .deb): bandeja, notificações nativas, início automático" },
+          { label: "vscode-extension", note: "status \"codando agora\", token individual" },
+        ],
+        { label: "Supabase", note: "Postgres, RLS, Realtime, Auth com GitHub" },
+        [
+          { label: "GitHub", note: "API + webhooks" },
+          { label: "Tailscale", note: "API, somente leitura" },
+          { label: "Acesso remoto", note: "às máquinas do inventário" },
+        ],
+      ],
+      caption: "Visão geral simplificada: os três apps, o Supabase e as integrações.",
+    },
+    {
+      kind: "bullets",
+      title: "Segurança",
+      items: [
+        "Row Level Security em todas as tabelas, com allowlist: quem não está liberado não lê nada.",
+        "Mensagens diretas visíveis só para os participantes.",
+        "Cofre de senhas criptografado no navegador (AES-256) com 2FA/TOTP: nem o banco de dados vê as senhas.",
+        "O servidor oficial só aceita o aplicativo desktop, como camada extra.",
+        "Webhook do GitHub validado por assinatura.",
+        "Integração com o Tailscale somente leitura.",
+        "Segredos só nas variáveis de ambiente, nunca no repositório.",
       ],
     },
     {
       kind: "bullets",
-      title: "Limitações e próximos passos",
-      items: ["Acesso remoto (Windows e Linux, inclusive pelo celular) em desenvolvimento.", "TODO: outros próximos passos."],
+      title: "Resultado",
+      items: [
+        "Em produção na equipe de TI.",
+        "Release do app desktop via GitHub Releases.",
+        "Deploy contínuo, com prévia por Pull Request.",
+      ],
     },
   ],
 };
