@@ -1,12 +1,14 @@
 @import "tailwindcss";
 
+/* Site claro (papel + tinta). A única área escura é a AUDIT (e o terminal),
+ * que redefinem os mesmos tokens com .theme-dark. */
 @theme {
-  --color-bg: #0b0d10;
-  --color-surface: #12151a;
-  --color-line: #232931;
-  --color-fg: #e6e8eb;
-  --color-muted: #a3acb6;
-  --color-dim: #8a939e;
+  --color-bg: #e9e7e2;
+  --color-surface: #dfdcd5;
+  --color-line: #c6c2b9;
+  --color-fg: #141414;
+  --color-muted: #4f4c46;
+  --color-dim: #5f5c55;
   --color-accent: #f5a524;
   --color-accent-soft: rgb(245 165 36 / 0.12);
   --color-ok: #6fcf97;
@@ -22,10 +24,20 @@
   --font-display: var(--font-archivo), "Arial Black", "Helvetica Neue", sans-serif;
 }
 
+.theme-dark {
+  --color-bg: #0b0d10;
+  --color-surface: #12151a;
+  --color-line: #2a3038;
+  --color-fg: #e6e8eb;
+  --color-muted: #a3acb6;
+  --color-dim: #8a939e;
+  color-scheme: dark;
+}
+
 html {
   background: var(--color-bg);
   color: var(--color-fg);
-  color-scheme: dark;
+  color-scheme: light;
   scroll-behavior: smooth;
   -webkit-text-size-adjust: 100%;
 }
@@ -47,15 +59,6 @@ body {
   outline: 2px solid var(--color-accent);
   outline-offset: 3px;
   border-radius: 2px;
-}
-
-/* ---------- Modo terminal / clean ----------
- * O HTML estático traz os dois textos; o atributo em <html>
- * (definido antes da pintura pelo script de boot) escolhe qual aparece.
- * display:none também tira o texto oculto da árvore de acessibilidade. */
-html:not([data-mode="clean"]) .t-clean,
-html[data-mode="clean"] .t-term {
-  display: none !important;
 }
 
 /* ---------- Scan no terminal do hero ----------
@@ -98,12 +101,6 @@ html[data-scan="instant"] .scan-line {
 }
 .term-input:placeholder-shown:not(:focus) + .term-cursor {
   display: block;
-}
-
-/* ---------- Findings: hover ---------- */
-.finding:hover .preview-inner,
-.finding:focus-within .preview-inner {
-  transform: translateY(-6px);
 }
 
 /* ---------- Hero: tipografia gigante + retrato ASCII + lente ---------- */
@@ -202,77 +199,6 @@ html[data-js] .hero[data-live] .ascii-fallback {
   object-position: bottom;
 }
 
-/* Texto da lente (o círculo, a foto e o aro são desenhados no canvas). */
-.lens-window {
-  display: none;
-  position: absolute;
-  z-index: 3;
-  left: 0;
-  top: 0;
-  /* tamanho, posição e recorte vêm do AsciiCanvas (transform direto no
-   * elemento, sem variáveis CSS herdadas → sem recálculo de estilo por frame) */
-  width: 200px;
-  height: 200px;
-  overflow: hidden;
-  pointer-events: none;
-  will-change: transform;
-}
-.hero[data-live] .lens-window {
-  display: block;
-}
-.lens-inner {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 100cqw;
-  height: 100cqh;
-  will-change: transform;
-}
-.lens-inner .hl {
-  text-shadow: 0 1px 12px rgb(0 0 0 / 0.45);
-}
-
-/* ---------- Grão de fundo ----------
- * SVG de ~400 bytes, fixo, abaixo de todo o conteúdo. */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  opacity: 0.07;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .6 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-}
-body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background: radial-gradient(60rem 30rem at 85% -10%, rgb(245 165 36 / 0.06), transparent 70%);
-}
-
-/* ---------- Entradas de seção ----------
- * Só esconde quando há JS (data-js, posto pelo boot) e movimento permitido.
- * Fallback: se o observer nunca rodar, o conteúdo aparece sozinho em 3s. */
-@media (prefers-reduced-motion: no-preference) {
-  html[data-js] [data-reveal] {
-    transition:
-      opacity 300ms ease-out var(--d, 0ms),
-      transform 300ms ease-out var(--d, 0ms);
-  }
-  html[data-js] [data-reveal]:not(.is-in) {
-    opacity: 0;
-    transform: translateY(12px);
-    animation: reveal-fallback 1ms 3s forwards;
-  }
-}
-@keyframes reveal-fallback {
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
 
 .term-cursor::after {
   content: "▋";
@@ -364,15 +290,40 @@ body::after {
 }
 
 /* ---------- 01 · WORK ---------- */
+/* moldura de janela: barra fina com 3 pontos, cantos quase retos */
+.work-win {
+  overflow: hidden;
+  border: 1px solid rgb(20 20 20 / 0.22);
+  border-radius: 4px;
+  background: #dedbd4;
+}
+.work-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border-bottom: 1px solid rgb(20 20 20 / 0.18);
+  background: #e2dfd9;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--color-ink-soft);
+}
+.work-bar i {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: rgb(20 20 20 / 0.28);
+}
 .work-fig {
   position: relative;
   overflow: hidden;
   aspect-ratio: 16 / 10;
-  background: #dedbd4;
 }
 .work-media {
-  position: absolute;
-  inset: 0;
+  display: block;
   transition: transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 .work-item:hover .work-media,
@@ -415,11 +366,14 @@ body::after {
 /* ---------- 02 · STACK ---------- */
 .stack-box {
   position: relative;
-  height: max(100svh, 560px);
+  height: clamp(480px, 70vh, 820px);
+  overflow: hidden;
+  border-top: 1px solid rgb(20 20 20 / 0.2);
+  border-bottom: 1px solid rgb(20 20 20 / 0.2);
 }
 @media (max-width: 639px) {
   .stack-box {
-    height: 80svh;
+    height: 70svh;
   }
 }
 .stack-stage,
@@ -439,9 +393,6 @@ body::after {
   /* vertical continua rolando a página no toque; o resto empurra/arrasta */
   touch-action: pan-y;
 }
-[data-stack][data-live] .stack-grid {
-  visibility: hidden;
-}
 .stack-grid {
   position: absolute;
   inset: 0;
@@ -449,12 +400,34 @@ body::after {
   grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
   align-content: center;
   padding: 0 1rem;
-  border-top: 1px solid rgb(20 20 20 / 0.2);
 }
 @media (min-width: 640px) {
   .stack-grid {
     padding: 0 1.5rem;
   }
+}
+/* 3D ativo: o grid sai de vista, mas segue acessível pelo teclado (aparece
+ * como uma faixa de botões quando recebe foco) */
+[data-stack][data-live] .stack-grid {
+  inset: auto 0 0 0;
+  z-index: 3;
+  clip-path: inset(50%);
+  grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+  padding-block: 0.5rem;
+  background: var(--color-paper);
+  border-top: 1px solid rgb(20 20 20 / 0.2);
+}
+[data-stack][data-live] .stack-grid:focus-within {
+  clip-path: none;
+}
+[data-stack][data-live] .stack-cell {
+  flex-direction: row;
+  padding: 0.5rem 0.25rem;
+  border: 0;
+}
+[data-stack][data-live] .stack-cell svg {
+  width: 1rem;
+  height: 1rem;
 }
 .stack-cell {
   display: flex;
@@ -478,14 +451,9 @@ body::after {
   transition: transform 0.3s cubic-bezier(0.2, 0.7, 0.2, 1), color 0.2s;
 }
 .stack-cell:hover svg,
-.stack-cell:focus-visible svg,
-.stack-cell[aria-pressed="true"] svg {
+.stack-cell:focus-visible svg {
   color: var(--color-accent-ink);
   transform: translateY(-3px);
-}
-.stack-index [aria-pressed="true"] {
-  color: var(--color-accent-ink);
-  background-size: 100% 1px;
 }
 .stack-tip {
   position: absolute;
@@ -501,4 +469,303 @@ body::after {
   text-transform: uppercase;
   pointer-events: none;
   white-space: nowrap;
+}
+/* popup: painel em DOM por cima do canvas (direita no desktop, embaixo no celular) */
+.stack-dialog {
+  position: absolute;
+  z-index: 4;
+  right: 1.5rem;
+  top: 50%;
+  width: min(24rem, 40%);
+  translate: 0 -50%;
+  padding: 1.5rem;
+  border: 1px solid rgb(20 20 20 / 0.25);
+  border-radius: 2px;
+  background: var(--color-paper);
+  animation: dialog-in 0.35s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.stack-dialog[hidden] {
+  display: none;
+}
+@media (max-width: 639px) {
+  .stack-dialog {
+    left: 0.75rem;
+    right: 0.75rem;
+    top: auto;
+    bottom: 0.75rem;
+    width: auto;
+    translate: none;
+    padding: 1.1rem;
+  }
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stack-dialog {
+    animation: none;
+  }
+}
+.stack-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  place-items: center;
+  font-size: 1.5rem;
+  line-height: 1;
+}
+.stack-close:hover {
+  color: var(--color-accent-ink);
+}
+
+/* ---------- 03 · HACK ME ---------- */
+.hack-input {
+  min-height: 2.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid rgb(20 20 20 / 0.35);
+  border-radius: 2px;
+  background: #f3f1ec;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--color-ink);
+}
+.hack-input:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 0;
+}
+.hack-btn {
+  min-height: 2.5rem;
+  padding: 0 1rem;
+  border: 1px solid var(--color-ink);
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.hack-btn:disabled {
+  opacity: 0.45;
+}
+.hack-btn-solid {
+  background: var(--color-ink);
+  color: var(--color-paper);
+}
+.hack-switch {
+  display: inline-flex;
+  min-height: 2rem;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.hack-switch > span {
+  position: relative;
+  width: 2rem;
+  height: 1.1rem;
+  border: 1px solid var(--color-ink);
+  border-radius: 999px;
+}
+.hack-switch > span::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: calc(1.1rem - 6px);
+  height: calc(1.1rem - 6px);
+  border-radius: 50%;
+  background: var(--color-ink);
+  transition: transform 0.2s ease;
+}
+.hack-switch[aria-checked="true"] > span {
+  background: var(--color-accent);
+}
+.hack-switch[aria-checked="true"] > span::after {
+  transform: translateX(0.9rem);
+}
+.hack-sql {
+  min-height: 7.5rem;
+  padding: 0.9rem 1rem;
+  border-left: 2px solid rgb(20 20 20 / 0.25);
+  background: #e2dfd9;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.q-kw {
+  font-weight: 700;
+}
+.q-str {
+  color: #5b4a2e;
+}
+.q-num,
+.q-op,
+.q-id,
+.q-plain {
+  color: var(--color-ink);
+}
+.q-comment {
+  color: #8a867e;
+  text-decoration: line-through;
+}
+.q-inj {
+  background: rgb(179 38 30 / 0.12);
+  color: #b3261e;
+  font-weight: 700;
+}
+.hack-param {
+  background: rgb(245 165 36 / 0.22);
+  padding: 0 0.25rem;
+}
+.hack-row-hit {
+  background: rgb(179 38 30 / 0.1);
+  box-shadow: inset 3px 0 0 #b3261e;
+}
+.hack-row-hit td:first-child {
+  padding-left: 0.5rem;
+}
+.hack-row-hit td {
+  color: #b3261e;
+}
+.hack-granted {
+  animation: granted 0.6s steps(6) both;
+}
+@keyframes granted {
+  0% {
+    opacity: 0;
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hack-granted {
+    animation: none;
+  }
+}
+
+/* ---------- 04 · AUDIT (camada de baixo) ----------
+ * Fundo: círculo escuro numa camada sticky de 100vh. Cresce na entrada e
+ * fecha na saída da seção (scroll-driven animation, só transform). */
+.audit {
+  position: relative;
+  background: var(--color-paper);
+  view-timeline-name: --audit;
+}
+/* a camada cobre a seção + 1 tela antes e 1 depois (clip); o pino sticky
+ * fica preso dentro dela, então o círculo nasce e morre no centro da tela,
+ * por cima do fim da seção anterior e do começo da próxima */
+.audit-bg {
+  position: absolute;
+  inset: 0; /* sem animação: corte seco no limite da seção */
+  overflow: clip;
+  pointer-events: none;
+}
+.audit-pin {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+.audit-pin > span {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 150vmax;
+  height: 150vmax;
+  margin: -75vmax 0 0 -75vmax;
+  border-radius: 50%;
+  background: #0b0d10;
+  /* o círculo entra no hit-test (é o fundo real do texto da seção); só cobre
+   * conteúdo de outra seção quando já o escondeu visualmente */
+  pointer-events: auto;
+}
+.audit-body {
+  position: relative;
+  /* respiro para o círculo crescer antes do conteúdo e fechar depois dele */
+  padding: 30vh 0 30vh;
+}
+/* nota pendente: um traço fino, não um bloco */
+.audit-dash {
+  display: inline-block;
+  width: 0.55em;
+  height: 0.022em;
+  margin: 0.4em 0;
+  background: var(--color-dim);
+  vertical-align: middle;
+}
+.audit-dash > span {
+  display: none;
+}
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .audit-bg {
+      inset: -100vh 0;
+    }
+    .audit-pin > span {
+      animation:
+        audit-in linear forwards,
+        audit-out linear both;
+      animation-timeline: --audit, --audit;
+      animation-range:
+        entry -100vh entry 65%,
+        exit 0% exit 50%;
+    }
+  }
+}
+/* entrada mexe em `scale`, saída em `transform`: as duas se multiplicam,
+ * então cada uma pode ficar presa no seu valor final (fill both) */
+/* faixa da entrada começa 1 tela antes (a camada já está fora da vista);
+ * antes dela, sem efeito = círculo cheio: quem mede contraste de longe vê o
+ * texto claro sobre o escuro, como de fato aparece. 66.7% = entry 10%. */
+@keyframes audit-in {
+  0%,
+  66.7% {
+    scale: 0;
+  }
+  to {
+    scale: 1;
+  }
+}
+@keyframes audit-out {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(0);
+  }
+}
+
+
+/* ---------- 06 · CONTACT ---------- */
+.contact-title {
+  /* CONVERSAR ≈ 6.69em: ocupa a largura útil */
+  font-size: calc(100cqw / 6.75);
+  line-height: 0.82;
+  letter-spacing: -0.035em;
+  margin-left: -0.04em;
+}
+.contact-big {
+  font-size: clamp(1.75rem, 5vw, 4rem);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  background: linear-gradient(currentColor, currentColor) 0 100% / 0 2px no-repeat;
+  transition: background-size 0.45s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.contact-big:hover,
+.contact-big:focus-visible {
+  background-size: 100% 2px;
 }

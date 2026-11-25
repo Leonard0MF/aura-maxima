@@ -37,23 +37,22 @@ export const viewport: Viewport = {
 
 /*
  * Roda antes da primeira pintura:
- *  - aplica o modo salvo (terminal/clean);
  *  - pula a animação do scan em visitas repetidas na sessão ou com reduced-motion;
  *  - usa a imagem estática do objeto 3D com reduced-motion ou CPU fraca (≤ 4 núcleos).
  * Storage pode lançar exceção (aba privada, bloqueio): tudo em try/catch.
  */
-const boot = `(function(){var d=document.documentElement;d.dataset.js="1";try{if(localStorage.getItem("recon:mode")==="clean")d.dataset.mode="clean"}catch(e){}try{if(sessionStorage.getItem("recon:scan-seen")||matchMedia("(prefers-reduced-motion: reduce)").matches)d.dataset.scan="instant"}catch(e){}try{if(matchMedia("(prefers-reduced-motion: reduce)").matches||(navigator.hardwareConcurrency||8)<=4)d.dataset.fx="static";else if(!sessionStorage.getItem("recon:intro"))d.dataset.intro="1"}catch(e){}})()`;
+const boot = `(function(){var d=document.documentElement;d.dataset.js="1";try{if(sessionStorage.getItem("recon:scan-seen")||matchMedia("(prefers-reduced-motion: reduce)").matches)d.dataset.scan="instant"}catch(e){}try{if(matchMedia("(prefers-reduced-motion: reduce)").matches||(navigator.hardwareConcurrency||8)<=4)d.dataset.fx="static";else if(!sessionStorage.getItem("recon:intro"))d.dataset.intro="1"}catch(e){}})()`;
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="pt-BR" data-mode="terminal" className={`${sans.variable} ${mono.variable} ${display.variable}`} suppressHydrationWarning>
+    <html lang="pt-BR" className={`${sans.variable} ${mono.variable} ${display.variable}`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: boot }} />
       </head>
       <body className="text-fg">
         <a
           href="#conteudo"
-          className="sr-only z-40 rounded-md bg-accent px-4 py-2 font-mono text-sm text-bg focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
+          className="sr-only z-40 rounded-md bg-accent px-4 py-2 font-mono text-sm text-ink focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
         >
           Pular para o conteúdo
         </a>

@@ -1,5 +1,5 @@
 /*
- * Auditoria de segurança deste site (seção "Auditoria deste site").
+ * Auditoria de segurança deste site (seção 04 · AUDIT).
  *
  * Os dados vêm de `audit.json`, atualizado à mão a partir da saída do Aegis.
  * NUNCA infle a nota: o card mostra exatamente o que estiver no JSON, e

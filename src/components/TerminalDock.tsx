@@ -46,7 +46,7 @@ export function TerminalDock({ data }: { data: TerminalData }) {
         type="button"
         onClick={open}
         aria-haspopup="dialog"
-        className="t-term fixed right-4 bottom-4 z-40 flex min-h-10 items-center gap-2 rounded-full border border-white/10 bg-[#111317] px-4 font-mono text-xs text-[#e6e8eb] shadow-lg transition-colors duration-150 hover:border-accent sm:right-6 sm:bottom-6"
+        className="fixed right-4 bottom-4 z-40 flex min-h-10 items-center gap-2 rounded-full border border-white/10 bg-[#111317] px-4 font-mono text-xs text-[#e6e8eb] shadow-lg transition-colors duration-150 hover:border-accent sm:right-6 sm:bottom-6"
       >
         <span aria-hidden="true" className="text-accent">
           ~
@@ -56,7 +56,7 @@ export function TerminalDock({ data }: { data: TerminalData }) {
       <dialog
         ref={ref}
         aria-label="Terminal"
-        className="m-auto w-[min(780px,calc(100vw-2rem))] bg-transparent p-0 backdrop:bg-black/60 backdrop:backdrop-blur-sm"
+        className="theme-dark m-auto w-[min(780px,calc(100vw-2rem))] bg-transparent p-0 backdrop:bg-black/60 backdrop:backdrop-blur-sm"
         onClick={(e) => {
           if (e.target === ref.current) ref.current.close();
         }}

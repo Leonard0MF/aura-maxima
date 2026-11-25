@@ -26,6 +26,7 @@ uniform vec2 uLevels;  // preto, branco (níveis automáticos do build)
 uniform sampler2D uAtlas;
 uniform sampler2D uImg;
 uniform sampler2D uGrid;
+uniform sampler2D uText; // texto da lente: r = FULL-STACK (papel), g = PENTESTER (âmbar), b = halo
 uniform vec3 uPtr;     // x, y, atividade 0..1
 uniform vec3 uLens;    // x, y, raio
 uniform float uAccent; // 1 = destaques em âmbar; 0 = só tinta (blocos com inversão de cor)
@@ -188,6 +189,11 @@ void main() {
       vec2 uv = (p - uRect.xy) / uRect.zw;
       vec3 col = vec3(0.05, 0.055, 0.07);
       if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0) col = texture(uImg, uv).rgb * PAPER;
+      /* por baixo da superfície: a outra leitura das duas linhas, em mono */
+      vec4 tx = texture(uText, p / uRes);
+      col *= 1.0 - 0.55 * tx.b;
+      col = mix(col, PAPER, tx.r);
+      col = mix(col, RING, tx.g);
       o = mix(o, vec4(col, 1.0), inside);
     }
     float ring = 1.0 - smoothstep(0.0, 1.1 * uDpr, abs(ld - uLens.z));

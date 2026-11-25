@@ -40,7 +40,9 @@ export type Project = {
      preencha, ex.: { src: "/projects/aegis.png", alt: { pt: "..." } }.
      De preferência tema claro: o ASCII desenha o escuro. Sem `image`, o bloco
      usa public/projects/placeholder.png (wireframe neutro). */
-  image?: { src: string; alt: Localized };
+  image?: { src: string; width: number; height: number; alt: Localized };
+  /** sistema interno: sem links externos, mostra a etiqueta "privado" */
+  private?: boolean;
   caseStudy: CaseStudy;
 };
 
@@ -88,7 +90,7 @@ export const profile = {
     cv: "/cv/leo-machmann.pdf", // TODO: adicionar o PDF em public/cv/
   },
 
-  aegisUrl: "https://github.com/Leonard0MF/aegis", // TODO: URL do Aegis publicado na Vercel
+  aegisUrl: "https://aegis-ten-zeta.vercel.app/",
 } as const;
 
 export const services: ServiceGroup[] = [
@@ -161,24 +163,26 @@ export const services: ServiceGroup[] = [
  * as 10 primeiras. `match` são os nomes usados em `projects[].stack` (para
  * mostrar quais projetos usam cada tecnologia).
  */
-export const stackTokens: { id: string; name: string; match?: string[] }[] = [
-  { id: "react", name: "React" },
-  { id: "nextjs", name: "Next.js" },
-  { id: "typescript", name: "TypeScript" },
-  { id: "nodejs", name: "Node.js" },
-  { id: "tailwind", name: "Tailwind CSS", match: ["Tailwind", "Tailwind CSS"] },
-  { id: "python", name: "Python" },
-  { id: "docker", name: "Docker" },
-  { id: "postgresql", name: "PostgreSQL", match: ["PostgreSQL", "Postgres", "SQL"] },
-  { id: "linux", name: "Linux" },
-  { id: "kali", name: "Kali Linux" },
-  { id: "javascript", name: "JavaScript" },
-  { id: "supabase", name: "Supabase" },
-  { id: "git", name: "Git" },
-  { id: "vite", name: "Vite" },
-  { id: "html5", name: "HTML5", match: ["HTML", "HTML5"] },
-  { id: "css3", name: "CSS3", match: ["CSS", "CSS3"] },
-  { id: "vercel", name: "Vercel" },
+/* `use`: frase curta de como uso. Escritas a partir do que já está neste
+ * arquivo (whoami, services, activity). TODO: revisar com as suas palavras. */
+export const stackTokens: { id: string; name: string; use: string; match?: string[] }[] = [
+  { id: "react", name: "React", use: "Construo as interfaces das aplicações web que desenvolvo de ponta a ponta.", match: ["React", "Next.js"] },
+  { id: "nextjs", name: "Next.js", use: "Framework das minhas aplicações web, incluindo o Aegis e este portfólio." },
+  { id: "typescript", name: "TypeScript", use: "Linguagem padrão no frontend e no backend dos meus projetos." },
+  { id: "nodejs", name: "Node.js", use: "Backend: APIs REST, autenticação, sessões e integração com APIs externas." },
+  { id: "tailwind", name: "Tailwind CSS", use: "Estilização do frontend, inclusive deste site.", match: ["Tailwind", "Tailwind CSS"] },
+  { id: "python", name: "Python", use: "Scripts e automação no backend." },
+  { id: "docker", name: "Docker", use: "Ambientes isolados e reproduzíveis para rodar e testar serviços." },
+  { id: "postgresql", name: "PostgreSQL", use: "Bancos relacionais e SQL, direto ou via Supabase.", match: ["PostgreSQL", "Postgres", "SQL"] },
+  { id: "linux", name: "Linux", use: "Meu sistema de uso diário, com SSH e redes TCP/IP." },
+  { id: "kali", name: "Kali Linux", use: "Base dos pentests autorizados que faço, como o pentest interno semanal na BUMP." },
+  { id: "javascript", name: "JavaScript", use: "A base de todo o frontend que escrevo." },
+  { id: "supabase", name: "Supabase", use: "Banco de dados e autenticação no backend." },
+  { id: "git", name: "Git", use: "Versionamento, code review dos commits do time e correções via Pull Request." },
+  { id: "vite", name: "Vite", use: "Build e servidor de desenvolvimento em projetos React." },
+  { id: "html5", name: "HTML5", use: "Marcação semântica e acessível, a base de qualquer interface.", match: ["HTML", "HTML5"] },
+  { id: "css3", name: "CSS3", use: "Layout e animações, do grid editorial às transições deste site.", match: ["CSS", "CSS3"] },
+  { id: "vercel", name: "Vercel", use: "Deploy dos meus projetos web, como o Aegis." },
 ];
 
 export const projects: Project[] = [
@@ -201,8 +205,9 @@ export const projects: Project[] = [
     stack: ["Next.js", "TypeScript", "Node.js", "Vercel"], // TODO: confirmar stack real
     links: {
       repo: "https://github.com/Leonard0MF/aegis",
-      demo: undefined, // TODO: URL do deploy na Vercel
+      demo: "https://aegis-ten-zeta.vercel.app/",
     },
+    image: { src: "/aegis.png", width: 1896, height: 914, alt: { pt: "Painel do Aegis: nota de segurança, certificado TLS e verificações de um domínio" } },
     caseStudy: {
       problem: {
         pt: "TODO: descrever o problema (ex.: avaliar a postura de segurança de um site exige várias ferramentas separadas e conhecimento técnico).",
@@ -235,36 +240,14 @@ export const projects: Project[] = [
     },
     stack: ["TODO: stack"],
     links: {},
+    private: true,
+    image: { src: "/bumphub.png", width: 1922, height: 976, alt: { pt: "Tela de login do BUMPHUB (entrar com GitHub)" } },
     caseStudy: {
       problem: { pt: "TODO: problema de comunicação/organização que o BUMPHUB resolve." },
       solution: { pt: "TODO: visão geral da solução (chat, tasks, integração GitHub)." },
       architecture: [{ pt: "TODO: arquitetura (tempo real, banco, autenticação)." }],
       decisions: [{ pt: "TODO: decisões de segurança (controle de acesso por setor, sessões, webhooks do GitHub)." }],
       result: { pt: "TODO: resultado no time (adoção, ganhos)." },
-    },
-  },
-  {
-    id: "FND-003",
-    slug: "fotos-de-eventos",
-    severity: "medium",
-    title: "Plataforma de fotos de eventos",
-    display: "FOTOS",
-    year: undefined, // TODO: ano
-    role: undefined, // TODO: papel
-    summary: {
-      pt: "Venda de fotos de eventos com marca d'água, liberação da imagem original após o pagamento e busca por reconhecimento facial.",
-    },
-    stack: ["TODO: stack"],
-    links: {},
-    caseStudy: {
-      problem: { pt: "TODO: problema (fotógrafos vendendo fotos de eventos, participantes encontrando as próprias fotos)." },
-      solution: { pt: "Marca d'água nas prévias, liberação do original só após o pagamento confirmado e reconhecimento facial para o participante encontrar as próprias fotos." },
-      architecture: [{ pt: "TODO: armazenamento, processamento das imagens, pagamentos." }],
-      decisions: [
-        { pt: "TODO: como os originais ficam protegidos até o pagamento (URLs assinadas, storage privado)." },
-        { pt: "TODO: tratamento de dados biométricos (consentimento, LGPD)." },
-      ],
-      result: { pt: "TODO: resultado." },
     },
   },
 ];

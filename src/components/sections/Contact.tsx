@@ -1,44 +1,59 @@
-import { Dual } from "@/components/Dual";
-import { SectionHeading } from "@/components/SectionHeading";
+import { Decrypt } from "@/components/Decrypt";
 import { profile } from "@/content/profile";
 
+const isTodo = (s: string) => /TODO/.test(s);
+
+/* 06 · CONTACT. Canais com TODO (e-mail, LinkedIn) não aparecem até existirem. */
 export function Contact() {
   const { contact } = profile;
-  const rows = [
-    { key: "email", label: "E-mail", href: `mailto:${contact.email}`, value: contact.email, external: false },
-    { key: "linkedin", label: "LinkedIn", href: contact.linkedin, value: contact.linkedin.replace("https://www.", ""), external: true },
-    { key: "github", label: "GitHub", href: contact.github, value: `github.com/${contact.githubHandle}`, external: true },
-  ];
+  const email = isTodo(contact.email) ? null : contact.email;
+  const linkedin = isTodo(contact.linkedin) ? null : contact.linkedin;
+
   return (
-    <section aria-labelledby="contato" className="mx-auto max-w-[75rem] px-4 py-14 sm:px-6">
-      <SectionHeading
-        id="contato"
-        index="Contato"
-        command="connect --to leo"
-        title="Vamos conversar"
-        lead="Aberto a oportunidades como dev full-stack com foco em segurança."
-      />
-      <div className="max-w-2xl rounded-lg border border-line bg-surface p-5 font-mono text-sm sm:p-6">
-        <p className="t-term mb-4 text-dim">
-          <span className="text-ok">[✓]</span> connection established · choose a channel
-        </p>
-        <ul className="space-y-3">
-          {rows.map((r) => (
-            <li key={r.key} className="flex flex-col gap-0.5 sm:flex-row sm:gap-4">
-              <span className="w-24 shrink-0 text-dim">
-                <Dual term={r.key} clean={r.label} />
-              </span>
-              <a
-                href={r.href}
-                {...(r.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-                className="break-all text-fg underline decoration-line underline-offset-4 hover:text-accent"
-              >
-                {r.value}
-                {r.external ? <span className="sr-only"> (abre em nova aba)</span> : null}
+    <section id="contato" aria-labelledby="contact-title" className="bg-paper text-ink">
+      <header className="sec-head">
+        <div className="sec-meta">
+          <span>06</span>
+          <span className="text-ink-soft">connect --to leo</span>
+          <span>{profile.status.pt}</span>
+        </div>
+        <h2 id="contact-title" className="contact-title font-display">
+          <Decrypt text="VAMOS" />
+          <br />
+          <Decrypt text="CONVERSAR" />
+        </h2>
+      </header>
+
+      <div className="px-4 pb-16 sm:px-6 sm:pb-24">
+        <div className="flex flex-col gap-6 border-t border-ink/20 pt-8">
+          {email ? (
+            <a href={`mailto:${email}`} className="contact-big w-fit break-all">
+              {email}
+            </a>
+          ) : (
+            <a href={contact.github} target="_blank" rel="noopener noreferrer" className="contact-big w-fit break-all">
+              github.com/{contact.githubHandle}
+              <span className="sr-only"> (abre em nova aba)</span>
+            </a>
+          )}
+          <p className="flex flex-wrap gap-x-8 gap-y-2 font-mono text-xs tracking-wide uppercase sm:text-sm">
+            {linkedin && (
+              <a href={linkedin} target="_blank" rel="noopener noreferrer" className="ulink">
+                LinkedIn <span aria-hidden="true">↗</span>
+                <span className="sr-only"> (abre em nova aba)</span>
               </a>
-            </li>
-          ))}
-        </ul>
+            )}
+            {email && (
+              <a href={contact.github} target="_blank" rel="noopener noreferrer" className="ulink">
+                GitHub <span aria-hidden="true">↗</span>
+                <span className="sr-only"> (abre em nova aba)</span>
+              </a>
+            )}
+          </p>
+        </div>
+        <p className="mt-16 font-mono text-xs tracking-wide sm:text-sm">
+          <span className="text-[#1f7a43]">[✓]</span> scan complete · 0 vulnerabilidades críticas no candidato
+        </p>
       </div>
     </section>
   );

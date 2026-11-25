@@ -1,7 +1,6 @@
 import Link from "next/link";
 
 import { Decrypt } from "@/components/Decrypt";
-import { Dual } from "@/components/Dual";
 import { StackStage } from "@/components/stack/StackStage";
 import { projects, stackTokens } from "@/content/profile";
 import { STACK_ICONS } from "@/lib/stack-icons";
@@ -10,8 +9,8 @@ const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
 /*
  * 02 · STACK. Canvas 3D (carregado só perto da seção) com os logos como
- * fichas físicas. Tudo que é conteúdo é renderizado aqui no servidor: o grid
- * estático (fallback), o índice de nomes e os painéis "usado em".
+ * fichas físicas. Tudo que é conteúdo vem daqui (servidor): o grid estático
+ * (fallback e acesso por teclado) e o dialog com os detalhes de cada peça.
  */
 export function Stack() {
   const usedBy = (t: (typeof stackTokens)[number]) => {
@@ -25,9 +24,7 @@ export function Stack() {
       <header className="sec-head">
         <div className="sec-meta">
           <span>02</span>
-          <span className="text-ink-soft">
-            <Dual term="nmap -sV --top-ports stack" clean="Tecnologias" />
-          </span>
+          <span className="text-ink-soft">ls ~/stack</span>
           <span>{stackTokens.length} tecnologias</span>
         </div>
         <h2 id="stack-title" className="sec-title font-display">
@@ -39,13 +36,14 @@ export function Stack() {
       </header>
 
       <div className="stack-box">
-        {/* fallback estático: sem JS, reduced-motion, aparelho fraco, sem WebGL */}
+        {/* fallback estático (sem JS, reduced-motion, aparelho fraco, sem WebGL);
+            com o 3D ativo vira uma lista que só aparece com foco de teclado */}
         <ul className="stack-grid" aria-label="Tecnologias">
           {stackTokens.map((t) => {
             const icon = STACK_ICONS[t.id];
             return (
               <li key={t.id}>
-                <button type="button" data-tech={t.id} aria-pressed="false" className="stack-cell">
+                <button type="button" data-tech={t.id} aria-haspopup="dialog" className="stack-cell">
                   {icon && (
                     <svg viewBox="0 0 24 24" aria-hidden="true">
                       <path d={icon.path} />
@@ -59,51 +57,39 @@ export function Stack() {
         </ul>
         <StackStage tokens={tokens} />
         <div className="stack-tip" hidden aria-hidden="true" />
-      </div>
 
-      <div className="px-4 pb-20 sm:px-6 sm:pb-28">
-        <div className="grid gap-6 border-t border-ink/20 pt-4 lg:grid-cols-12">
-          <p className="font-mono text-[11px] tracking-wide text-ink-soft uppercase sm:text-xs lg:col-span-3">Índice</p>
-          <ul className="stack-index flex flex-wrap gap-x-5 gap-y-1 font-mono text-xs tracking-wide uppercase lg:col-span-9">
-            {stackTokens.map((t) => (
-              <li key={t.id}>
-                <button type="button" data-tech={t.id} aria-pressed="false" className="ulink min-h-6">
+        <div className="stack-dialog" role="dialog" aria-modal="true" hidden>
+          <button type="button" className="stack-close" aria-label="Fechar">
+            <span aria-hidden="true">×</span>
+          </button>
+          {stackTokens.map((t) => {
+            const list = usedBy(t);
+            return (
+              <div key={t.id} data-panel={t.id} hidden>
+                <p className="font-mono text-[11px] tracking-wide text-ink-soft uppercase">Stack · {t.id}</p>
+                <h3 id={`tech-${t.id}`} className="mt-3 font-display text-4xl leading-none tracking-tight sm:text-5xl">
                   {t.name}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div aria-live="polite" className="mt-6 grid gap-6 border-t border-ink/20 pt-4 lg:grid-cols-12">
-          <p className="font-mono text-[11px] tracking-wide text-ink-soft uppercase sm:text-xs lg:col-span-3">Usado em</p>
-          <div className="lg:col-span-9">
-            <p data-panel="" className="text-ink-soft">
-              Clique numa peça (ou num nome do índice) para ver os projetos que usam a tecnologia.
-            </p>
-            {stackTokens.map((t) => {
-              const list = usedBy(t);
-              return (
-                <div key={t.id} data-panel={t.id} hidden>
+                </h3>
+                <p className="mt-4 text-[17px] leading-relaxed">{t.use}</p>
+                <div className="mt-6 border-t border-ink/20 pt-3 font-mono text-xs tracking-wide uppercase">
+                  <p className="text-ink-soft">Usado em</p>
                   {list.length ? (
-                    <p className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
-                      <span className="font-display text-3xl tracking-tight sm:text-4xl">{t.name}</span>
+                    <ul className="mt-2 space-y-1">
                       {list.map((p) => (
-                        <Link key={p.slug} href={`/projetos/${p.slug}`} className="ulink font-mono text-xs tracking-wide uppercase">
-                          {p.display} <span aria-hidden="true">→</span>
-                        </Link>
+                        <li key={p.slug}>
+                          <Link href={`/projetos/${p.slug}`} className="ulink">
+                            {p.display} <span aria-hidden="true">→</span>
+                          </Link>
+                        </li>
                       ))}
-                    </p>
+                    </ul>
                   ) : (
-                    <p>
-                      <span className="font-display text-3xl tracking-tight sm:text-4xl">{t.name}</span>
-                      <span className="mt-2 block text-ink-soft">Nenhum projeto publicado aqui usa {t.name} ainda.</span>
-                    </p>
+                    <p className="mt-2 normal-case">Ainda sem projeto publicado aqui com {t.name}.</p>
                   )}
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </section>

@@ -13,6 +13,9 @@
  *            e estica no plano perpendicular (~400 ms para assentar)
  *   luz    = RoomEnvironment (PMREM, gerado uma vez) + 1 direcional; sombra
  *            de contato barata (um quad com gradiente radial por ficha)
+ *   foco   = clicar numa peça: ela sai da física, voa (~500 ms) até a frente
+ *            da câmera, cresce e flutua; um véu cor de papel apaga as outras.
+ *            Ao fechar, volta para o mundo e cai de novo com a física.
  * Renderiza sob demanda: com tudo parado (corpos dormindo, molas assentadas,
  * sem ponteiro), o loop para até o próximo evento.
  */
@@ -59,6 +62,8 @@ export type Token = { id: string; name: string; path: string; hex: string };
 export type SceneEvents = {
   hover: (name: string | null, x: number, y: number) => void;
   select: (id: string) => void;
+  /** clique no canvas com uma peça em foco = clique fora do painel */
+  close: () => void;
 };
 
 const R = 1; // raio da ficha
@@ -142,7 +147,15 @@ type Piece = {
   n: Vector3;
 };
 
-export function createStackScene(canvas: HTMLCanvasElement, tokens: Token[], on: SceneEvents) {
+/* cede a main thread entre blocos de trabalho pesado (montagem em pedaços) */
+const yieldMain = () =>
+  new Promise<void>((r) => {
+    const s = (globalThis as { scheduler?: { yield?: () => Promise<void> } }).scheduler;
+    if (s?.yield) void s.yield().then(r);
+    else setTimeout(r, 0);
+  });
+
+export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[], on: SceneEvents) {
   const box = canvas.parentElement!;
   const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
   const renderer = new WebGLRenderer({ canvas, alpha: true, antialias: dpr < 1.3, powerPreference: "high-performance" });
@@ -156,6 +169,7 @@ export function createStackScene(canvas: HTMLCanvasElement, tokens: Token[], on:
   const envRT = pmrem.fromScene(new RoomEnvironment(), 0.04);
   scene.environment = envRT.texture;
   pmrem.dispose();
+  await yieldMain();
   const sun = new DirectionalLight(0xfff1dc, 1.4);
   sun.position.set(-4, 10, 6);
   scene.add(sun);
@@ -196,7 +210,7 @@ export function createStackScene(canvas: HTMLCanvasElement, tokens: Token[], on:
   const shadowTex = shadowTexture();
   const disposables: { dispose(): void }[] = [coin, shadowGeo, shadowTex, envRT];
 
-  const pieces: Piece[] = tokens.map((token) => {
+  const build = (token: Token): Piece => {
     const base = tone(token.hex);
     const bodyMat = new MeshPhysicalMaterial({
       color: base,
@@ -256,7 +270,22 @@ export function createStackScene(canvas: HTMLCanvasElement, tokens: Token[], on:
       wake();
     });
     return piece;
-  });
+  };
+  /* extrusão dos logos: 3 por vez, devolvendo a thread entre os blocos */
+  const pieces: Piece[] = [];
+  for (let i = 0; i < tokens.length; i++) {
+    pieces.push(build(tokens[i]));
+    if (i % 3 === 2) await yieldMain();
+  }
+
+  /* véu: plano de papel entre a pilha e a peça em foco (sem 2º contexto) */
+  const veilMat = new MeshBasicMaterial({ color: new Color("#e9e7e2"), transparent: true, opacity: 0, depthWrite: false, toneMapped: false });
+  const veil = new Mesh(new PlaneGeometry(400, 400), veilMat);
+  veil.visible = false;
+  veil.renderOrder = 5;
+  scene.add(veil);
+  disposables.push(veilMat, veil.geometry);
+  const inWorld = new Set<Body>();
 
   /* ---------- tamanho / paredes ---------- */
   const ray = new Raycaster();
@@ -312,11 +341,13 @@ export function createStackScene(canvas: HTMLCanvasElement, tokens: Token[], on:
       timers.push(
         window.setTimeout(() => {
           const b = p.body;
+          if (inWorld.has(b) || focus?.piece === p) return;
           b.position.set((Math.random() * 2 - 1) * (bounds.x - R) * 0.9, 7 + Math.random() * 2, bounds.z0 + R + Math.random() * (bounds.z1 - bounds.z0 - 2 * R));
           /* logos quase de pé para quem olha: giro pequeno no eixo vertical */
           b.quaternion.setFromEuler((Math.random() - 0.5) * 0.9, (Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 0.9);
           b.angularVelocity.set((Math.random() - 0.5) * 3, 0, (Math.random() - 0.5) * 3);
           world.addBody(b);
+          inWorld.add(b);
           p.group.visible = true;
           wake();
         }, i * 85),
@@ -354,6 +385,10 @@ export function createStackScene(canvas: HTMLCanvasElement, tokens: Token[], on:
     wake();
   };
   const onDown = (e: PointerEvent) => {
+    if (focus) {
+      on.close();
+      return;
+    }
     ptr = toNdc(e);
     const h = pick(ptr.nx, ptr.ny);
     if (!h) return;
@@ -371,6 +406,7 @@ export function createStackScene(canvas: HTMLCanvasElement, tokens: Token[], on:
   };
   const onUp = (e: PointerEvent) => {
     if (!drag) return;
+    if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
     world.removeConstraint(drag.c);
     const b = drag.piece.body;
     const quick = performance.now() - drag.t0 < 280 && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 8;
@@ -409,7 +445,7 @@ export function createStackScene(canvas: HTMLCanvasElement, tokens: Token[], on:
     last = now;
 
     /* cursor empurra (sem arrasto em curso) */
-    const target = ptr && !drag ? onPlane(ptr.nx, ptr.ny, 0.55) : null;
+    const target = ptr && !drag && !focus ? onPlane(ptr.nx, ptr.ny, 0.55) : null;
     if (target) {
       if (cursor.position.y < -10) cursor.position.set(target.x, target.y, target.z);
       cursor.velocity.set((target.x - cursor.position.x) * 30, 0, (target.z - cursor.position.z) * 30);
@@ -425,8 +461,9 @@ export function createStackScene(canvas: HTMLCanvasElement, tokens: Token[], on:
     }
 
     let active = false;
+    if (focus) active = focusFrame(now) || active;
     for (const p of pieces) {
-      if (!p.group.visible) continue;
+      if (!p.group.visible || focus?.piece === p) continue;
       const b = p.body;
       /* mola da geleia: x = achatamento no eixo n */
       if (p.x !== 0 || p.v !== 0) {
@@ -459,20 +496,128 @@ export function createStackScene(canvas: HTMLCanvasElement, tokens: Token[], on:
     }
 
     /* hover: raycast só quando o ponteiro mexeu */
-    if (ptr && ptrMoved && !drag) {
+    if (ptr && ptrMoved && !drag && !focus) {
       ptrMoved = false;
       const h = pick(ptr.nx, ptr.ny);
       hovered = h?.piece ?? null;
       canvas.style.cursor = hovered ? "grab" : "";
     }
-    if (ptr && hovered) on.hover(hovered.token.name, ptr.x, ptr.y);
+    if (ptr && hovered && !focus) on.hover(hovered.token.name, ptr.x, ptr.y);
     else if (!drag) on.hover(null, 0, 0);
 
+    if (veilOut(now)) active = true;
     renderer.render(scene, camera);
 
     const busy = active || drag || now - lastInput < 600 || timers.length > 0 && now - startAt < tokens.length * 85 + 2500;
     quiet = busy ? 0 : quiet + 1;
     if (quiet < 30) schedule();
+  };
+
+  /* ---------- foco ---------- */
+  type Focus = { piece: Piece; t0: number; from: Vector3; fromQ: Quaternion; fromS: number; to: Vector3; toQ: Quaternion; toS: number; out: boolean };
+  let focus: Focus | null = null;
+  let veilFrom = 0;
+  const up = new Vector3(0, 1, 0);
+  const ease = (t: number) => 1 - Math.pow(1 - t, 3);
+  const fq = new Quaternion();
+  const wob = new Quaternion();
+  const fs = new Vector3();
+  /* pose de destino: perto da câmera, à esquerda do painel (desktop) ou acima
+   * dele (celular), virada de frente para quem olha */
+  const focusPose = () => {
+    const narrow = W < 640;
+    const camY = camera.position.y;
+    const p = onPlane(narrow ? 0 : -0.3, narrow ? 0.38 : 0.02, camY * 0.5) ?? new Vector3(0, camY * 0.5, 0);
+    const toCam = camera.position.clone().sub(p).normalize();
+    const q = new Quaternion().setFromUnitVectors(up, toCam);
+    const vh = 2 * Math.tan((camera.fov * Math.PI) / 360) * camera.position.distanceTo(p);
+    /* diâmetro ≈ 34% da altura do palco (≈ 26% no celular) */
+    const s = (vh * (narrow ? 0.26 : 0.34)) / (2 * R);
+    return { p, q, s };
+  };
+  const focusOn = (id: string) => {
+    const piece = pieces.find((p) => p.token.id === id);
+    if (!piece) return;
+    if (focus && focus.piece !== piece) release(focus);
+    const b = piece.body;
+    const from = new Vector3(), fromQ = new Quaternion();
+    const t = focusPose();
+    if (piece.group.visible) {
+      from.set(b.position.x, b.position.y, b.position.z);
+      fromQ.set(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w);
+    } else {
+      /* ainda não caiu (ex.: aberto pelo teclado): entra de cima */
+      from.copy(t.p).add(new Vector3(0, 6, 0));
+      fromQ.copy(t.q);
+      piece.group.visible = true;
+    }
+    if (inWorld.has(b)) {
+      world.removeBody(b);
+      inWorld.delete(b);
+    }
+    piece.x = piece.v = 0;
+    veilFrom = veilMat.opacity;
+    focus = { piece, t0: performance.now(), from, fromQ, fromS: 1, to: t.p, toQ: t.q, toS: t.s, out: false };
+    veil.visible = true;
+    hovered = null;
+    canvas.style.cursor = "";
+    wake();
+  };
+  /* devolve a peça à física a partir da pose atual */
+  const release = (f: Focus) => {
+    const b = f.piece.body;
+    const m = f.piece.group.matrix;
+    m.decompose(pos, quat, fs);
+    b.position.set(
+      Math.max(-bounds.x + R, Math.min(bounds.x - R, pos.x)),
+      Math.min(pos.y, 7),
+      Math.max(bounds.z0 + R, Math.min(bounds.z1 - R, pos.z)),
+    );
+    b.quaternion.set(quat.x, quat.y, quat.z, quat.w);
+    b.velocity.set(0, -2, 0);
+    b.angularVelocity.set((Math.random() - 0.5) * 4, 0, (Math.random() - 0.5) * 4);
+    world.addBody(b);
+    inWorld.add(b);
+    b.wakeUp();
+    f.piece.shadowMat.opacity = 0;
+  };
+  const focusOff = () => {
+    if (!focus) return;
+    release(focus);
+    focus = null;
+    veilFrom = veilMat.opacity;
+    veilT0 = performance.now();
+    wake();
+  };
+  let veilT0 = 0;
+  function focusFrame(now: number) {
+    const f = focus!;
+    const k = ease(Math.min(1, (now - f.t0) / 500));
+    const tt = now / 1000;
+    /* flutua e oscila devagar (sem girar o logo no próprio plano) */
+    pos.lerpVectors(f.from, f.to, k);
+    pos.y += Math.sin(tt * 1.6) * 0.12 * k;
+    wob.setFromAxisAngle(up, Math.sin(tt * 0.7) * 0.45 * k);
+    fq.slerpQuaternions(f.fromQ, f.toQ, k).premultiply(wob);
+    const sc = f.fromS + (f.toS - f.fromS) * k;
+    fs.set(sc, sc, sc);
+    f.piece.group.matrix.compose(pos, fq, fs);
+    f.piece.group.matrixWorldNeedsUpdate = true;
+    f.piece.shadowMat.opacity = Math.max(0, f.piece.shadowMat.opacity - 0.08);
+    /* véu logo atrás da peça, de frente para a câmera */
+    const dir = f.to.clone().sub(camera.position).normalize();
+    veil.position.copy(f.to).addScaledVector(dir, R * f.toS * 1.6);
+    veil.quaternion.copy(camera.quaternion);
+    veilMat.opacity = veilFrom + (0.78 - veilFrom) * k;
+    return true;
+  }
+  /* véu saindo depois do fechamento */
+  const veilOut = (now: number) => {
+    if (focus || !veil.visible) return false;
+    const k = Math.min(1, (now - veilT0) / 350);
+    veilMat.opacity = veilFrom * (1 - k);
+    if (k >= 1) veil.visible = false;
+    return k < 1;
   };
 
   let startAt = 0;
@@ -493,11 +638,25 @@ export function createStackScene(canvas: HTMLCanvasElement, tokens: Token[], on:
   document.addEventListener("visibilitychange", onVis);
   resize();
 
+  /* compila os shaders fora da main thread (KHR_parallel_shader_compile)
+   * antes do primeiro frame; as fichas ainda invisíveis entram na compilação */
+  for (const p of pieces) p.group.visible = true;
+  veil.visible = true;
+  try {
+    await renderer.compileAsync(scene, camera);
+  } catch {
+    /* sem suporte: compila no primeiro render, como antes */
+  }
+  for (const p of pieces) p.group.visible = false;
+  veil.visible = false;
+
   return {
     drop() {
       startAt = performance.now();
       drop();
     },
+    focus: focusOn,
+    unfocus: focusOff,
     destroy() {
       cancelAnimationFrame(raf);
       timers.forEach(clearTimeout);

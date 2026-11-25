@@ -2,7 +2,6 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { Decrypt } from "@/components/Decrypt";
-import { Dual } from "@/components/Dual";
 import { projects, type Project } from "@/content/profile";
 import { t } from "@/lib/i18n";
 
@@ -21,9 +20,7 @@ export function Work() {
       <header className="sec-head">
         <div className="sec-meta">
           <span>01</span>
-          <span className="text-ink-soft">
-            <Dual term="recon --findings --sort=severity" clean="Projetos selecionados" />
-          </span>
+          <span className="text-ink-soft">recon --findings --sort=severity</span>
           <span>{pad(projects.length)} projetos</span>
         </div>
         <h2 id="work-title" className="sec-title font-display">
@@ -52,7 +49,7 @@ function WorkItem({ p, i, total }: { p: Project; i: number; total: number }) {
             aria-hidden="true"
             className={`size-2 rounded-full ${p.severity === "critical" ? "bg-accent" : p.severity === "high" ? "bg-ink" : "border border-ink"}`}
           />
-          <Dual term={`${p.id} · ${p.severity.toUpperCase()}`} clean={`Projeto ${pad(i + 1)}`} />
+          {p.id} · {p.severity.toUpperCase()}
         </p>
         <p aria-label={`Projeto ${i + 1} de ${total}`}>
           {pad(i + 1)}/{pad(total)}
@@ -66,24 +63,34 @@ function WorkItem({ p, i, total }: { p: Project; i: number; total: number }) {
 
       <div className="mt-6 grid gap-8 sm:mt-10 lg:grid-cols-12 lg:gap-10">
         <figure className="lg:col-span-7">
-          <Link href={`/projetos/${p.slug}`} tabIndex={-1} aria-hidden="true" className="work-fig block">
-            {p.image ? (
-              <Image
-                src={p.image.src}
-                alt=""
-                fill
-                sizes="(min-width: 1024px) 58vw, 100vw"
-                className="work-media object-cover"
-              />
-            ) : (
-              <span className="work-media work-ph">
-                <span className="text-center font-mono text-[11px] tracking-wide text-ink-soft uppercase">
-                  {p.display}
-                  <br />
-                  print em breve
+          <Link href={`/projetos/${p.slug}`} tabIndex={-1} aria-hidden="true" className="work-win block">
+            {/* moldura leve de janela */}
+            <span className="work-bar" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+              <span className="ml-3 truncate">{p.links.demo ? p.links.demo.replace(/^https?:\/\//, "").replace(/\/$/, "") : `${p.display.toLowerCase()} · interno`}</span>
+            </span>
+            <span className="work-fig block" style={p.image ? { aspectRatio: `${p.image.width} / ${p.image.height}` } : undefined}>
+              {p.image ? (
+                <Image
+                  src={p.image.src}
+                  alt=""
+                  width={p.image.width}
+                  height={p.image.height}
+                  sizes="(min-width: 1024px) 58vw, 100vw"
+                  className="work-media h-full w-full object-cover object-top"
+                />
+              ) : (
+                <span className="work-media work-ph">
+                  <span className="text-center font-mono text-[11px] tracking-wide text-ink-soft uppercase">
+                    {p.display}
+                    <br />
+                    print em breve
+                  </span>
                 </span>
-              </span>
-            )}
+              )}
+            </span>
           </Link>
           <figcaption className={`work-cap mt-2 flex justify-between gap-4 ${meta} text-ink-soft`}>
             <span>
@@ -115,19 +122,26 @@ function WorkItem({ p, i, total }: { p: Project; i: number; total: number }) {
             </ul>
           )}
 
-          <p className={`${meta} flex gap-6`}>
+          {p.private && (
+            <p className={`${meta} inline-flex w-fit items-center gap-2 border border-ink/30 px-2 py-1`}>
+              <span aria-hidden="true" className="size-1.5 rounded-full bg-ink" />
+              Sistema interno · privado
+            </p>
+          )}
+
+          <p className={`${meta} flex flex-wrap gap-x-6 gap-y-2`}>
             <Link href={`/projetos/${p.slug}`} className="ulink">
               Estudo de caso <span aria-hidden="true">→</span>
             </Link>
-            {p.links.repo && (
-              <a href={p.links.repo} target="_blank" rel="noreferrer" className="ulink">
-                Repo <span aria-hidden="true">↗</span>
-                <span className="sr-only"> (abre em nova aba)</span>
-              </a>
-            )}
             {p.links.demo && (
               <a href={p.links.demo} target="_blank" rel="noreferrer" className="ulink">
                 Demo <span aria-hidden="true">↗</span>
+                <span className="sr-only"> (abre em nova aba)</span>
+              </a>
+            )}
+            {p.links.repo && (
+              <a href={p.links.repo} target="_blank" rel="noreferrer" className="ulink">
+                Repo <span aria-hidden="true">↗</span>
                 <span className="sr-only"> (abre em nova aba)</span>
               </a>
             )}

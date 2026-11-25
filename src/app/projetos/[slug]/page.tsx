@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { Dual } from "@/components/Dual";
+import Image from "next/image";
+
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
 import { projects } from "@/content/profile";
@@ -30,13 +30,13 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   };
 }
 
-function Block({ n, term, title, children }: { n: string; term: string; title: string; children: React.ReactNode }) {
+function Block({ n, title, children }: { n: string; title: string; children: React.ReactNode }) {
   return (
-    <section className="grid gap-3 border-t border-line py-10 md:grid-cols-[12rem_1fr] md:gap-8">
-      <h2 className="font-mono text-sm text-dim">
-        <span className="text-accent">{n}</span> <Dual term={term} clean={title} />
+    <section className="grid gap-3 border-t border-ink/20 py-10 md:grid-cols-12 md:gap-8">
+      <h2 className="font-mono text-[11px] tracking-wide text-ink-soft uppercase md:col-span-3 sm:text-xs">
+        {n} · {title}
       </h2>
-      <div className="max-w-2xl leading-relaxed text-muted">{children}</div>
+      <div className="max-w-[62ch] text-lg leading-relaxed md:col-span-9">{children}</div>
     </section>
   );
 }
@@ -46,7 +46,7 @@ function List({ items }: { items: Localized[] }) {
     <ul className="space-y-2">
       {items.map((i) => (
         <li key={t(i)} className="flex gap-3">
-          <span aria-hidden="true" className="font-mono text-dim">
+          <span aria-hidden="true" className="font-mono text-ink-soft">
             –
           </span>
           {t(i)}
@@ -65,50 +65,57 @@ export default async function CaseStudyPage({ params }: { params: Promise<{ slug
   return (
     <>
       <SiteHeader />
-      <main id="conteudo" className="mx-auto max-w-[75rem] px-4 pt-12 pb-20 sm:px-6 sm:pt-16">
-        <Link href="/#findings" className="font-mono text-xs text-muted hover:text-accent">
-          <Dual term="cd ../findings" clean="← Voltar aos projetos" />
-        </Link>
-        <header className="mt-8 mb-12">
-          <p className="font-mono text-xs text-dim">
-            <Dual term={`${project.id} · ${project.severity.toUpperCase()}`} clean="Estudo de caso" />
+      <main id="conteudo" className="bg-paper px-4 pt-10 pb-20 text-ink sm:px-6 sm:pt-16">
+        <header className="mb-12 [container-type:inline-size]">
+          <p className="font-mono text-[11px] tracking-wide text-ink-soft uppercase sm:text-xs">
+            {project.id} · {project.severity.toUpperCase()} · Estudo de caso
           </p>
-          <h1 className="mt-3 text-4xl font-semibold tracking-tight text-fg sm:text-5xl">{project.title}</h1>
-          <p className="mt-4 max-w-2xl text-lg text-muted">{t(project.summary)}</p>
-          <ul aria-label="Stack" className="mt-6 flex flex-wrap gap-1.5 font-mono text-xs text-dim">
-            {project.stack.map((s) => (
-              <li key={s} className="rounded border border-line px-2 py-0.5">
-                {s}
-              </li>
-            ))}
-          </ul>
-          <div className="mt-6 flex flex-wrap gap-5 font-mono text-sm">
+          <h1 className="mt-4 font-display text-[clamp(3.5rem,14vw,12rem)] leading-[0.8] tracking-[-0.035em]">{project.display}</h1>
+          <p className="mt-8 max-w-[48ch] text-xl leading-snug sm:text-2xl">{t(project.summary)}</p>
+          <p className="mt-6 font-mono text-xs tracking-wide uppercase">
+            <span className="text-ink-soft">Stack </span>
+            {project.stack.filter((s) => !s.startsWith("TODO")).join(" · ") || "—"}
+          </p>
+          <div className="mt-6 flex flex-wrap gap-6 font-mono text-xs tracking-wide uppercase">
+            {project.private && <span>Sistema interno · privado</span>}
             {project.links.demo ? (
-              <a href={project.links.demo} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
-                Demo<span className="sr-only"> (abre em nova aba)</span>
+              <a href={project.links.demo} target="_blank" rel="noopener noreferrer" className="ulink">
+                Demo <span aria-hidden="true">↗</span>
+                <span className="sr-only"> (abre em nova aba)</span>
               </a>
             ) : null}
             {project.links.repo ? (
-              <a href={project.links.repo} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
-                Repositório<span className="sr-only"> (abre em nova aba)</span>
+              <a href={project.links.repo} target="_blank" rel="noopener noreferrer" className="ulink">
+                Repo <span aria-hidden="true">↗</span>
+                <span className="sr-only"> (abre em nova aba)</span>
               </a>
             ) : null}
           </div>
+          {project.image && (
+            <div className="work-win mt-10">
+              <span className="work-bar" aria-hidden="true">
+                <i />
+                <i />
+                <i />
+              </span>
+              <Image src={project.image.src} alt={t(project.image.alt)} width={project.image.width} height={project.image.height} sizes="100vw" className="block h-auto w-full" />
+            </div>
+          )}
         </header>
 
-        <Block n="01" term="problem" title="Problema">
+        <Block n="01" title="Problema">
           <p>{t(cs.problem)}</p>
         </Block>
-        <Block n="02" term="solution" title="Solução">
+        <Block n="02" title="Solução">
           <p>{t(cs.solution)}</p>
         </Block>
-        <Block n="03" term="architecture" title="Arquitetura">
+        <Block n="03" title="Arquitetura">
           <List items={cs.architecture} />
         </Block>
-        <Block n="04" term="decisions --security" title="Decisões técnicas e de segurança">
+        <Block n="04" title="Decisões técnicas e de segurança">
           <List items={cs.decisions} />
         </Block>
-        <Block n="05" term="result" title="Resultado">
+        <Block n="05" title="Resultado">
           <p>{t(cs.result)}</p>
         </Block>
       </main>
