@@ -200,18 +200,20 @@ html[data-intro] .hero .hl-bot {
   text-align: center;
   letter-spacing: 0;
 }
-/* foto em negativo ("raio-x"): o fundo branco vira preto e o blend
- * "lighten" (contra o fundo da camada, sem z-index para não isolar) some com
- * ele: nenhum retângulo dentro da lente */
-.hero-photo {
-  mix-blend-mode: lighten;
-}
+/* foto com as cores naturais: P&B com contraste levemente aumentado. Sem
+ * inversão nem blend (a inversão é só dos glifos ASCII sobre as letras, e
+ * acontece no shader, não aqui) */
 .hero-photo img {
   display: block;
   width: 100%;
   height: 100%;
-  filter: grayscale(1) invert(1) contrast(1.05);
-  opacity: 0.85;
+  object-fit: cover;
+  filter: grayscale(1) contrast(1.12);
+  /* o fundo da foto é recortado pela máscara gerada no build (image.ts) */
+  mask-size: 100% 100%;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
 }
 .lens-ring {
   display: none;
