@@ -91,8 +91,14 @@ async function figureMask(sharp: typeof import("sharp").default, file: string, g
       stack.push(i);
     }
   };
-  for (let x = 0; x < w; x++) seed(x), seed((h - 1) * w + x);
-  for (let y = 0; y < h; y++) seed(y * w), seed(y * w + w - 1);
+  for (let x = 0; x < w; x++) {
+    seed(x);
+    seed((h - 1) * w + x);
+  }
+  for (let y = 0; y < h; y++) {
+    seed(y * w);
+    seed(y * w + w - 1);
+  }
   while (stack.length) {
     const i = stack.pop()!;
     const x = i % w;
@@ -106,7 +112,10 @@ async function figureMask(sharp: typeof import("sharp").default, file: string, g
   /* mask-image usa o ALFA: branco + alfa = máscara (suavizada) */
   const soft = await sharp(m, { raw: { width: w, height: h, channels: 1 } }).blur(1.2).extractChannel(0).raw().toBuffer();
   const ga = Buffer.alloc(w * h * 2);
-  for (let i = 0; i < w * h; i++) (ga[2 * i] = 255), (ga[2 * i + 1] = soft[i]);
+  for (let i = 0; i < w * h; i++) {
+    ga[2 * i] = 255;
+    ga[2 * i + 1] = soft[i];
+  }
   const png = await sharp(ga, { raw: { width: w, height: h, channels: 2 } })
     .png({ compressionLevel: 9 })
     .toBuffer();
