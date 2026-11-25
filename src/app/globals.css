@@ -651,8 +651,30 @@ html[data-js] .hero[data-live] .ascii-fallback {
       animation-timeline: --audit, --audit;
       animation-range:
         entry 0% entry 60%,
-        exit 0% exit 55%;
+        exit 18% exit 65%;
     }
+    /* o texto é claro: só fica visível enquanto o círculo escuro está atrás
+     * dele. Aparece depois que o círculo cobre a tela e some antes de ele
+     * começar a fechar (nunca texto claro sobre o papel) */
+    .audit-body {
+      animation:
+        audit-text-in linear both,
+        audit-text-out linear both;
+      animation-timeline: --audit, --audit;
+      animation-range:
+        entry 35% entry 60%,
+        exit 0% exit 18%;
+    }
+  }
+}
+@keyframes audit-text-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes audit-text-out {
+  to {
+    opacity: 0;
   }
 }
 /* entrada mexe em `scale`, saída em `transform`: as duas se multiplicam,
