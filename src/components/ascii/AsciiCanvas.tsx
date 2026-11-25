@@ -36,12 +36,17 @@ function compile(gl: WebGL2RenderingContext, type: number, src: string) {
   return s;
 }
 
-function texture(gl: WebGL2RenderingContext, unit: number, source: TexImageSource, flip: boolean) {
+/* premultiply: o estado do upload é sempre explícito (nunca herdado de outro
+ * texImage2D). A foto sobe pré-multiplicada e o shader compõe sobre branco
+ * com essa conta (rgb + 1 - a); o atlas sobe como está. */
+function texture(gl: WebGL2RenderingContext, unit: number, source: TexImageSource, flip: boolean, premultiply = false) {
   const t = gl.createTexture();
   gl.activeTexture(gl.TEXTURE0 + unit);
   gl.bindTexture(gl.TEXTURE_2D, t);
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, flip);
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, premultiply);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
   gl.generateMipmap(gl.TEXTURE_2D);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
@@ -178,29 +183,65 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
       gl.useProgram(prog);
     };
 
-    /* ---------- interação ---------- */
+    /* ---------- interação ----------
+     * Mouse (hover + ponteiro fino): a lente só existe com o ponteiro dentro
+     * do hero; entra e sai com fade (raio + opacidade), já no ponto do mouse.
+     * Toque: segue o dedo; sem toque, passeia devagar sobre o rosto. */
+    /* começa pela media query e passa a seguir o último ponteiro usado
+     * (notebook com tela de toque alterna entre os dois modos) */
+    let hoverable = matchMedia("(hover: hover) and (pointer: fine)").matches;
+    const mode = (e: PointerEvent) => {
+      if (e.pointerType === "mouse") hoverable = true;
+      else if (e.type === "pointerdown") hoverable = false;
+    };
     const face = () => ({ x: W / 2, y: rect.y + rect.h * 0.4 });
-    let lx = 0, ly = 0, tx = 0, ty = 0;
+    let lx = NaN, ly = NaN, tx = 0, ty = 0;
     let px = -1e4, py = -1e4, pa = 0;
     let lastInput = -Infinity;
+    let inside = false;
+    let lv = 0; // visibilidade da lente 0..1 (fade)
     const t0 = performance.now();
 
-    const onMove = (e: PointerEvent) => {
+    const at = (e: PointerEvent) => {
       tx = e.pageX - boxLeft;
       ty = e.pageY - boxTop;
+    };
+    const onMove = (e: PointerEvent) => {
+      mode(e);
+      at(e);
       if (px < -1e3) {
         px = tx;
         py = ty;
       }
+      if (hoverable && e.pointerType === "mouse") inside = true;
       lastInput = performance.now();
+      schedule();
+    };
+    const onEnter = (e: PointerEvent) => {
+      if (e.pointerType !== "mouse") return;
+      mode(e);
+      at(e);
+      /* lente invisível: nasce no ponteiro, sem deslizar de onde estava */
+      if (lv < 0.05) {
+        lx = tx;
+        ly = ty;
+      }
+      inside = true;
+      schedule();
+    };
+    const onLeave = (e: PointerEvent) => {
+      if (e.pointerType !== "mouse") return;
+      inside = false;
       schedule();
     };
     box.addEventListener("pointermove", onMove, { passive: true });
     box.addEventListener("pointerdown", onMove, { passive: true });
+    box.addEventListener("pointerenter", onEnter, { passive: true });
+    box.addEventListener("pointerleave", onLeave, { passive: true });
 
     let raf = 0;
     let visible = true;
-    let shownX = NaN, shownY = NaN, shownR = NaN, lensOn = false;
+    let shownX = NaN, shownY = NaN, shownR = NaN, shownV = NaN, lensOn = false;
     let lastDraw = 0;
     let U: Record<"time" | "ptr", WebGLUniformLocation | null>;
 
@@ -216,12 +257,21 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
       const t = (now - t0) / 1000;
       const sinceInput = now - lastInput;
       const idle = sinceInput > 2500;
-      if (idle && !reduce) {
+      /* passeio sozinho só sem mouse (toque): com mouse, a lente fica no ponteiro */
+      if (!hoverable && idle && !reduce) {
         const f = face();
         tx = f.x + rect.w * 0.32 * Math.sin(t * 0.31);
         ty = f.y + rect.h * 0.22 * Math.sin(t * 0.47 + 1.3);
       }
-      const k = idle ? 0.05 : 0.25;
+      if (Number.isNaN(lx)) {
+        const f = face();
+        lx = hoverable ? tx : f.x;
+        ly = hoverable ? ty : f.y;
+      }
+      const target = hoverable ? (inside ? 1 : 0) : 1;
+      lv += (target - lv) * 0.18;
+      if (Math.abs(target - lv) < 0.002) lv = target;
+      const k = !hoverable && idle ? 0.05 : 0.25;
       lx += (tx - lx) * k;
       ly += (ty - ly) * k;
       px += (tx - px) * 0.5;
@@ -237,12 +287,13 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
       }
       /* a lente só abre depois que o retrato trava */
       const open = Math.min(1, Math.max(0, (it - 1.5) / 0.6));
-      const r = lensR * (1 - Math.pow(1 - open, 3));
+      const r = lensR * (1 - Math.pow(1 - open, 3)) * (0.6 + 0.4 * lv) * (lv > 0 ? 1 : 0);
       gl.uniform1f(U.time, t);
       gl.uniform3f(U.ptr, px * dpr, (H - py) * dpr, pa);
       /* lente: só variáveis CSS (a camada under e o aro leem daqui) */
       const lr = Math.round(r * 10) / 10;
-      if (lr !== shownR || Math.abs(lx - shownX) > 0.05 || Math.abs(ly - shownY) > 0.05) {
+      if (lr !== shownR || Math.abs(lx - shownX) > 0.05 || Math.abs(ly - shownY) > 0.05 || lv !== shownV) {
+        shownV = lv;
         shownR = lr;
         shownX = lx;
         shownY = ly;
@@ -251,6 +302,7 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
         st.setProperty("--ly", `${ly.toFixed(1)}px`);
         st.setProperty("--lr", `${lr}px`);
         st.setProperty("--ls", (lr / 100).toFixed(3));
+        st.setProperty("--lo", lv.toFixed(3));
         if (lr > 0 && !lensOn) {
           lensOn = true;
           box.dataset.lens = "";
@@ -340,7 +392,7 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
       if (!ok) return onFail();
 
       texture(gl, 0, buildAtlas(family), false);
-      texture(gl, 1, img, true);
+      texture(gl, 1, img, true, true);
       imgW = img.naturalWidth;
       for (const p of [gridProg, prog]) {
         gl.useProgram(p);
@@ -379,6 +431,8 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
       io.disconnect();
       box.removeEventListener("pointermove", onMove);
       box.removeEventListener("pointerdown", onMove);
+      box.removeEventListener("pointerenter", onEnter);
+      box.removeEventListener("pointerleave", onLeave);
       canvas.removeEventListener("webglcontextlost", onLost);
       document.removeEventListener("visibilitychange", onVis);
       delete box.dataset.live;

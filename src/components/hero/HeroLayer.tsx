@@ -27,7 +27,9 @@ export function HeroLayer({ variant, portrait, alt }: { variant: "surface" | "un
             src={portrait.src}
             alt=""
             decoding="async"
-            loading="lazy"
+            /* eager: a camada começa escondida (display: none) e uma imagem lazy
+               só carregaria quando a lente abrisse, deixando o círculo vazio */
+            loading="eager"
             style={{ maskImage: `url(${portrait.mask})`, WebkitMaskImage: `url(${portrait.mask})` }}
           />
         ) : (

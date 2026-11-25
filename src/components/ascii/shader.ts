@@ -55,10 +55,18 @@ vec2 cellUV(ivec2 c) {
   vec2 p = (vec2(c) + 0.5) * vec2(uCell, uCell * RATIO);
   return (p - uRect.xy) / uRect.zw;
 }
-float lum(vec2 uv, float lod) { return dot(textureLod(uImg, uv, lod).rgb, vec3(0.2126, 0.7152, 0.0722)); }
+/* uImg tem alpha PRÉ-multiplicado (subido assim de propósito: o mipmap faz
+ * a média certa na borda da silhueta). "Sobre branco" = rgb + (1 - a):
+ * transparente vira claro (vazio), nunca preto (glifo denso). */
+float lum(vec2 uv, float lod) {
+  vec4 t = textureLod(uImg, uv, lod);
+  return dot(t.rgb + (1.0 - t.a), vec3(0.2126, 0.7152, 0.0722));
+}
+float alphaAt(vec2 uv) { return textureLod(uImg, uv, uImgLod).a; }
 float dens(ivec2 c) {
   vec2 uv = cellUV(c);
   if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return 0.0;
+  if (alphaAt(uv) < 0.5) return 0.0; // fora da silhueta: célula vazia
   float l = lum(uv, uImgLod);
   float x = l + ${f(LEVELS.sharpen)} * (l - lum(uv, uImgLod + 2.0));
   x = clamp((x - uLevels.x) / (uLevels.y - uLevels.x), 0.0, 1.0);
@@ -116,8 +124,9 @@ void main() {
     amber = ((fh >> 9u) & 7u) == 0u ? 1.0 : 0.0;
   }
 
-  /* montagem: glifos aleatórios que travam no certo, de dentro para fora */
-  if (inRect && uIntro < 2.0) {
+  /* montagem: glifos aleatórios que travam no certo, de dentro para fora
+   * (só dentro da silhueta: o fundo transparente nunca vira retângulo) */
+  if (inRect && uIntro < 2.0 && alphaAt(uv) >= 0.5) {
     float dc = length((uv - vec2(0.5, 0.55)) * vec2(uAspect, 1.0)) / 0.7;
     float lockAt = 0.12 + 1.1 * dc + float(hash3(uint(c.x), uint(c.y), 3u) % 1000u) * 2.5e-4;
     if (uIntro < lockAt) {

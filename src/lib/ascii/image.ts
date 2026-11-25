@@ -39,16 +39,24 @@ export function getAsciiImage(name: string) {
 async function build(name: string): Promise<AsciiImageData> {
   const { default: sharp } = await import("sharp");
   const W = 256;
-  const { data, info } = await sharp(path.join(PUBLIC, name))
+  const file = path.join(PUBLIC, name);
+  /* luminância com o retrato composto sobre branco: pixel transparente vira
+   * claro (célula vazia), nunca preto (glifo denso) */
+  const { data, info } = await sharp(file)
     .resize({ width: W })
+    .flatten({ background: "#ffffff" })
     .greyscale()
     .raw()
     .toBuffer({ resolveWithObject: true });
+  const { data: alpha } = await sharp(file).resize({ width: W }).ensureAlpha().extractChannel(3).raw().toBuffer({ resolveWithObject: true });
+  const hasAlpha = (await sharp(file).metadata()).hasAlpha === true;
   const aspect = info.width / info.height;
-  const levels = autoLevels(data);
+  /* níveis só sobre a figura (o fundo transparente não conta no histograma) */
+  const levels = autoLevels(hasAlpha ? data.filter((_, i) => alpha[i] >= 128) : data);
 
-  const at = (x: number, y: number) =>
-    data[Math.min(info.height - 1, Math.max(0, Math.round(y))) * info.width + Math.min(info.width - 1, Math.max(0, Math.round(x)))] / 255;
+  const idx = (x: number, y: number) =>
+    Math.min(info.height - 1, Math.max(0, Math.round(y))) * info.width + Math.min(info.width - 1, Math.max(0, Math.round(x)));
+  const at = (x: number, y: number) => data[idx(x, y)] / 255;
   const rows = Math.ceil(PRE_COLS / aspect / RATIO);
   const cellPx = info.width / PRE_COLS;
 
@@ -58,13 +66,14 @@ async function build(name: string): Promise<AsciiImageData> {
     if (u < 0 || u > 1 || v < 0 || v > 1) return 0;
     const x = u * info.width;
     const y = (1 - v) * info.height;
+    if (alpha[idx(x, y)] < 128) return 0; // alpha < 0.5: célula vazia
     const l = at(x, y);
     const k = cellPx * 2;
     const blur = (at(x - k, y) + at(x + k, y) + at(x, y - k) + at(x, y + k)) / 4;
     return toneDensity(l, blur, u, v, levels);
   });
 
-  const mask = await figureMask(sharp, path.join(PUBLIC, name), data, info.width, info.height);
+  const mask = await figureMask(sharp, data, alpha, hasAlpha, info.width, info.height);
 
   return {
     mask,
@@ -76,14 +85,17 @@ async function build(name: string): Promise<AsciiImageData> {
 }
 
 /*
- * Máscara da figura: o fundo é o que é claro E está ligado às bordas da imagem
- * (preenchimento a partir da borda), somado ao que já é transparente no
- * arquivo (portrait.png com o fundo removido). Bordas suavizadas com blur.
+ * Máscara da figura (recorta o fundo da foto dentro da lente).
+ * - PNG com fundo removido: a máscara É o alpha do arquivo (nada de
+ *   adivinhação: a camisa branca encostada na borda continua na foto).
+ * - foto com fundo (JPG): o fundo é o que é claro E está ligado às bordas
+ *   (preenchimento a partir da borda).
+ * Bordas suavizadas com blur.
  */
-async function figureMask(sharp: typeof import("sharp").default, file: string, grey: Buffer, w: number, h: number) {
-  const { data: alpha } = await sharp(file).resize({ width: w }).ensureAlpha().extractChannel(3).raw().toBuffer({ resolveWithObject: true });
+async function figureMask(sharp: typeof import("sharp").default, grey: Buffer, alpha: Buffer, hasAlpha: boolean, w: number, h: number) {
   const BG = 222; // "claro o bastante para ser fundo"
   const bg = new Uint8Array(w * h);
+  if (hasAlpha) for (let i = 0; i < w * h; i++) bg[i] = alpha[i] < 128 ? 1 : 0;
   const stack: number[] = [];
   const seed = (i: number) => {
     if (!bg[i] && (grey[i] >= BG || alpha[i] < 16)) {
@@ -91,11 +103,11 @@ async function figureMask(sharp: typeof import("sharp").default, file: string, g
       stack.push(i);
     }
   };
-  for (let x = 0; x < w; x++) {
+  for (let x = 0; x < w && !hasAlpha; x++) {
     seed(x);
     seed((h - 1) * w + x);
   }
-  for (let y = 0; y < h; y++) {
+  for (let y = 0; y < h && !hasAlpha; y++) {
     seed(y * w);
     seed(y * w + w - 1);
   }
@@ -131,7 +143,14 @@ function toSvg(text: string, rows: number) {
   const esc = (l: string) => l.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const lines = text
     .split("\n")
-    .map((l, i) => (l.trim() ? `<text y="${((i + 0.85) * lh).toFixed(1)}">${esc(l)}</text>` : ""))
+    /* espaços iniciais viram x (o SVG colapsa espaço em branco no começo da
+     * linha, e com o fundo transparente cada linha começa com espaços) */
+    .map((l, i) => {
+      const body = l.trimStart();
+      if (!body.trim()) return "";
+      const x = ((l.length - body.length) * fs * 0.6).toFixed(1);
+      return `<text x="${x}" y="${((i + 0.85) * lh).toFixed(1)}">${esc(body.trimEnd())}</text>`;
+    })
     .join("");
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="${fs}" fill="#141414" xml:space="preserve">` +
