@@ -5,7 +5,8 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import type { TerminalData } from "./terminal/types";
 
-/* O terminal (≈7 KB) só é baixado quando alguém abre o overlay. */
+/* Easter egg: sem botão na tela, o terminal abre só pela tecla "~".
+ * O código (≈7 KB) só é baixado quando alguém abre o overlay. */
 const ReconTerminal = dynamic(() => import("./terminal/ReconTerminal").then((m) => m.ReconTerminal), { ssr: false });
 
 function isTyping(el: EventTarget | null) {
@@ -42,17 +43,6 @@ export function TerminalDock({ data }: { data: TerminalData }) {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={open}
-        aria-haspopup="dialog"
-        className="fixed right-4 bottom-4 z-40 flex min-h-10 items-center gap-2 rounded-full border border-white/10 bg-[#111317] px-4 font-mono text-xs text-[#e6e8eb] shadow-lg transition-colors duration-150 hover:border-accent sm:right-6 sm:bottom-6"
-      >
-        <span aria-hidden="true" className="text-accent">
-          ~
-        </span>
-        terminal
-      </button>
       <dialog
         ref={ref}
         aria-label="Terminal"
