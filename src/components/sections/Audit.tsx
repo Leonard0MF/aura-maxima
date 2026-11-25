@@ -5,19 +5,15 @@ import { profile } from "@/content/profile";
 import { AuditReplay } from "./AuditReplay";
 
 /*
- * 03 · AUDIT: "Escaneie este site". A única seção escura; o fundo é um círculo
- * que cresce com a rolagem até cobrir a tela e fecha na saída (CSS
- * scroll-driven animation, só transform). Sem suporte ou com reduced-motion:
- * corte seco. O conteúdo é o replay de um scan do Aegis (audit.json).
+ * 03 · AUDIT: "Escaneie este site". A única seção escura; o fundo faz um fade
+ * do papel para o escuro com a rolagem e volta na saída (CSS scroll-driven
+ * animation, só opacity, preso à seção). Sem suporte ou com reduced-motion:
+ * seção escura direto. O conteúdo é o replay de um scan do Aegis (audit.json).
  */
 export function Audit() {
   return (
     <section id="auditoria" aria-labelledby="audit-title" className="audit theme-dark">
-      <div className="audit-bg" aria-hidden="true">
-        <div className="audit-pin">
-          <span />
-        </div>
-      </div>
+      <div className="audit-bg" aria-hidden="true" />
       <div className="audit-body text-fg">
         <SectionHead n="03" label="Audit" title="Escaneie este site" id="audit-title" meta={`aegis scan ${audit.target}`}>
           <span className="text-muted">O Aegis, meu scanner, rodando sobre este portfólio.</span>
