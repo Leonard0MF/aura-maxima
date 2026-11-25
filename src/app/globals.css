@@ -669,6 +669,25 @@ html[data-js] .hero[data-live] .ascii-fallback {
   gap: 1.5rem 3rem;
   padding-bottom: 3rem;
 }
+/* desktop: o texto vai para a direita; o terço esquerdo é do buraco negro */
+@media (min-width: 1024px) {
+  .audit-foot {
+    flex-direction: column;
+    align-items: flex-end;
+  }
+  .audit-copy {
+    max-width: 50ch;
+  }
+  .audit-progress {
+    right: auto;
+    left: 1.5rem;
+  }
+  /* fallback estático: texto à esquerda, abaixo do buraco negro; lista à direita */
+  .audit[data-static] .audit-foot {
+    flex-direction: row;
+    align-items: flex-end;
+  }
+}
 /* lista em texto: escondida (só leitores de tela) quando a rede está viva;
  * visível no fallback estático e sem JS */
 .audit-list {

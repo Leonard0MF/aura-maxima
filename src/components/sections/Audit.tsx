@@ -5,10 +5,11 @@ import { profile } from "@/content/profile";
 
 /*
  * 03 · AUDIT: "este site, visto por dentro". Fundo escuro (fade preso à
- * seção) com uma constelação interativa (AuditField) cujos nós principais
- * são dados REAIS de segurança do site, vindos de content/audit.json. Por
- * cima, em DOM: cabeçalho, frase, nota, trade-off do CSP e o CTA do Aegis.
- * A seção cabe em 100svh.
+ * seção) com um buraco negro no terço esquerdo e uma constelação interativa
+ * em órbita (AuditField) cujos nós principais são os dados de segurança do
+ * site, vindos de content/audit.json. Por cima, em DOM: cabeçalho, frase,
+ * nota, trade-off do CSP e o CTA do Aegis (à direita no desktop, para não
+ * cobrir o buraco negro). A seção cabe em 100svh.
  */
 export function Audit() {
   const meta = "font-mono text-[11px] tracking-wide uppercase sm:text-xs";
@@ -23,7 +24,7 @@ export function Audit() {
         </SectionHead>
 
         <div className="audit-foot px-4 sm:px-6">
-          <div className="max-w-[62ch]">
+          <div className="audit-copy max-w-[62ch]">
             <p className={`${meta} text-muted`}>
               Nota{" "}
               <span className="ml-1 text-paper">
