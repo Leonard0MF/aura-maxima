@@ -105,7 +105,7 @@ html[data-scan="instant"] .scan-line {
 
 /* ---------- Hero: tipografia gigante + retrato ASCII + lente ---------- */
 .hero {
-  height: max(100svh, 600px);
+  height: max(100svh, 600px); /* no celular o texto também cabe (≈500px) */
   container-type: size;
 }
 .hero-display {
@@ -622,9 +622,138 @@ html[data-js] .hero[data-live] .ascii-fallback {
 .audit-body {
   position: relative;
 }
+/* ---- constelação (AuditField) ---- */
+.audit {
+  /* a seção inteira é a tela da constelação */
+  height: max(100svh, 600px); /* no celular o texto também cabe (≈500px) */
+  touch-action: pan-y; /* scroll vertical nativo; arrasto horizontal gira */
+}
+.audit-field {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+}
+.audit-canvas,
+.audit-static,
+.audit-static svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+/* o texto fica por cima, mas só links recebem o ponteiro: o resto vai para a rede */
+.audit-body {
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 100%;
+  pointer-events: none;
+}
+.audit-body a {
+  pointer-events: auto;
+}
+.audit-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1.5rem 3rem;
+  padding-bottom: 3rem;
+}
+/* lista em texto: escondida (só leitores de tela) quando a rede está viva;
+ * visível no fallback estático e sem JS */
+.audit-list {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.audit[data-static] .audit-list,
+html:not([data-js]) .audit-list {
+  position: static;
+  width: min(100%, 560px);
+  height: auto;
+  overflow: visible;
+  clip-path: none;
+  white-space: normal;
+  padding: 0.75rem 1rem;
+  background: rgb(11 13 16 / 0.82);
+  border: 1px solid var(--color-line);
+}
+.audit[data-static] .audit-hint {
+  display: none;
+}
+.audit-card {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 2;
+  width: max-content;
+  max-width: min(320px, calc(100% - 24px));
+  padding: 0.6rem 0.75rem;
+  border: 1px solid rgb(245 165 36 / 0.45);
+  background: rgb(11 13 16 / 0.92);
+  font-family: var(--font-mono);
+  pointer-events: none;
+  visibility: hidden; /* até ser posicionado ao lado do nó */
+  animation: card-in 0.16s ease-out both;
+}
+@keyframes card-in {
+  from {
+    opacity: 0;
+  }
+}
+.audit-progress {
+  position: absolute;
+  right: 1.5rem;
+  bottom: 1.25rem;
+  z-index: 2;
+  pointer-events: none;
+}
+.audit-grade {
+  position: absolute;
+  right: 6%;
+  top: 50%;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  translate: 0 -50%;
+  color: var(--color-accent);
+  pointer-events: none;
+  text-shadow: 0 0 40px rgb(245 165 36 / 0.35);
+  animation: grade-in 0.6s cubic-bezier(0.2, 1.3, 0.4, 1) both;
+}
+.audit-grade > span:first-child {
+  font-size: clamp(7rem, 16vw, 15rem);
+}
+/* sem nota (exemplo/pendente): um traço contido, não uma barra gigante */
+.audit-grade--none > span:first-child {
+  font-family: var(--font-mono);
+  font-size: clamp(2.5rem, 4vw, 3.5rem);
+}
+@keyframes grade-in {
+  from {
+    opacity: 0;
+    scale: 1.6;
+  }
+}
+@media (max-width: 767px) {
+  .audit-grade {
+    right: 50%;
+    translate: 50% -50%;
+  }
+}
 @supports (animation-timeline: view()) {
   @media (prefers-reduced-motion: no-preference) {
-    .audit-bg {
+    .audit-bg,
+    .audit-field {
       animation:
         audit-dark-in linear both,
         audit-dark-out linear both;
@@ -671,64 +800,6 @@ html[data-js] .hero[data-live] .ascii-fallback {
   background-size: 100% 2px;
 }
 
-.audit-btn {
-  min-height: 3rem;
-  padding: 0 1.5rem;
-  border: 1px solid var(--color-accent);
-  border-radius: 2px;
-  background: var(--color-accent);
-  color: #0b0d10;
-  font-family: var(--font-mono);
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  transition: background 0.2s, color 0.2s;
-}
-.audit-btn:hover:not(:disabled) {
-  background: transparent;
-  color: var(--color-accent);
-}
-.audit-btn:disabled {
-  opacity: 0.7;
-  cursor: progress;
-}
-.audit-row {
-  display: flex;
-  gap: 1rem;
-  align-items: baseline;
-  padding: 0.42rem 0;
-  border-bottom: 1px solid var(--color-line);
-}
-.audit-row.is-done > span:first-child {
-  animation: row-in 0.35s ease-out both;
-}
-@keyframes row-in {
-  from {
-    opacity: 0;
-    transform: translateX(-6px);
-  }
-}
-.audit-stamp {
-  position: absolute;
-  right: 0;
-  bottom: -0.5rem;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 0.5rem 1.1rem;
-  border: 3px solid var(--color-accent);
-  color: var(--color-accent);
-  background: #0b0d10;
-  rotate: -8deg;
-  animation: stamp 0.45s cubic-bezier(0.2, 1.4, 0.4, 1) both;
-}
-@keyframes stamp {
-  from {
-    opacity: 0;
-    scale: 1.8;
-  }
-}
 .audit-cta {
   display: inline-flex;
   align-items: center;

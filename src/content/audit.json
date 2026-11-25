@@ -6,18 +6,15 @@
   "scannedAt": null,
   "score": null,
   "grade": null,
-  "categories": [
-    { "id": "tls", "label": "TLS", "status": "pass", "summary": "EXEMPLO · TLS 1.3 e 1.2 · cadeia válida · sem cifras fracas" },
-    { "id": "headers", "label": "Headers", "status": "warn", "summary": "EXEMPLO · HSTS, nosniff, Referrer e Permissions ok · CSP com 'unsafe-inline'" },
-    { "id": "cookies", "label": "Cookies", "status": "info", "summary": "EXEMPLO · nenhum cookie definido" },
-    { "id": "dns", "label": "DNS e e-mail", "status": "warn", "summary": "EXEMPLO · subdomínio da Vercel: sem SPF/DMARC próprios" },
-    { "id": "vulns", "label": "Vulnerabilidades", "status": "pass", "summary": "EXEMPLO · nenhuma CVE conhecida nas tecnologias detectadas" },
-    { "id": "reputation", "label": "Reputação", "status": "pass", "summary": "EXEMPLO · fora de Spamhaus e SURBL" },
-    { "id": "surface", "label": "Superfície", "status": "info", "summary": "EXEMPLO · 1 host · nenhum subdomínio sensível" }
-  ],
-  "servers": [
-    { "ip": "203.0.113.10", "city": "São Paulo", "country": "BR", "lat": -23.55, "lon": -46.63, "provider": "EXEMPLO" },
-    { "ip": "203.0.113.20", "city": "Washington, D.C.", "country": "US", "lat": 38.9, "lon": -77.04, "provider": "EXEMPLO" }
-  ],
-  "notes": []
+  "nodes": [
+    { "id": "tls", "label": "Certificado TLS", "value": "EXEMPLO · emissor, versão e validade entram com o scan real", "status": "info" },
+    { "id": "hsts", "label": "Strict-Transport-Security", "value": "EXEMPLO · max-age=63072000; includeSubDomains; preload", "status": "pass" },
+    { "id": "csp", "label": "Content-Security-Policy", "value": "EXEMPLO · default-src 'self'; script-src 'self' 'unsafe-inline' (sem nonce)", "status": "warn" },
+    { "id": "xfo", "label": "X-Frame-Options", "value": "EXEMPLO · DENY", "status": "pass" },
+    { "id": "nosniff", "label": "X-Content-Type-Options", "value": "EXEMPLO · nosniff", "status": "pass" },
+    { "id": "referrer", "label": "Referrer-Policy", "value": "EXEMPLO · strict-origin-when-cross-origin", "status": "pass" },
+    { "id": "permissions", "label": "Permissions-Policy", "value": "EXEMPLO · camera=(), microphone=(), geolocation=(), payment=(), usb=()", "status": "pass" },
+    { "id": "hosting", "label": "CDN / hospedagem", "value": "EXEMPLO · Vercel", "status": "info" },
+    { "id": "dns", "label": "DNS", "value": "EXEMPLO · CAA e DNSSEC entram com o scan real", "status": "info" }
+  ]
 }
