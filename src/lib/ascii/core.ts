@@ -1,13 +1,8 @@
 /*
- * Núcleo do retrato ASCII, compartilhado por dois consumidores:
- *   - servidor (build): gera o <pre> estático, que é a primeira pintura e o fallback;
- *   - shader (cliente): recebe as mesmas tabelas e repete o mesmo algoritmo em GLSL.
- * Por isso o hash é inteiro (Math.imul ≡ uint em GLSL) e a escolha de glifo é
- * determinística por célula: o canvas entra por cima do <pre> sem "pular".
- *
- * Grade: `cols` colunas fixas por breakpoint; a célula tem altura = RATIO × largura
- * (JetBrains Mono avança 0,6em → line-height 1,08em). Linhas contadas de BAIXO
- * para cima: o busto fica ancorado na base do quadro.
+ * Núcleo do retrato ASCII, compartilhado pelo servidor (fallback <pre> gerado
+ * no build) e pelo shader (mesmas tabelas e o mesmo algoritmo em GLSL).
+ * Hash inteiro (Math.imul ≡ uint em GLSL): a escolha de glifo é determinística
+ * por célula.
  */
 
 export const RAMP = " .:-=+*#%@";
@@ -21,12 +16,34 @@ export const RAMP_IDX = [...RAMP].map(gi);
 export const TOK2_IDX = TOKENS2.flatMap((t) => [...t].map(gi));
 export const TOK3_IDX = TOKENS3.flatMap((t) => [...t].map(gi));
 
+/* célula: altura = RATIO × largura (JetBrains Mono avança 0,6em → line-height 1,08em) */
 export const RATIO = 1.8;
-/* a imagem ocupa 90% da largura do quadro, centralizada e apoiada na base */
-export const FIT = 0.9;
-export const MIN_DENSITY = 0.07;
-export const GRID = { wide: 96, narrow: 60 } as const;
-export const PLACEHOLDER_ASPECT = 0.8;
+export const MIN_DENSITY = 0.08;
+/* Retrato centralizado: 70% da altura do hero, limitado a 95% da largura. */
+export const PORTRAIT_H = 0.7;
+export const PORTRAIT_MAX_W = 0.95;
+/* Largura da célula ao vivo, em px CSS: ~W/220, entre 5 e 7. */
+export const cellWidth = (w: number) => Math.min(7, Math.max(5, w / 220));
+/* Colunas do <pre> estático (fallback), na largura do retrato. */
+export const PRE_COLS = 110;
+
+/* Sharpen + curva de contraste; os pontos de preto/branco vêm do histograma da foto (build). */
+export const LEVELS = { sharpen: 0.7, curve: 0.5, gamma: 1.35 } as const;
+export type Levels = { black: number; white: number };
+
+/* Níveis automáticos: preto no percentil 2, branco no 97 (o fundo branco da foto vira papel). */
+export function autoLevels(lum: ArrayLike<number>): Levels {
+  const hist = new Array(256).fill(0);
+  for (let i = 0; i < lum.length; i++) hist[lum[i]]++;
+  const at = (q: number) => {
+    let acc = 0;
+    for (let v = 0; v < 256; v++) if ((acc += hist[v]) >= q * lum.length) return v / 255;
+    return 1;
+  };
+  const black = at(0.02);
+  const white = Math.max(black + 0.3, at(0.97));
+  return { black, white: Math.min(1, white) };
+}
 
 export function hash3(x: number, y: number, z: number) {
   let h = (Math.imul(x, 0x8da6b343) ^ Math.imul(y, 0xd8163841) ^ Math.imul(z, 0xcb1ab31f)) >>> 0;
@@ -38,17 +55,23 @@ export function hash3(x: number, y: number, z: number) {
   return h >>> 0;
 }
 
-export type Density = (c: number, r: number) => number;
+const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
+const smoothstep = (a: number, b: number, x: number) => {
+  const t = clamp01((x - a) / (b - a));
+  return t * t * (3 - 2 * t);
+};
 
-/* Célula → coordenada na imagem (u à direita, v para cima, 0..1). */
-export function cellUV(c: number, r: number, cols: number, aspect: number): [number, number] {
-  return [((c + 0.5) / cols - (1 - FIT) / 2) / FIT, ((r + 0.5) * RATIO * aspect) / (FIT * cols)];
+/* luminância (0..1) + versão borrada → densidade 0..1, com borda suavizada no quadro */
+export function toneDensity(l: number, blur: number, u: number, v: number, lv: Levels) {
+  let x = l + LEVELS.sharpen * (l - blur);
+  x = clamp01((x - lv.black) / (lv.white - lv.black));
+  x = x + (smoothstep(0, 1, x) - x) * LEVELS.curve;
+  x = Math.pow(x, LEVELS.gamma);
+  const edge = smoothstep(0, 0.07, u) * smoothstep(0, 0.07, 1 - u) * smoothstep(0, 0.07, 1 - v) * smoothstep(0, 0.02, v);
+  return (1 - x) * edge;
 }
 
-/* Linhas necessárias para cobrir a altura da imagem. */
-export const rowsFor = (cols: number, aspect: number) => Math.ceil((FIT * cols) / aspect / RATIO);
-
-export const lumToDensity = (lum: number) => Math.min(1, Math.pow(Math.max(0, 1 - lum), 1.15) * 1.05);
+export type Density = (c: number, r: number) => number;
 
 /*
  * Glifo base: rampa de densidade, com trechos da linha trocados por tokens de
@@ -63,9 +86,9 @@ export function pickGlyph(c: number, r: number, dens: Density) {
   const g = Math.floor((c + off) / w);
   const k = (c + off) % w;
   const gh = hash3(g, r, 13);
-  if (gh % 100 < 36) {
+  if (gh % 100 < 30) {
     const dc = dens(g * w - off + (w >> 1), r);
-    if (dc > 0.26 && dc < 0.8) {
+    if (dc > 0.3 && dc < 0.75) {
       const t = (gh >>> 8) % 8;
       return w === 2 ? TOK2_IDX[t * 2 + k] : TOK3_IDX[t * 3 + k];
     }
@@ -82,65 +105,4 @@ export function renderText(cols: number, rows: number, dens: Density) {
     lines.push(s.trimEnd());
   }
   return lines.join("\n");
-}
-
-/* ---------- Placeholder procedural: busto por SDF ----------
- * Espaço q em "larguras": x ∈ [-0.5, 0.5], y ∈ [0, 1/aspect]. O GLSL em
- * ascii-shader.ts repete estas funções linha a linha. */
-const len = (x: number, y: number) => Math.hypot(x, y);
-const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
-const smoothstep = (a: number, b: number, x: number) => {
-  const t = clamp01((x - a) / (b - a));
-  return t * t * (3 - 2 * t);
-};
-const sdE = (x: number, y: number, rx: number, ry: number) => (len(x / rx, y / ry) - 1) * Math.min(rx, ry);
-function sdRB(x: number, y: number, bx: number, by: number, rad: number) {
-  const qx = Math.abs(x) - bx + rad;
-  const qy = Math.abs(y) - by + rad;
-  return len(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - rad;
-}
-function smin(a: number, b: number, k: number) {
-  const h = clamp01(0.5 + (0.5 * (b - a)) / k);
-  return b + (a - b) * h - k * h * (1 - h);
-}
-function bust(x: number, y: number) {
-  const shoulders = sdE(x, y, 0.5, 0.42);
-  const neck = sdRB(x, y - 0.5, 0.09, 0.15, 0.04);
-  const head = sdE(x, y - 0.86, 0.22, 0.29);
-  return smin(smin(shoulders, neck, 0.05), head, 0.04);
-}
-/* → [luminância 0..1, distância assinada] */
-export function bustShade(u: number, v: number): [number, number] {
-  const x = u - 0.5;
-  const y = v / PLACEHOLDER_ASPECT;
-  const d = bust(x, y);
-  const e = 0.004;
-  let gx = bust(x + e, y) - bust(x - e, y);
-  let gy = bust(x, y + e) - bust(x, y - e);
-  const gl = len(gx, gy) || 1;
-  gx /= gl;
-  gy /= gl;
-  const h = Math.sqrt(clamp01(-d / 0.14));
-  const s = (1 - h) * 1.3;
-  const nx = gx * s, ny = gy * s, nl = Math.hypot(nx, ny, 1);
-  const L = [-0.35, 0.45, 0.82];
-  const Ll = Math.hypot(L[0], L[1], L[2]);
-  const diff = Math.max(0, (nx * L[0] + ny * L[1] + L[2]) / (nl * Ll));
-  let lum = 0.2 + 0.58 * diff;
-  const hairLine = 0.99 - 0.05 * Math.cos(x * 9);
-  lum *= 1 - 0.7 * smoothstep(hairLine - 0.01, hairLine + 0.02, y);
-  lum *= 1 - 0.3 * (1 - smoothstep(0.28, 0.36, y));
-  lum *= 1 - 0.4 * (1 - smoothstep(0.52, 0.62, y)) * smoothstep(0.36, 0.48, y);
-  const eye = Math.min(len((Math.abs(x) - 0.08) / 0.05, (y - 0.88) / 0.025), 1);
-  lum *= 0.5 + 0.5 * smoothstep(0.4, 1, eye);
-  return [lum, d];
-}
-
-export function placeholderDensity(cols: number): Density {
-  return (c, r) => {
-    const [u, v] = cellUV(c, r, cols, PLACEHOLDER_ASPECT);
-    if (u < 0 || u > 1 || v < 0 || v > 1) return 0;
-    const [lum, d] = bustShade(u, v);
-    return d < 0 ? lumToDensity(lum) : 0;
-  };
 }

@@ -106,129 +106,134 @@ html[data-scan="instant"] .scan-line {
   transform: translateY(-6px);
 }
 
-/* ---------- Hero ASCII ----------
- * Estreito: fluxo (barra, nome, retrato, metadados).
- * Largo (≥1024): retrato à esquerda (até 58vw, limitado pela altura),
- * texto à direita, ancorado embaixo. */
+/* ---------- Hero: tipografia gigante + retrato ASCII + lente ---------- */
 .hero {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-  padding: 1rem;
-  --pw: min(58vw, 82svh);
+  height: max(100svh, 600px);
+  container-type: size;
+  --lr: 100px;
+  --lx: 50cqw;
+  --ly: 45cqh;
 }
-.hero-name {
-  display: block;
-  font-family: var(--font-display);
-  text-transform: uppercase;
-  line-height: 0.86;
-  letter-spacing: -0.03em;
-  /* "MACHMANN" ≈ 6.46em em Archivo Black */
-  font-size: min(calc((100vw - 2rem) / 6.7), 7rem);
+.hero-display {
+  position: absolute;
+  inset: 0;
 }
-.hero[data-name="mono"] .hero-name {
-  font-family: var(--font-mono);
-  font-weight: 800;
-  letter-spacing: -0.06em;
-  /* 8 caracteres × (0.6em − tracking) */
-  font-size: min(calc((100vw - 2rem) / 4.5), 8rem);
+.hl {
+  position: absolute;
+  left: 1rem;
+  right: 1rem;
+  /* "FULL-STACK" ≈ 6.9em em Archivo Black: cabe na largura útil */
+  font-size: min(calc((100cqw - 2rem) / 6.95), 24cqh);
+  line-height: 0.8;
+  letter-spacing: -0.035em;
+  white-space: nowrap;
 }
-.hero-portrait {
-  width: min(100%, 34rem);
-  align-self: center;
+/* Em telas em pé, aproxima as linhas do retrato (sem vazio no meio). */
+.hl-top {
+  top: max(4.75rem, calc(50cqh - 42cqw - 0.7em));
+}
+.hl-bot {
+  bottom: max(4.75rem, calc(50cqh - 42cqw - 0.7em));
+  text-align: right;
+}
+.hl-mono {
+  /* 10 caracteres mono (0.6em − tracking) na mesma largura */
+  font-size: min(calc((100cqw - 2rem) / 5.65), 24cqh);
 }
 @media (min-width: 640px) {
-  .hero {
-    padding: 1.5rem;
+  .hl {
+    left: 1.5rem;
+    right: 1.5rem;
+    font-size: min(calc((100cqw - 3rem) / 6.95), 24cqh);
+  }
+  .hl-mono {
+    font-size: min(calc((100cqw - 3rem) / 5.65), 24cqh);
   }
 }
-@media (min-width: 1024px) {
-  .hero {
-    display: grid;
-    height: max(100svh, 640px);
-    grid-template-columns: var(--pw) minmax(0, 1fr);
-    grid-template-rows: auto 1fr auto auto;
-    column-gap: 3rem;
-    row-gap: 0;
-    padding-bottom: 0;
+/* Entrada: a tipografia sobe enquanto o retrato se monta (só na 1ª carga da
+ * sessão, nunca com reduced-motion). Opacidade nunca chega a 0: não atrasa o LCP. */
+@keyframes hl-in {
+  from {
+    opacity: 0.12;
+    transform: translateY(0.3em);
   }
-  .hero-bar {
-    grid-column: 1 / -1;
-  }
-  .hero-portrait {
-    grid-column: 1;
-    grid-row: 2 / 5;
-    width: 100%;
-    height: 100%;
-    aspect-ratio: auto !important;
-    margin-left: -1.5rem;
-  }
-  .hero-head {
-    grid-column: 2;
-    grid-row: 3;
-  }
-  .hero-foot {
-    grid-column: 2;
-    grid-row: 4;
-    padding: 2rem 0 1.5rem;
-  }
-  .hero-name {
-    font-size: min(calc((100vw - var(--pw) - 6rem) / 6.7), 9rem);
-  }
-  .hero[data-name="mono"] .hero-name {
-    font-size: min(calc((100vw - var(--pw) - 6rem) / 4.5), 10rem);
-  }
+}
+html[data-intro] .hero > .hero-display .hl {
+  animation: hl-in 1.3s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+html[data-intro] .hero > .hero-display .hl-bot {
+  animation-delay: 0.15s;
 }
 
-/* Retrato: <pre> do build por baixo, canvas por cima quando pronto. */
-.ascii-box {
-  position: relative;
-  container-type: size;
-  overflow: hidden;
-  font-family: var(--font-mono);
-  color: var(--color-ink);
-}
-.ascii-pre {
+/* Retrato: canvas do tamanho do hero (o shader centraliza o retrato). */
+.ascii-canvas {
   position: absolute;
-  left: 0;
-  bottom: 0;
-  margin: 0;
-  font-family: inherit;
-  font-weight: 500;
-  line-height: 1.08;
-  letter-spacing: 0;
-  font-variant-ligatures: none;
-  white-space: pre;
-  user-select: none;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+/* Fallback estático: mesma caixa que o shader usa (70% da altura, ≤ 95% da largura). */
+.ascii-fallback {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  top: 50%;
+  height: min(70cqh, calc(95cqw / var(--pa)));
+  aspect-ratio: var(--pa);
+  translate: -50% -50%;
+  overflow: hidden;
+}
+/* Com JS: aparece desde o 1º paint como um esboço quase transparente (é o LCP);
+ * some quando o canvas assume ou vira o retrato inteiro no modo estático. */
+html[data-js]:not([data-ascii="static"]) .ascii-fallback {
+  opacity: 0.08;
+}
+.ascii-fallback {
   transition: opacity 0.5s ease;
 }
-.ascii-wide {
-  display: none;
+.hero[data-live] .ascii-fallback {
+  opacity: 0;
 }
-@media (min-width: 1024px) {
-  .ascii-wide {
-    display: block;
-  }
-  .ascii-narrow {
-    display: none;
-  }
-}
-.ascii-canvas {
+.ascii-fallback img {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  opacity: 0;
-  transition: opacity 0.5s ease;
+  object-fit: contain;
+  object-position: bottom;
 }
-.ascii-box[data-live] .ascii-canvas {
-  opacity: 1;
-}
-.ascii-box[data-live] .ascii-pre {
-  opacity: 0;
-}
-.ascii-box[data-done] .ascii-pre {
+
+/* Texto da lente (o círculo, a foto e o aro são desenhados no canvas). */
+.lens-window {
   display: none;
+  position: absolute;
+  z-index: 3;
+  left: 0;
+  top: 0;
+  width: calc(var(--lr) * 2);
+  height: calc(var(--lr) * 2);
+  border-radius: 50%;
+  overflow: hidden;
+  pointer-events: none;
+  transform: translate3d(calc(var(--lx) - var(--lr)), calc(var(--ly) - var(--lr)), 0);
+  will-change: transform;
+}
+.hero[data-live] .lens-window {
+  display: block;
+}
+.lens-inner {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100cqw;
+  height: 100cqh;
+  transform: translate3d(calc(var(--lr) - var(--lx)), calc(var(--lr) - var(--ly)), 0);
+  will-change: transform;
+}
+.lens-inner .hl {
+  text-shadow: 0 1px 12px rgb(0 0 0 / 0.45);
 }
 
 /* ---------- Grão de fundo ----------
