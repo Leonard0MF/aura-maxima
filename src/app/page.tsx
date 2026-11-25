@@ -5,10 +5,10 @@ import { TerminalDock } from "@/components/TerminalDock";
 import { Audit } from "@/components/sections/Audit";
 import { Activity } from "@/components/sections/Activity";
 import { Contact } from "@/components/sections/Contact";
-import { Findings } from "@/components/sections/Findings";
 import { Hero } from "@/components/sections/Hero";
 import { Metrics } from "@/components/sections/Metrics";
 import { Services } from "@/components/sections/Services";
+import { Work } from "@/components/sections/Work";
 import { terminalData } from "@/lib/terminal-data";
 
 export default function Home() {
@@ -16,9 +16,9 @@ export default function Home() {
     <>
       <main id="conteudo">
         <Hero />
+        <Work />
         <Audit />
         <Services />
-        <Findings />
         <Metrics />
         <Activity />
         <Contact />

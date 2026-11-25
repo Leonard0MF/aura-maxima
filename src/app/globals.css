@@ -193,7 +193,7 @@ html[data-js]:not([data-ascii="static"]) .ascii-fallback {
 .ascii-fallback {
   transition: opacity 0.5s ease;
 }
-.hero[data-live] .ascii-fallback {
+html[data-js] .hero[data-live] .ascii-fallback {
   opacity: 0;
 }
 .ascii-fallback img {
@@ -300,5 +300,154 @@ body::after {
     animation-delay: 0ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 1ms !important;
+  }
+}
+
+/* ================= Sistema editorial (seções abaixo do hero) ================= */
+
+/* Cabeçalho de seção: nome gigante à esquerda; todos no mesmo corpo
+ * (CONTACT, o mais largo, ≈ 5.1em, ocupa a largura útil). */
+.sec-head {
+  container-type: inline-size;
+  position: relative;
+  padding: 5rem 1rem 2.5rem;
+  border-top: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+}
+@media (min-width: 640px) {
+  .sec-head {
+    padding: 7rem 1.5rem 3.5rem;
+  }
+}
+.sec-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+@media (min-width: 640px) {
+  .sec-meta {
+    font-size: 12px;
+  }
+}
+.sec-title {
+  font-size: calc(100cqw / 5.2);
+  line-height: 0.8;
+  letter-spacing: -0.035em;
+  white-space: nowrap;
+  margin-left: -0.04em;
+}
+
+/* Decrypt: o glifo aleatório fica por cima do original (largura estável) */
+.dc {
+  position: relative;
+}
+.dc[data-s] {
+  -webkit-text-fill-color: transparent;
+}
+.dc[data-s]::after {
+  content: attr(data-s);
+  position: absolute;
+  inset: 0;
+  text-align: center;
+  -webkit-text-fill-color: currentColor;
+}
+
+/* Link com underline animado */
+.ulink {
+  background: linear-gradient(currentColor, currentColor) 0 100% / 0 1px no-repeat;
+  transition: background-size 0.35s cubic-bezier(0.2, 0.7, 0.2, 1);
+  padding-bottom: 1px;
+}
+.ulink:hover,
+.ulink:focus-visible {
+  background-size: 100% 1px;
+}
+
+/* ---------- 01 · WORK ---------- */
+.work-block {
+  position: sticky;
+  top: 0;
+  height: max(100svh, 560px);
+  container-type: size;
+  isolation: isolate;
+  overflow: hidden;
+  background: var(--color-paper);
+  border-top: 1px solid color-mix(in srgb, var(--color-ink) 18%, transparent);
+  --lr: 0px;
+  --lx: 50cqw;
+  --ly: 50cqh;
+}
+/* Mesma caixa que o shader usa no preset "work" */
+.work-block .ascii-fallback {
+  z-index: 0;
+  height: min(52cqh, calc(62cqw / var(--pa)));
+  transition: opacity 0.4s ease;
+}
+@container (max-width: 639px) {
+  .work-block .ascii-fallback {
+    height: min(52cqh, calc(92cqw / var(--pa)));
+  }
+}
+html[data-js]:not([data-ascii="static"]) .work-block .ascii-fallback {
+  opacity: 1;
+}
+/* (o seletor abaixo precisa vencer o de cima: 0,4,1 > 0,3,1) */
+html[data-js] .work-block[data-live] .ascii-fallback {
+  opacity: 0;
+}
+.work-block .ascii-canvas {
+  z-index: 1;
+}
+
+/* Nome: #FDFBF6 = papel + tinta; com "difference" vira tinta sobre o papel e
+ * papel sobre a tinta do ASCII (inversão exata). */
+.work-name {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  padding: 0 1rem;
+  color: #fdfbf6;
+  mix-blend-mode: difference;
+  pointer-events: none;
+}
+.work-name h3 {
+  font-size: min(calc((100cqw - 2rem) / var(--w)), 40cqh);
+  line-height: 0.8;
+  letter-spacing: -0.035em;
+  white-space: nowrap;
+  margin-left: -0.04em;
+}
+/* dentro da lente, só a imagem real */
+.work-block[data-live] .work-name {
+  mask-image: radial-gradient(circle at var(--lx) var(--ly), transparent calc(var(--lr) + 1px), #000 calc(var(--lr) + 2px));
+}
+
+.work-meta {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 1rem;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+.work-meta a {
+  pointer-events: auto;
+}
+@media (min-width: 640px) {
+  .work-meta {
+    padding: 1.5rem;
+    font-size: 12px;
   }
 }

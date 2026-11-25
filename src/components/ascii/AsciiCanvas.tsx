@@ -4,9 +4,15 @@ import { useEffect, useRef } from "react";
 
 import { GLYPHS, PORTRAIT_H, PORTRAIT_MAX_W, RATIO, cellWidth, type Levels } from "@/lib/ascii/core";
 
-import { FRAG, GRID_FRAG, VERT } from "./ascii-shader";
+import { FRAG, GRID_FRAG, VERT } from "./shader";
 
-type Props = { src: string; aspect: number; levels: Levels; onFail: () => void };
+/*
+ * hero: retrato a 70% da altura, montagem de entrada, cobre a tipografia, âmbar.
+ * work: print de projeto no centro do bloco; a tipografia fica por cima com
+ *       mix-blend-mode (inversão de cor), então sem cobertura e sem âmbar.
+ */
+export type AsciiPreset = "hero" | "work";
+type Props = { src: string; aspect: number; levels: Levels; preset?: AsciiPreset; onFail: () => void };
 
 /* Atlas: cada glifo pré-renderizado uma vez numa faixa (fillText só aqui). */
 const TILE_W = 40;
@@ -50,13 +56,13 @@ function texture(gl: WebGL2RenderingContext, unit: number, source: TexImageSourc
 }
 
 /*
- * Retrato ASCII ao vivo: um canvas WebGL2 do tamanho do hero.
+ * Imagem ASCII ao vivo: um canvas WebGL2 do tamanho do bloco pai.
  *   passe de grade  → textura (1 texel por célula): glifo, destaque, opacidade
  *   passe por frame → atlas de glifos + embaralhamento perto do cursor + lente
  * Também é dono da interação (ponteiro, lente, passeio sozinho) e escreve
  * --lx/--ly/--lr no hero para a camada de texto da lente (PENTESTER).
  */
-export default function AsciiPortrait({ src, aspect, levels, onFail }: Props) {
+export default function AsciiCanvas({ src, aspect, levels, preset = "hero", onFail }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -92,7 +98,8 @@ export default function AsciiPortrait({ src, aspect, levels, onFail }: Props) {
     let imgW = 1;
     const html = document.documentElement;
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const intro = html.dataset.intro === "1";
+    const hero = preset === "hero";
+    const intro = hero && html.dataset.intro === "1";
     let introStart = 0;
 
     /* ---------- geometria + grade ---------- */
@@ -112,11 +119,13 @@ export default function AsciiPortrait({ src, aspect, levels, onFail }: Props) {
       const cw = cellWidth(W);
       gridCols = Math.ceil(W / cw);
       gridRows = Math.ceil(H / (cw * RATIO));
-      rect.h = Math.min(PORTRAIT_H * H, (PORTRAIT_MAX_W * W) / aspect);
+      rect.h = hero
+        ? Math.min(PORTRAIT_H * H, (PORTRAIT_MAX_W * W) / aspect)
+        : Math.min(0.52 * H, ((W < 640 ? 0.92 : 0.62) * W) / aspect);
       rect.w = rect.h * aspect;
       rect.x = (W - rect.w) / 2;
       rect.y = (H - rect.h) / 2;
-      lensR = W < 640 ? 66 : 100;
+      lensR = hero ? (W < 640 ? 66 : 100) : W < 640 ? 60 : 90;
 
       gl.activeTexture(gl.TEXTURE2);
       gl.bindTexture(gl.TEXTURE_2D, gridTex);
@@ -138,7 +147,8 @@ export default function AsciiPortrait({ src, aspect, levels, onFail }: Props) {
         gl.uniform1f(loc(p, "uImgLod"), lod);
         gl.uniform1f(loc(p, "uDpr"), dpr);
         /* no celular o retrato ocupa a largura toda: não esconde FULL-STACK / DEVELOPER */
-        gl.uniform1f(loc(p, "uKnock"), W < 640 ? 0 : 1);
+        gl.uniform1f(loc(p, "uKnock"), hero && W >= 640 ? 1 : 0);
+        gl.uniform1f(loc(p, "uAccent"), hero ? 1 : 0);
         gl.uniform2f(loc(p, "uRes"), canvas.width, canvas.height);
       }
       gl.viewport(0, 0, canvas.width, canvas.height);
@@ -159,7 +169,7 @@ export default function AsciiPortrait({ src, aspect, levels, onFail }: Props) {
     };
 
     /* ---------- interação ---------- */
-    const face = () => ({ x: W / 2, y: rect.y + rect.h * 0.4 });
+    const face = () => ({ x: W / 2, y: rect.y + rect.h * (hero ? 0.4 : 0.5) });
     let lx = 0, ly = 0, tx = 0, ty = 0;
     let px = -1e4, py = -1e4, pa = 0;
     let lastInput = -Infinity;
@@ -197,8 +207,8 @@ export default function AsciiPortrait({ src, aspect, levels, onFail }: Props) {
       const idle = sinceInput > 2500;
       if (idle && !reduce) {
         const f = face();
-        tx = f.x + rect.w * 0.32 * Math.sin(t * 0.31);
-        ty = f.y + rect.h * 0.22 * Math.sin(t * 0.47 + 1.3);
+        tx = f.x + rect.w * (hero ? 0.32 : 0.34) * Math.sin(t * 0.31);
+        ty = f.y + rect.h * (hero ? 0.22 : 0.3) * Math.sin(t * 0.47 + 1.3);
       }
       const k = idle ? 0.05 : 0.25;
       lx += (tx - lx) * k;
@@ -329,8 +339,12 @@ export default function AsciiPortrait({ src, aspect, levels, onFail }: Props) {
       canvas.removeEventListener("webglcontextlost", onLost);
       document.removeEventListener("visibilitychange", onVis);
       delete box.dataset.live;
+      /* desmontado de vez (bloco saiu de cena): libera o contexto já, sem esperar o GC */
+      setTimeout(() => {
+        if (!canvas.isConnected) gl.getExtension("WEBGL_lose_context")?.loseContext();
+      }, 0);
     };
-  }, [src, aspect, levels.black, levels.white, onFail]);
+  }, [src, aspect, levels.black, levels.white, preset, onFail]);
 
   return <canvas ref={ref} aria-hidden="true" className="ascii-canvas font-mono" />;
 }

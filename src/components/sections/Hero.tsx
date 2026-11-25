@@ -5,7 +5,7 @@ import { AsciiStage } from "@/components/hero/AsciiStage";
 import { LocalTime } from "@/components/hero/LocalTime";
 import { ModeToggle } from "@/components/ModeToggle";
 import { profile } from "@/content/profile";
-import { getPortrait } from "@/lib/ascii/portrait";
+import { getPortrait } from "@/lib/ascii/image";
 import { t } from "@/lib/i18n";
 
 const nav = [

@@ -28,6 +28,7 @@ uniform sampler2D uImg;
 uniform sampler2D uGrid;
 uniform vec3 uPtr;     // x, y, atividade 0..1
 uniform vec3 uLens;    // x, y, raio
+uniform float uAccent; // 1 = destaques em âmbar; 0 = só tinta (blocos com inversão de cor)
 uniform float uKnock;  // 1 = o rosto cobre a tipografia; 0 = desenha por cima (telas estreitas)
 out vec4 o;
 
@@ -172,7 +173,7 @@ void main() {
       /* opacidade modulada pela densidade: gradação tonal além do glifo */
       float a = textureGrad(uAtlas, auv, gdx * k, gdy * k).a * mix(0.42, 1.0, smoothstep(MIN_D, 0.85, d));
       /* destaques (áreas mais claras do rosto) em âmbar sutil */
-      float hi = amber ? 1.0 : smoothstep(0.32, 0.12, d) * 0.8 * solid;
+      float hi = (amber ? 1.0 : smoothstep(0.32, 0.12, d) * 0.8 * solid) * uAccent;
       vec3 col = mix(INK, AMBER, hi);
       o = o * (1.0 - a) + vec4(col * a, a);
     }

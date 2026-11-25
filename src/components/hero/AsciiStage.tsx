@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Levels } from "@/lib/ascii/core";
 
 /* WebGL + interação num chunk próprio, carregado só depois do primeiro paint. */
-const AsciiPortrait = dynamic(() => import("./AsciiPortrait"), { ssr: false });
+const AsciiCanvas = dynamic(() => import("@/components/ascii/AsciiCanvas"), { ssr: false });
 
 /*
  * O script de boot marca data-ascii="static" com reduced-motion ou
@@ -36,5 +36,5 @@ export function AsciiStage({ src, aspect, levels }: { src: string; aspect: numbe
     return () => clearTimeout(id);
   }, []);
 
-  return ready ? <AsciiPortrait src={src} aspect={aspect} levels={levels} onFail={fail} /> : null;
+  return ready ? <AsciiCanvas src={src} aspect={aspect} levels={levels} onFail={fail} /> : null;
 }

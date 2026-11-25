@@ -28,13 +28,18 @@ export type Project = {
   slug: string;
   severity: Severity;
   title: string;
+  /** nome curto em caixa alta, usado gigante no bloco do WORK */
+  display: string;
+  year?: string;
+  role?: Localized;
   summary: Localized;
   highlights?: Localized[]; // usado no card grande (CRITICAL)
   stack: string[];
   links: { demo?: string; repo?: string };
   /* TODO: prints reais (BUMPHUB anonimizado). Coloque em public/projects/ e
      preencha, ex.: { src: "/projects/aegis.png", alt: { pt: "..." } }.
-     Sem `image`, o card mostra um placeholder estilizado. */
+     De preferência tema claro: o ASCII desenha o escuro. Sem `image`, o bloco
+     usa public/projects/placeholder.png (wireframe neutro). */
   image?: { src: string; alt: Localized };
   caseStudy: CaseStudy;
 };
@@ -157,6 +162,9 @@ export const projects: Project[] = [
     slug: "aegis",
     severity: "critical",
     title: "Aegis",
+    display: "AEGIS",
+    year: undefined, // TODO: ano
+    role: undefined, // TODO: papel, ex.: { pt: "solo · full-stack + security" }
     summary: {
       pt: "Scanner de segurança de URLs e domínios: identifica vulnerabilidades, verifica certificados, atribui uma nota e gera um relatório completo.",
     },
@@ -194,6 +202,9 @@ export const projects: Project[] = [
     slug: "bumphub",
     severity: "high",
     title: "BUMPHUB",
+    display: "BUMPHUB",
+    year: undefined, // TODO: ano
+    role: undefined, // TODO: papel
     summary: {
       pt: "Sistema interno da BUMP no estilo Discord/Slack, com canais, tasks e integração com GitHub para o time acompanhar o trabalho em um só lugar.",
     },
@@ -212,6 +223,9 @@ export const projects: Project[] = [
     slug: "fotos-de-eventos",
     severity: "medium",
     title: "Plataforma de fotos de eventos",
+    display: "FOTOS",
+    year: undefined, // TODO: ano
+    role: undefined, // TODO: papel
     summary: {
       pt: "Venda de fotos de eventos com marca d'água, liberação da imagem original após o pagamento e busca por reconhecimento facial.",
     },

@@ -4,25 +4,34 @@ import path from "node:path";
 import { PRE_COLS, RATIO, autoLevels, renderText, toneDensity, type Levels } from "./core";
 
 /*
- * Roda só no build (a home é SSG). Usa public/portrait.jpg; enquanto ele não
- * existir, public/portrait-test.jpg (TODO: trocar pela foto do Léo, com fundo
- * removido e bom contraste). Gera o texto ASCII do fallback estático
- * (reduced-motion, sem WebGL, sem JS) e passa ao cliente a URL otimizada.
+ * Roda só no build (a home é SSG). Converte uma imagem de public/ em: URL
+ * otimizada (textura do shader), proporção, níveis automáticos e o fallback
+ * estático em SVG (reduced-motion, sem WebGL, sem JS, blocos fora da tela).
  */
-export type PortraitData = {
+export type AsciiImageData = {
   src: string;
   aspect: number;
   /** fallback estático: SVG (data URI) com o texto ASCII, servido como <img> */
   svg: { src: string; width: number; height: number };
   levels: Levels;
-  isTest: boolean;
 };
 
 const PUBLIC = path.join(process.cwd(), "public");
 
-export async function getPortrait(): Promise<PortraitData> {
-  const isTest = !fs.existsSync(path.join(PUBLIC, "portrait.jpg"));
-  const name = isTest ? "portrait-test.jpg" : "portrait.jpg";
+/* Retrato do hero: public/portrait.jpg; enquanto ele não existir,
+ * public/portrait-test.jpg (TODO: trocar pela foto do Léo, fundo removido). */
+export function getPortrait() {
+  return getAsciiImage(fs.existsSync(path.join(PUBLIC, "portrait.jpg")) ? "portrait.jpg" : "portrait-test.jpg");
+}
+
+const cache = new Map<string, Promise<AsciiImageData>>();
+export function getAsciiImage(name: string) {
+  let p = cache.get(name);
+  if (!p) cache.set(name, (p = build(name.replace(/^\//, ""))));
+  return p;
+}
+
+async function build(name: string): Promise<AsciiImageData> {
   const { default: sharp } = await import("sharp");
   const W = 256;
   const { data, info } = await sharp(path.join(PUBLIC, name))
@@ -55,7 +64,6 @@ export async function getPortrait(): Promise<PortraitData> {
     aspect,
     svg: toSvg(text, rows),
     levels,
-    isTest,
   };
 }
 
