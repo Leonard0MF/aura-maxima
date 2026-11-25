@@ -45,7 +45,7 @@ export function TerminalDock({ data }: { data: TerminalData }) {
     <>
       <dialog
         ref={ref}
-        aria-label="Terminal"
+        aria-label={data.strings.aria}
         className="theme-dark m-auto w-[min(780px,calc(100vw-2rem))] bg-transparent p-0 backdrop:bg-black/60 backdrop:backdrop-blur-sm"
         onClick={(e) => {
           if (e.target === ref.current) ref.current.close();
@@ -57,7 +57,7 @@ export function TerminalDock({ data }: { data: TerminalData }) {
             onClick={() => ref.current?.close()}
             className="min-h-9 rounded-md border border-white/10 bg-[#111317] px-3 font-mono text-xs text-[#a3acb6] hover:text-white"
           >
-            fechar <span aria-hidden="true">[esc]</span>
+            {data.strings.close} <span aria-hidden="true">[esc]</span>
           </button>
         </div>
         {mounted ? <ReconTerminal data={data} /> : null}

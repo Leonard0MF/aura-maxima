@@ -4,13 +4,16 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "node scripts/check-i18n.mjs",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "check:i18n": "node scripts/check-i18n.mjs"
   },
   "dependencies": {
     "cannon-es": "^0.20.0",
     "next": "16.3.5",
+    "next-intl": "4.15.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "simple-icons": "^16.38.1",

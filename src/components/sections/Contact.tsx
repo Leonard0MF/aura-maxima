@@ -1,18 +1,22 @@
+import { getTranslations } from "next-intl/server";
+
 import { SectionHead } from "@/components/SectionHead";
 import { profile } from "@/content/profile";
 
 const isTodo = (s: string) => /TODO/.test(s);
 
 /* 05 · CONTACT (cabe em 100svh). Canais com TODO (e-mail, LinkedIn) não aparecem até existirem. */
-export function Contact() {
+export async function Contact() {
+  const t = await getTranslations();
+  const newTab = t("common.newTab");
   const { contact } = profile;
   const email = isTodo(contact.email) ? null : contact.email;
   const linkedin = isTodo(contact.linkedin) ? null : contact.linkedin;
 
   return (
     <section id="contato" aria-labelledby="contact-title" className="bg-paper text-ink">
-      <SectionHead n="05" label="Contact" title="Vamos conversar" id="contact-title" meta={profile.status.pt}>
-        Aberto a oportunidades em cibersegurança e desenvolvimento seguro.
+      <SectionHead n="05" label={t("nav.contact")} title={t("contact.title")} id="contact-title" meta={t("hero.status")}>
+        {t("contact.lede")}
       </SectionHead>
 
       <div className="sec-end px-4 sm:px-6">
@@ -24,26 +28,26 @@ export function Contact() {
           ) : (
             <a href={contact.github} target="_blank" rel="noopener noreferrer" className="contact-big w-fit break-all">
               github.com/{contact.githubHandle}
-              <span className="sr-only"> (abre em nova aba)</span>
+              <span className="sr-only">{newTab}</span>
             </a>
           )}
           <p className="flex flex-wrap gap-x-8 gap-y-2 font-mono text-xs tracking-wide uppercase sm:text-sm">
             {linkedin && (
               <a href={linkedin} target="_blank" rel="noopener noreferrer" className="ulink">
                 LinkedIn <span aria-hidden="true">↗</span>
-                <span className="sr-only"> (abre em nova aba)</span>
+                <span className="sr-only">{newTab}</span>
               </a>
             )}
             {email && (
               <a href={contact.github} target="_blank" rel="noopener noreferrer" className="ulink">
                 GitHub <span aria-hidden="true">↗</span>
-                <span className="sr-only"> (abre em nova aba)</span>
+                <span className="sr-only">{newTab}</span>
               </a>
             )}
           </p>
         </div>
         <p className="mt-10 font-mono text-xs tracking-wide sm:text-sm">
-          <span className="text-[#17633a]">[✓]</span> scan complete · 0 vulnerabilidades críticas no candidato
+          <span className="text-[#17633a]">[✓]</span> {t("contact.done")}
         </p>
       </div>
     </section>

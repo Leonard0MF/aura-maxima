@@ -866,6 +866,13 @@ html:not([data-js]) .audit-list {
     max-width: min(100%, 19svh);
   }
 }
+/* 720p: um pouco menor, para en/es (textos mais longos) caberem em 100svh */
+@media (min-width: 1024px) and (max-height: 760px) {
+  .about-photo + figcaption,
+  .about-photo {
+    max-width: min(100%, 17.5svh);
+  }
+}
 /* o corpo em colunas balanceadas no desktop largo: a seção continua em 100svh */
 .about-body {
   max-width: 72ch;

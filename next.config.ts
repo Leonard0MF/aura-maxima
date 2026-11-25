@@ -1,6 +1,9 @@
 import path from "node:path";
 
 import type { NextConfig } from "next";
+import createNextIntlPlugin from "next-intl/plugin";
+
+const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -52,10 +55,12 @@ const nextConfig: NextConfig = {
     /* CSS (Tailwind, ~9 KB gzip) inline no <head>: elimina 1 round-trip
        bloqueante para quem chega pela primeira vez (caso típico de portfólio). */
     inlineCss: true,
+    /* 404 de URLs fora de qualquer rota (o layout raiz fica em [locale]) */
+    globalNotFound: true,
   },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
 };
 
-export default nextConfig;
+export default withNextIntl(nextConfig);

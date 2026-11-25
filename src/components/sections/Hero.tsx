@@ -3,17 +3,19 @@ import type { CSSProperties } from "react";
 import { AsciiStage } from "@/components/hero/AsciiStage";
 import { HeroLayer } from "@/components/hero/HeroLayer";
 import { LocalTime } from "@/components/hero/LocalTime";
+import { getLocale, getTranslations } from "next-intl/server";
+
+import { LangSwitch } from "@/components/LangSwitch";
 import { profile } from "@/content/profile";
 import { getPortrait } from "@/lib/ascii/image";
-import { t } from "@/lib/i18n";
 
 const nav = [
-  { n: "01", label: "Work", href: "#findings" },
-  { n: "02", label: "Stack", href: "#stack" },
-  { n: "03", label: "Audit", href: "#auditoria" },
-  { n: "04", label: "About", href: "#about" },
-  { n: "05", label: "Contact", href: "#contato" },
-];
+  { n: "01", key: "work", href: "#findings" },
+  { n: "02", key: "stack", href: "#stack" },
+  { n: "03", key: "audit", href: "#auditoria" },
+  { n: "04", key: "about", href: "#about" },
+  { n: "05", key: "contact", href: "#contato" },
+] as const;
 
 /*
  * Hero: "desenho feito de código" + "veja por baixo da superfície".
@@ -28,6 +30,10 @@ const nav = [
  */
 export async function Hero() {
   const portrait = await getPortrait();
+  const locale = await getLocale();
+  const t = await getTranslations("hero");
+  const tn = await getTranslations("nav");
+  const tl = await getTranslations("lang");
 
   return (
     <section
@@ -37,63 +43,69 @@ export async function Hero() {
       style={{ "--pa": portrait.aspect } as CSSProperties}
     >
       <h1 id="hero-title" className="sr-only">
-        {profile.name}, Full-Stack Developer &amp; Pentester
+        {t("h1", { name: profile.name })}
       </h1>
 
       {/* 0–1 · superfície: tipografia + fallback estático do retrato */}
-      <HeroLayer variant="surface" portrait={portrait} />
+      <HeroLayer variant="surface" portrait={portrait} alt={t("asciiAlt", { name: profile.name })} />
 
       {/* 2 · retrato ASCII ao vivo (WebGL) */}
       <AsciiStage src={portrait.src} aspect={portrait.aspect} levels={portrait.levels} />
 
       {/* 3 · por baixo da superfície, recortada pela lente (clip-path + vars CSS) */}
-      <HeroLayer variant="under" portrait={portrait} />
+      <HeroLayer variant="under" portrait={portrait} alt="" />
       <div className="lens-ring" aria-hidden="true" />
 
       {/* 4 · metadados */}
-            <div className="hero-meta relative z-10 flex h-full flex-col justify-between p-4 font-mono text-[11px] tracking-wide uppercase sm:p-6 sm:text-xs">
+      <div className="hero-meta relative z-10 flex h-full flex-col justify-between p-4 font-mono text-[11px] tracking-wide uppercase sm:p-6 sm:text-xs">
         <div className="flex items-start justify-between gap-4">
           <div className="leading-relaxed">
             <p>{profile.name}</p>
             <p className="flex flex-wrap items-center gap-x-2">
-              <span className="text-ink-soft">Portfolio 2026</span>
+              <span className="text-ink-soft">{t("portfolio")}</span>
               <span aria-hidden="true" className="text-ink-soft">·</span>
               <span className="inline-flex items-center gap-1.5">
                 <span aria-hidden="true" className="size-2 rounded-full bg-accent" />
-                {t(profile.status)}
+                {t("status")}
               </span>
             </p>
           </div>
-          <nav aria-label="Seções" className="hidden md:block">
+          <nav aria-label={tn("label")} className="hidden md:block">
             <ul className="flex gap-4 lg:gap-6">
               {nav.map((i) => (
                 <li key={i.n}>
                   <a href={i.href} className="group inline-flex gap-1.5 hover:text-accent-ink">
                     <span className="text-ink-soft group-hover:text-accent-ink">{i.n}</span>
-                    {i.label}
+                    {tn(i.key)}
                   </a>
                 </li>
               ))}
             </ul>
           </nav>
-          <span aria-hidden="true" className="hidden w-24 md:block" />
+          <LangSwitch
+            locale={locale}
+            path="/"
+            label={tl("label")}
+            names={{ pt: tl("pt"), en: tl("en"), es: tl("es") }}
+            className="shrink-0 md:w-24 md:justify-end"
+          />
         </div>
 
         <div className="grid grid-cols-1 items-end gap-4 pr-32 sm:grid-cols-3 sm:pr-0">
           <dl className="leading-relaxed">
             <div className="flex gap-1.5">
-              <dt className="text-ink-soft">Location:</dt>
-              <dd>{t(profile.location)}</dd>
+              <dt className="text-ink-soft">{t("location")}</dt>
+              <dd>{t("place")}</dd>
             </div>
             <div className="flex gap-1.5">
-              <dt className="text-ink-soft">Local time:</dt>
+              <dt className="text-ink-soft">{t("localTime")}</dt>
               <dd>
                 <LocalTime />
               </dd>
             </div>
           </dl>
           <a href="#findings" className="hidden justify-self-center hover:text-accent-ink sm:block">
-            (Scroll) <span aria-hidden="true">↓</span>
+            {t("scroll")} <span aria-hidden="true">↓</span>
           </a>
         </div>
       </div>

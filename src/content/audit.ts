@@ -28,7 +28,10 @@
  * }
  *
  * O nó da nota geral é gerado a partir de score/grade (não precisa estar em
- * `nodes`). Nós sugeridos: certificado TLS (emissor, versão, validade), cada
+ * `nodes`). Tradução: `label` e o prefixo "EXEMPLO ·" são trocados pelos de
+ * messages (audit.labels.<id>, audit.examplePrefix) quando existem; com
+ * `example`, audit.exampleValues.<id> substitui o texto explicativo. Os
+ * valores técnicos (headers, emissor) não são traduzidos. Nós sugeridos: certificado TLS (emissor, versão, validade), cada
  * header de segurança, CDN/hospedagem e DNS (CAA, DNSSEC).
  */
 import data from "./audit.json";
@@ -52,16 +55,3 @@ export const audit = data as Audit;
 /* nota só existe para dados reais */
 export const auditGrade = audit.example ? null : audit.grade;
 export const auditScore = audit.example ? null : audit.score;
-
-/* todos os nós da constelação: os do JSON + a nota geral */
-export const auditNodes: AuditNode[] = [
-  ...audit.nodes,
-  {
-    id: "grade",
-    label: "Nota geral",
-    value: auditGrade ? `${auditGrade} · ${auditScore ?? "—"}/100` : audit.example ? "— · dados de exemplo, sem nota" : "— · pendente",
-    status: "info",
-  },
-];
-
-export const auditDate = audit.scannedAt ? new Date(audit.scannedAt).toLocaleDateString("pt-BR", { timeZone: "UTC" }) : null;

@@ -1,6 +1,5 @@
 import type { AsciiImageData } from "@/lib/ascii/image";
 import { portraitBoxStyle } from "@/lib/ascii/core";
-import { profile } from "@/content/profile";
 
 /*
  * Conteúdo do hero (tipografia + área do retrato). Renderizado DUAS vezes
@@ -16,7 +15,7 @@ import { profile } from "@/content/profile";
  * A diferença entre as duas é só cor e conteúdo, nunca layout. A camada under
  * é recortada por um círculo (clip-path) que segue a lente via variáveis CSS.
  */
-export function HeroLayer({ variant, portrait }: { variant: "surface" | "under"; portrait: AsciiImageData }) {
+export function HeroLayer({ variant, portrait, alt }: { variant: "surface" | "under"; portrait: AsciiImageData; alt: string }) {
   const under = variant === "under";
   return (
     <div className={`hero-layer hero-layer--${variant}`} aria-hidden={under || undefined}>
@@ -37,7 +36,7 @@ export function HeroLayer({ variant, portrait }: { variant: "surface" | "under";
             src={portrait.svg.src}
             width={portrait.svg.width}
             height={portrait.svg.height}
-            alt={`Retrato de ${profile.name} desenhado com caracteres de código (ASCII art)`}
+            alt={alt}
             decoding="async"
           />
         )}

@@ -1,3 +1,7 @@
+import { hasLocale } from "next-intl";
+import { getTranslations, setRequestLocale } from "next-intl/server";
+import { notFound } from "next/navigation";
+
 import { ConsoleFlag } from "@/components/ConsoleFlag";
 import { SiteFooter } from "@/components/SiteFooter";
 import { TerminalDock } from "@/components/TerminalDock";
@@ -7,9 +11,15 @@ import { Contact } from "@/components/sections/Contact";
 import { Hero } from "@/components/sections/Hero";
 import { Stack } from "@/components/sections/Stack";
 import { Work } from "@/components/sections/Work";
+import { routing } from "@/i18n/routing";
 import { terminalData } from "@/lib/terminal-data";
 
-export default function Home() {
+export default async function Home({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
+  if (!hasLocale(routing.locales, locale)) notFound();
+  setRequestLocale(locale);
+  const t = await getTranslations("ctf");
+
   return (
     <>
       <main id="conteudo">
@@ -21,8 +31,8 @@ export default function Home() {
         <Contact />
       </main>
       <SiteFooter />
-      <TerminalDock data={terminalData} />
-      <ConsoleFlag />
+      <TerminalDock data={await terminalData(locale)} />
+      <ConsoleFlag text={t.raw("console") as string} />
     </>
   );
 }

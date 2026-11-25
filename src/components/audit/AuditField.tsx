@@ -7,12 +7,16 @@ import { claimGL } from "@/lib/gl-slot";
 
 import type { Constellation } from "./scene";
 
-const STATUS: Record<CheckStatus, { label: string; cls: string }> = {
-  pass: { label: "ok", cls: "bg-[#8fd6a8]" },
-  warn: { label: "atenção", cls: "bg-accent" },
-  fail: { label: "falha", cls: "bg-[#ff8a80]" },
-  info: { label: "info", cls: "bg-[#a3acb6]" },
+const STATUS: Record<CheckStatus, string> = {
+  pass: "bg-[#8fd6a8]",
+  warn: "bg-accent",
+  fail: "bg-[#ff8a80]",
+  info: "bg-[#a3acb6]",
 };
+
+/* textos do servidor (messages: audit.*); progress/done usam {lit} e {total} */
+export type AuditLabels = { status: Record<string, string>; progress: string; done: string; gradeExample: string; gradePending: string };
+const fill = (s: string, v: Record<string, number>) => s.replace(/\{(\w+)\}/g, (_, k: string) => String(v[k] ?? ""));
 
 /*
  * Camada interativa do AUDIT: buraco negro + constelação (WebGL) atrás do
@@ -27,7 +31,7 @@ const STATUS: Record<CheckStatus, { label: string; cls: string }> = {
  * mesma cena + a lista dos dados em texto (que sempre existe para leitores
  * de tela).
  */
-export function AuditField({ nodes, grade, score, example }: { nodes: AuditNode[]; grade: string | null; score: number | null; example: boolean }) {
+export function AuditField({ nodes, grade, score, example, labels }: { nodes: AuditNode[]; grade: string | null; score: number | null; example: boolean; labels: AuditLabels }) {
   const ref = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const [card, setCard] = useState(-1);
@@ -247,8 +251,8 @@ export function AuditField({ nodes, grade, score, example }: { nodes: AuditNode[
       {node && (
         <div ref={cardRef} className="audit-card" role="status">
           <p className="flex items-center gap-2 text-[10px] tracking-wide text-dim uppercase">
-            <span aria-hidden="true" className={`size-1.5 rounded-full ${STATUS[node.status].cls}`} />
-            {STATUS[node.status].label} · {node.label}
+            <span aria-hidden="true" className={`size-1.5 rounded-full ${STATUS[node.status]}`} />
+            {labels.status[node.status]} · {node.label}
           </p>
           <p className="mt-1.5 text-[12px] leading-snug text-paper">{node.value}</p>
         </div>
@@ -256,7 +260,7 @@ export function AuditField({ nodes, grade, score, example }: { nodes: AuditNode[
 
       {(scanning || reveal) && (
         <p className="audit-progress font-mono text-[11px] tracking-wide text-dim uppercase" aria-live="polite">
-          {scanning ? `scan · ${lit.length}/${nodes.length} nós` : reveal ? `scan completo · ${nodes.length}/${nodes.length} nós` : ""}
+          {scanning ? fill(labels.progress, { lit: lit.length, total: nodes.length }) : reveal ? fill(labels.done, { total: nodes.length }) : ""}
         </p>
       )}
 
@@ -264,7 +268,7 @@ export function AuditField({ nodes, grade, score, example }: { nodes: AuditNode[
         <div className={`audit-grade ${grade ? "" : "audit-grade--none"}`} role="status">
           <span className="font-display leading-none">{grade ?? "—"}</span>
           <span className="font-mono text-[11px] tracking-wide uppercase">
-            {grade ? `${score ?? "—"}/100 · Aegis` : example ? "sem nota · dados de exemplo" : "nota pendente"}
+            {grade ? `${score ?? "—"}/100 · Aegis` : example ? labels.gradeExample : labels.gradePending}
           </span>
         </div>
       )}
