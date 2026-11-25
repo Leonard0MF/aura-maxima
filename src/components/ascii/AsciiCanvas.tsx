@@ -6,13 +6,7 @@ import { GLYPHS, PORTRAIT_H, PORTRAIT_MAX_W, RATIO, cellWidth, type Levels } fro
 
 import { FRAG, GRID_FRAG, VERT } from "./shader";
 
-/*
- * hero: retrato a 70% da altura, montagem de entrada, cobre a tipografia, âmbar.
- * work: print de projeto no centro do bloco; a tipografia fica por cima com
- *       mix-blend-mode (inversão de cor), então sem cobertura e sem âmbar.
- */
-export type AsciiPreset = "hero" | "work";
-type Props = { src: string; aspect: number; levels: Levels; preset?: AsciiPreset; onFail: () => void };
+type Props = { src: string; aspect: number; levels: Levels; onFail: () => void };
 
 /* Atlas: cada glifo pré-renderizado uma vez numa faixa (fillText só aqui). */
 const TILE_W = 40;
@@ -60,9 +54,9 @@ function texture(gl: WebGL2RenderingContext, unit: number, source: TexImageSourc
  *   passe de grade  → textura (1 texel por célula): glifo, destaque, opacidade
  *   passe por frame → atlas de glifos + embaralhamento perto do cursor + lente
  * Também é dono da interação (ponteiro, lente, passeio sozinho) e escreve
- * --lx/--ly/--lr no hero para a camada de texto da lente (PENTESTER).
+ * transform/clip-path direto na camada de texto da lente (PENTESTER).
  */
-export default function AsciiCanvas({ src, aspect, levels, preset = "hero", onFail }: Props) {
+export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -98,8 +92,7 @@ export default function AsciiCanvas({ src, aspect, levels, preset = "hero", onFa
     let imgW = 1;
     const html = document.documentElement;
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const hero = preset === "hero";
-    const intro = hero && html.dataset.intro === "1";
+    const intro = html.dataset.intro === "1";
     let introStart = 0;
 
     /* ---------- geometria + grade ---------- */
@@ -109,23 +102,35 @@ export default function AsciiCanvas({ src, aspect, levels, preset = "hero", onFa
     const rect = { x: 0, y: 0, w: 0, h: 0 }; // px CSS, origem no topo
     let lensR = 100;
     let lastStep = -1;
+    /* posição da página do bloco, medida no resize (sem getBoundingClientRect por evento) */
+    let boxTop = 0, boxLeft = 0;
+    /* camada de texto da lente (hero): move só com transform */
+    const lensWin = box.querySelector<HTMLElement>(".lens-window");
+    const lensInner = lensWin?.querySelector<HTMLElement>(".lens-inner") ?? null;
+    let shownX = NaN, shownY = NaN, shownR = NaN;
 
     const resize = () => {
-      dpr = Math.min(window.devicePixelRatio || 1, 1.5);
       W = box.clientWidth;
       H = box.clientHeight;
+      /* DPR ≤ 1.5 e no máximo ~2,4 Mpx de framebuffer (telas grandes / 4K) */
+      dpr = Math.min(window.devicePixelRatio || 1, 1.5, Math.sqrt(2.4e6 / Math.max(1, W * H)));
+      const br = box.getBoundingClientRect();
+      boxTop = br.top + scrollY;
+      boxLeft = br.left + scrollX;
       canvas.width = Math.round(W * dpr);
       canvas.height = Math.round(H * dpr);
       const cw = cellWidth(W);
       gridCols = Math.ceil(W / cw);
       gridRows = Math.ceil(H / (cw * RATIO));
-      rect.h = hero
-        ? Math.min(PORTRAIT_H * H, (PORTRAIT_MAX_W * W) / aspect)
-        : Math.min(0.52 * H, ((W < 640 ? 0.92 : 0.62) * W) / aspect);
+      rect.h = Math.min(PORTRAIT_H * H, (PORTRAIT_MAX_W * W) / aspect);
       rect.w = rect.h * aspect;
       rect.x = (W - rect.w) / 2;
       rect.y = (H - rect.h) / 2;
-      lensR = hero ? (W < 640 ? 66 : 100) : W < 640 ? 60 : 90;
+      lensR = W < 640 ? 66 : 100;
+      if (lensWin) {
+        lensWin.style.width = lensWin.style.height = `${lensR * 2}px`;
+        shownR = NaN;
+      }
 
       gl.activeTexture(gl.TEXTURE2);
       gl.bindTexture(gl.TEXTURE_2D, gridTex);
@@ -147,8 +152,8 @@ export default function AsciiCanvas({ src, aspect, levels, preset = "hero", onFa
         gl.uniform1f(loc(p, "uImgLod"), lod);
         gl.uniform1f(loc(p, "uDpr"), dpr);
         /* no celular o retrato ocupa a largura toda: não esconde FULL-STACK / DEVELOPER */
-        gl.uniform1f(loc(p, "uKnock"), hero && W >= 640 ? 1 : 0);
-        gl.uniform1f(loc(p, "uAccent"), hero ? 1 : 0);
+        gl.uniform1f(loc(p, "uKnock"), W >= 640 ? 1 : 0);
+        gl.uniform1f(loc(p, "uAccent"), 1);
         gl.uniform2f(loc(p, "uRes"), canvas.width, canvas.height);
       }
       gl.viewport(0, 0, canvas.width, canvas.height);
@@ -169,16 +174,15 @@ export default function AsciiCanvas({ src, aspect, levels, preset = "hero", onFa
     };
 
     /* ---------- interação ---------- */
-    const face = () => ({ x: W / 2, y: rect.y + rect.h * (hero ? 0.4 : 0.5) });
+    const face = () => ({ x: W / 2, y: rect.y + rect.h * 0.4 });
     let lx = 0, ly = 0, tx = 0, ty = 0;
     let px = -1e4, py = -1e4, pa = 0;
     let lastInput = -Infinity;
     const t0 = performance.now();
 
     const onMove = (e: PointerEvent) => {
-      const r = box.getBoundingClientRect();
-      tx = e.clientX - r.left;
-      ty = e.clientY - r.top;
+      tx = e.pageX - boxLeft;
+      ty = e.pageY - boxTop;
       if (px < -1e3) {
         px = tx;
         py = ty;
@@ -197,6 +201,7 @@ export default function AsciiCanvas({ src, aspect, levels, preset = "hero", onFa
     /* ~30 fps; se o frame custa caro na main thread (aparelho fraco, GL por
      * software), cai para ~16 fps sozinho em vez de travar a página */
     let cost = 0;
+    let gap = 33, prevNow = performance.now(), slow = 0;
     const frame = (now: number) => {
       raf = 0;
       if (!alive) return;
@@ -207,8 +212,8 @@ export default function AsciiCanvas({ src, aspect, levels, preset = "hero", onFa
       const idle = sinceInput > 2500;
       if (idle && !reduce) {
         const f = face();
-        tx = f.x + rect.w * (hero ? 0.32 : 0.34) * Math.sin(t * 0.31);
-        ty = f.y + rect.h * (hero ? 0.22 : 0.3) * Math.sin(t * 0.47 + 1.3);
+        tx = f.x + rect.w * 0.32 * Math.sin(t * 0.31);
+        ty = f.y + rect.h * 0.22 * Math.sin(t * 0.47 + 1.3);
       }
       const k = idle ? 0.05 : 0.25;
       lx += (tx - lx) * k;
@@ -218,7 +223,8 @@ export default function AsciiCanvas({ src, aspect, levels, preset = "hero", onFa
       pa += ((sinceInput < 1200 ? 1 : 0) - pa) * 0.1;
 
       const it = intro ? (now - introStart) / 1000 : 99;
-      const step = Math.floor(t * 6);
+      /* tremulação a 4 Hz (a grade só é refeita nesses passos) */
+      const step = Math.floor(t * 4);
       if (it < INTRO_END || step !== lastStep) {
         lastStep = step;
         drawGrid(t, it);
@@ -250,9 +256,31 @@ export default function AsciiCanvas({ src, aspect, levels, preset = "hero", onFa
       gl.disable(gl.SCISSOR_TEST);
       cost = cost * 0.8 + (performance.now() - now) * 0.2;
 
-      box.style.setProperty("--lx", `${lx.toFixed(1)}px`);
-      box.style.setProperty("--ly", `${ly.toFixed(1)}px`);
-      box.style.setProperty("--lr", `${r.toFixed(1)}px`);
+      /* trava real (GPU lenta, GL por software mascarado pelo navegador):
+       * intervalo médio entre frames > 50 ms por ~2 s → desliga e usa o estático */
+      gap = gap * 0.9 + Math.min(200, now - prevNow) * 0.1;
+      prevNow = now;
+      const limit = cost > 12 ? 120 : 50;
+      if (gap > limit && ++slow > 40) {
+        alive = false;
+        return onFail();
+      }
+      if (gap < limit) slow = 0;
+
+      if (lensWin && lensInner) {
+        const ox = lx - lensR, oy = ly - lensR;
+        if (Math.abs(ox - shownX) > 0.1 || Math.abs(oy - shownY) > 0.1) {
+          shownX = ox;
+          shownY = oy;
+          lensWin.style.transform = `translate3d(${ox.toFixed(1)}px,${oy.toFixed(1)}px,0)`;
+          lensInner.style.transform = `translate3d(${(-ox).toFixed(1)}px,${(-oy).toFixed(1)}px,0)`;
+        }
+        /* o recorte só muda enquanto a lente abre (elemento pequeno) */
+        if (r !== shownR) {
+          shownR = r;
+          lensWin.style.clipPath = `circle(${r.toFixed(1)}px at 50% 50%)`;
+        }
+      }
       schedule();
     };
 
@@ -261,11 +289,16 @@ export default function AsciiCanvas({ src, aspect, levels, preset = "hero", onFa
     }
 
     const ro = new ResizeObserver(resize);
+    /* fora da tela: loop parado (nenhum rAF agendado) */
     const io = new IntersectionObserver(([e]) => {
       visible = e.isIntersecting;
+      prevNow = performance.now();
       schedule();
     });
-    const onVis = () => schedule();
+    const onVis = () => {
+      prevNow = performance.now();
+      schedule();
+    };
     const onLost = (e: Event) => {
       e.preventDefault();
       alive = false;
@@ -344,7 +377,7 @@ export default function AsciiCanvas({ src, aspect, levels, preset = "hero", onFa
         if (!canvas.isConnected) gl.getExtension("WEBGL_lose_context")?.loseContext();
       }, 0);
     };
-  }, [src, aspect, levels.black, levels.white, preset, onFail]);
+  }, [src, aspect, levels.black, levels.white, onFail]);
 
   return <canvas ref={ref} aria-hidden="true" className="ascii-canvas font-mono" />;
 }

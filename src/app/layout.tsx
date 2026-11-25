@@ -42,7 +42,7 @@ export const viewport: Viewport = {
  *  - usa a imagem estática do objeto 3D com reduced-motion ou CPU fraca (≤ 4 núcleos).
  * Storage pode lançar exceção (aba privada, bloqueio): tudo em try/catch.
  */
-const boot = `(function(){var d=document.documentElement;d.dataset.js="1";try{if(localStorage.getItem("recon:mode")==="clean")d.dataset.mode="clean"}catch(e){}try{if(sessionStorage.getItem("recon:scan-seen")||matchMedia("(prefers-reduced-motion: reduce)").matches)d.dataset.scan="instant"}catch(e){}try{if(matchMedia("(prefers-reduced-motion: reduce)").matches||(navigator.hardwareConcurrency||8)<=4)d.dataset.ascii="static";else if(!sessionStorage.getItem("recon:intro"))d.dataset.intro="1"}catch(e){}})()`;
+const boot = `(function(){var d=document.documentElement;d.dataset.js="1";try{if(localStorage.getItem("recon:mode")==="clean")d.dataset.mode="clean"}catch(e){}try{if(sessionStorage.getItem("recon:scan-seen")||matchMedia("(prefers-reduced-motion: reduce)").matches)d.dataset.scan="instant"}catch(e){}try{if(matchMedia("(prefers-reduced-motion: reduce)").matches||(navigator.hardwareConcurrency||8)<=4)d.dataset.fx="static";else if(!sessionStorage.getItem("recon:intro"))d.dataset.intro="1"}catch(e){}})()`;
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (

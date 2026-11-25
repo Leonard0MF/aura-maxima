@@ -9,19 +9,19 @@ import type { Levels } from "@/lib/ascii/core";
 const AsciiCanvas = dynamic(() => import("@/components/ascii/AsciiCanvas"), { ssr: false });
 
 /*
- * O script de boot marca data-ascii="static" com reduced-motion ou
+ * O script de boot marca data-fx="static" com reduced-motion ou
  * hardwareConcurrency ≤ 4: aí fica só o <pre> gerado no build. Se o WebGL2
  * (ou a foto) falhar, voltamos para ele também.
  */
 export function AsciiStage({ src, aspect, levels }: { src: string; aspect: number; levels: Levels }) {
   const [ready, setReady] = useState(false);
   const fail = useCallback(() => {
-    document.documentElement.dataset.ascii = "static";
+    document.documentElement.dataset.fx = "static";
     setReady(false);
   }, []);
 
   useEffect(() => {
-    if (document.documentElement.dataset.ascii === "static") return;
+    if (document.documentElement.dataset.fx === "static") return;
     const go = () => setReady(true);
     /* com a montagem de entrada, carrega já (a tipografia anima junto) */
     if (document.documentElement.dataset.intro === "1") {

@@ -1,36 +1,23 @@
+import Image from "next/image";
 import Link from "next/link";
-import type { CSSProperties } from "react";
 
 import { Decrypt } from "@/components/Decrypt";
 import { Dual } from "@/components/Dual";
-import { WorkAscii } from "@/components/work/WorkAscii";
 import { projects, type Project } from "@/content/profile";
-import { getAsciiImage } from "@/lib/ascii/image";
 import { t } from "@/lib/i18n";
-
-/* largura de cada nome em em (Archivo Black, tracking −0.035em), medida no
- * navegador; o nome ocupa a largura útil do bloco */
-const WIDTH_EM: Record<string, number> = { AEGIS: 3.269, BUMPHUB: 5.45, FOTOS: 3.542 };
 
 const known = (s?: string) => (s && !s.startsWith("TODO") ? s : undefined);
 const pad = (n: number) => String(n).padStart(2, "0");
 
 /*
- * 01 · WORK. Um projeto por bloco de 100svh, sticky (empilham ao rolar).
- * Camadas do bloco:
- *   0  ASCII estático (SVG do build): sem JS, modo estático ou fora de cena
- *   1  canvas WebGL do print (só o bloco em cena), com a lente na imagem real
- *   2  nome gigante com mix-blend-mode: difference → inverte onde o ASCII
- *      passa por baixo das letras; recortado no círculo da lente
- *   3  metadados nos cantos
+ * 01 · WORK. Leve de propósito: sem WebGL, sem ASCII, sem blend.
+ * Cada projeto: nome gigante (todos no mesmo corpo, alinhados à esquerda),
+ * print à esquerda e uma coluna com descrição, papel, ano, stack, destaques
+ * e links. Organização por hairlines, sem cards.
  */
-export async function Work() {
-  const list = await Promise.all(
-    projects.map(async (p) => ({ p, img: await getAsciiImage(p.image?.src ?? "projects/placeholder.png") })),
-  );
-
+export function Work() {
   return (
-    <section id="findings" aria-labelledby="work-title" className="work bg-paper text-ink">
+    <section id="findings" aria-labelledby="work-title" className="bg-paper text-ink">
       <header className="sec-head">
         <div className="sec-meta">
           <span>01</span>
@@ -44,88 +31,91 @@ export async function Work() {
         </h2>
       </header>
 
-      <ol>
-        {list.map(({ p, img }, i) => (
-          <WorkBlock key={p.id} p={p} img={img} i={i} total={list.length} />
+      <ol className="px-4 pb-16 sm:px-6 sm:pb-24">
+        {projects.map((p, i) => (
+          <WorkItem key={p.id} p={p} i={i} total={projects.length} />
         ))}
       </ol>
     </section>
   );
 }
 
-function WorkBlock({
-  p,
-  img,
-  i,
-  total,
-}: {
-  p: Project;
-  img: Awaited<ReturnType<typeof getAsciiImage>>;
-  i: number;
-  total: number;
-}) {
+function WorkItem({ p, i, total }: { p: Project; i: number; total: number }) {
   const stack = p.stack.filter((s) => known(s));
-  const alt = p.image ? t(p.image.alt) : `Placeholder neutro: print de ${p.title} ainda não disponível`;
+  const meta = "font-mono text-[11px] tracking-wide uppercase sm:text-xs";
 
   return (
-    <li
-      className="work-block"
-      aria-labelledby={`w-${p.slug}`}
-      style={{ "--pa": img.aspect, "--w": WIDTH_EM[p.display] ?? p.display.length * 0.72, zIndex: i + 1 } as CSSProperties}
-    >
-      <div className="ascii-fallback">
-        {/* eslint-disable-next-line @next/next/no-img-element -- data URI gerado no build */}
-        <img src={img.svg.src} width={img.svg.width} height={img.svg.height} alt={`${alt} (ASCII art)`} decoding="async" />
+    <li className="work-item border-t border-ink/20 pt-4 pb-14 sm:pb-20" aria-labelledby={`w-${p.slug}`}>
+      <div className={`${meta} flex items-center justify-between gap-4`}>
+        <p className="flex items-center gap-2">
+          <span
+            aria-hidden="true"
+            className={`size-2 rounded-full ${p.severity === "critical" ? "bg-accent" : p.severity === "high" ? "bg-ink" : "border border-ink"}`}
+          />
+          <Dual term={`${p.id} · ${p.severity.toUpperCase()}`} clean={`Projeto ${pad(i + 1)}`} />
+        </p>
+        <p aria-label={`Projeto ${i + 1} de ${total}`}>
+          {pad(i + 1)}/{pad(total)}
+        </p>
       </div>
 
-      <WorkAscii src={img.src} aspect={img.aspect} levels={img.levels} />
+      <h3 id={`w-${p.slug}`} className="work-name mt-6 font-display" style={{ ["--w" as string]: 5.5 }}>
+        <span className="sr-only">{p.title}</span>
+        <span aria-hidden="true">{p.display}</span>
+      </h3>
 
-      <div className="work-name">
-        <h3 id={`w-${p.slug}`} className="font-display">
-          <span className="sr-only">{p.title}</span>
-          <span aria-hidden="true">{p.display}</span>
-        </h3>
-      </div>
+      <div className="mt-6 grid gap-8 sm:mt-10 lg:grid-cols-12 lg:gap-10">
+        <figure className="lg:col-span-7">
+          <Link href={`/projetos/${p.slug}`} tabIndex={-1} aria-hidden="true" className="work-fig block">
+            {p.image ? (
+              <Image
+                src={p.image.src}
+                alt=""
+                fill
+                sizes="(min-width: 1024px) 58vw, 100vw"
+                className="work-media object-cover"
+              />
+            ) : (
+              <span className="work-media work-ph">
+                <span className="text-center font-mono text-[11px] tracking-wide text-ink-soft uppercase">
+                  {p.display}
+                  <br />
+                  print em breve
+                </span>
+              </span>
+            )}
+          </Link>
+          <figcaption className={`work-cap mt-2 flex justify-between gap-4 ${meta} text-ink-soft`}>
+            <span>
+              Fig. {pad(i + 1)} · {p.image ? t(p.image.alt) : `${p.title}: print pendente`}
+            </span>
+            <span aria-hidden="true">↗</span>
+          </figcaption>
+        </figure>
 
-      <div className="work-meta">
-        <div className="flex items-start justify-between gap-4">
-          <p className="flex items-center gap-2">
-            <span
-              aria-hidden="true"
-              className={`size-2 rounded-full ${p.severity === "critical" ? "bg-accent" : p.severity === "high" ? "bg-ink" : "border border-ink"}`}
-            />
-            <Dual term={`${p.id} · ${p.severity.toUpperCase()}`} clean={`Projeto ${pad(i + 1)}`} />
-          </p>
-          <p aria-label={`Projeto ${i + 1} de ${total}`}>
-            {pad(i + 1)}/{pad(total)}
-          </p>
-        </div>
+        <div className="flex flex-col gap-6 lg:col-span-5">
+          <p className="max-w-[48ch] text-[17px] leading-relaxed sm:text-lg">{t(p.summary)}</p>
 
-        <div className="grid items-end gap-4 pr-28 sm:grid-cols-[minmax(0,1fr)_auto] sm:pr-36">
-          <div className="space-y-3">
-            <p className="max-w-[44ch] font-sans text-sm leading-relaxed tracking-normal normal-case sm:text-[15px]">{t(p.summary)}</p>
-            <dl className="flex flex-wrap gap-x-5 gap-y-1">
-              {stack.length > 0 && (
-                <div className="flex gap-1.5">
-                  <dt className="text-ink-soft">Stack</dt>
-                  <dd>{stack.join(" · ")}</dd>
-                </div>
-              )}
-              {known(p.year) && (
-                <div className="flex gap-1.5">
-                  <dt className="text-ink-soft">Ano</dt>
-                  <dd>{p.year}</dd>
-                </div>
-              )}
-              {p.role && (
-                <div className="flex gap-1.5">
-                  <dt className="text-ink-soft">Papel</dt>
-                  <dd>{t(p.role)}</dd>
-                </div>
-              )}
-            </dl>
-          </div>
-          <p className="flex gap-5">
+          <dl className={`${meta} divide-y divide-ink/15 border-y border-ink/15`}>
+            {p.role && <Row k="Papel" v={t(p.role)} />}
+            {known(p.year) && <Row k="Ano" v={p.year!} />}
+            {stack.length > 0 && <Row k="Stack" v={stack.join(" · ")} />}
+          </dl>
+
+          {p.highlights && (
+            <ul className="space-y-1.5 text-[15px] leading-relaxed">
+              {p.highlights.map((h, j) => (
+                <li key={j} className="flex gap-3">
+                  <span aria-hidden="true" className="font-mono text-xs leading-[1.7rem] text-accent-ink">
+                    {pad(j + 1)}
+                  </span>
+                  {t(h)}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <p className={`${meta} flex gap-6`}>
             <Link href={`/projetos/${p.slug}`} className="ulink">
               Estudo de caso <span aria-hidden="true">→</span>
             </Link>
@@ -135,9 +125,24 @@ function WorkBlock({
                 <span className="sr-only"> (abre em nova aba)</span>
               </a>
             )}
+            {p.links.demo && (
+              <a href={p.links.demo} target="_blank" rel="noreferrer" className="ulink">
+                Demo <span aria-hidden="true">↗</span>
+                <span className="sr-only"> (abre em nova aba)</span>
+              </a>
+            )}
           </p>
         </div>
       </div>
     </li>
+  );
+}
+
+function Row({ k, v }: { k: string; v: string }) {
+  return (
+    <div className="grid grid-cols-[5rem_1fr] gap-4 py-2">
+      <dt className="text-ink-soft">{k}</dt>
+      <dd>{v}</dd>
+    </div>
   );
 }

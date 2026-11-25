@@ -110,9 +110,6 @@ html[data-scan="instant"] .scan-line {
 .hero {
   height: max(100svh, 600px);
   container-type: size;
-  --lr: 100px;
-  --lx: 50cqw;
-  --ly: 45cqh;
 }
 .hero-display {
   position: absolute;
@@ -187,7 +184,7 @@ html[data-intro] .hero > .hero-display .hl-bot {
 }
 /* Com JS: aparece desde o 1º paint como um esboço quase transparente (é o LCP);
  * some quando o canvas assume ou vira o retrato inteiro no modo estático. */
-html[data-js]:not([data-ascii="static"]) .ascii-fallback {
+html[data-js]:not([data-fx="static"]) .ascii-fallback {
   opacity: 0.08;
 }
 .ascii-fallback {
@@ -212,12 +209,12 @@ html[data-js] .hero[data-live] .ascii-fallback {
   z-index: 3;
   left: 0;
   top: 0;
-  width: calc(var(--lr) * 2);
-  height: calc(var(--lr) * 2);
-  border-radius: 50%;
+  /* tamanho, posição e recorte vêm do AsciiCanvas (transform direto no
+   * elemento, sem variáveis CSS herdadas → sem recálculo de estilo por frame) */
+  width: 200px;
+  height: 200px;
   overflow: hidden;
   pointer-events: none;
-  transform: translate3d(calc(var(--lx) - var(--lr)), calc(var(--ly) - var(--lr)), 0);
   will-change: transform;
 }
 .hero[data-live] .lens-window {
@@ -229,7 +226,6 @@ html[data-js] .hero[data-live] .ascii-fallback {
   top: 0;
   width: 100cqw;
   height: 100cqh;
-  transform: translate3d(calc(var(--lr) - var(--lx)), calc(var(--lr) - var(--ly)), 0);
   will-change: transform;
 }
 .lens-inner .hl {
@@ -368,86 +364,50 @@ body::after {
 }
 
 /* ---------- 01 · WORK ---------- */
-.work-block {
-  position: sticky;
-  top: 0;
-  height: max(100svh, 560px);
-  container-type: size;
-  isolation: isolate;
+.work-fig {
+  position: relative;
   overflow: hidden;
-  background: var(--color-paper);
-  border-top: 1px solid color-mix(in srgb, var(--color-ink) 18%, transparent);
-  --lr: 0px;
-  --lx: 50cqw;
-  --ly: 50cqh;
+  aspect-ratio: 16 / 10;
+  background: #dedbd4;
 }
-/* Mesma caixa que o shader usa no preset "work" */
-.work-block .ascii-fallback {
-  z-index: 0;
-  height: min(52cqh, calc(62cqw / var(--pa)));
-  transition: opacity 0.4s ease;
-}
-@container (max-width: 639px) {
-  .work-block .ascii-fallback {
-    height: min(52cqh, calc(92cqw / var(--pa)));
-  }
-}
-html[data-js]:not([data-ascii="static"]) .work-block .ascii-fallback {
-  opacity: 1;
-}
-/* (o seletor abaixo precisa vencer o de cima: 0,4,1 > 0,3,1) */
-html[data-js] .work-block[data-live] .ascii-fallback {
-  opacity: 0;
-}
-.work-block .ascii-canvas {
-  z-index: 1;
-}
-
-/* Nome: #FDFBF6 = papel + tinta; com "difference" vira tinta sobre o papel e
- * papel sobre a tinta do ASCII (inversão exata). */
-.work-name {
+.work-media {
   position: absolute;
   inset: 0;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  padding: 0 1rem;
-  color: #fdfbf6;
-  mix-blend-mode: difference;
-  pointer-events: none;
+  transition: transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
-.work-name h3 {
-  font-size: min(calc((100cqw - 2rem) / var(--w)), 40cqh);
+.work-item:hover .work-media,
+.work-item:focus-within .work-media {
+  transform: scale(1.02);
+}
+/* placeholder: hachura fina + nome em contorno, até existir o print */
+.work-ph {
+  display: grid;
+  place-items: center;
+  background:
+    repeating-linear-gradient(135deg, transparent 0 11px, rgb(20 20 20 / 0.05) 11px 12px),
+    #dedbd4;
+}
+.work-cap {
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+@media (hover: hover) {
+  .work-cap {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  .work-item:hover .work-cap,
+  .work-item:focus-within .work-cap {
+    opacity: 1;
+    transform: none;
+  }
+}
+.work-item {
+  container-type: inline-size;
+}
+.work-name {
+  font-size: calc(100cqw / var(--w));
   line-height: 0.8;
   letter-spacing: -0.035em;
   white-space: nowrap;
   margin-left: -0.04em;
-}
-/* dentro da lente, só a imagem real */
-.work-block[data-live] .work-name {
-  mask-image: radial-gradient(circle at var(--lx) var(--ly), transparent calc(var(--lr) + 1px), #000 calc(var(--lr) + 2px));
-}
-
-.work-meta {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 1rem;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  pointer-events: none;
-}
-.work-meta a {
-  pointer-events: auto;
-}
-@media (min-width: 640px) {
-  .work-meta {
-    padding: 1.5rem;
-    font-size: 12px;
-  }
 }
