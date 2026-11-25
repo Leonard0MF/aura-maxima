@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { claimGL } from "@/lib/gl-slot";
 
 type Scene = { drop(): void; focus(id: string): void; unfocus(): void; destroy(): void };
 
@@ -128,6 +129,7 @@ export function StackStage({ tokens }: { tokens: { id: string; name: string }[] 
     let near = false;
     let canvas: HTMLCanvasElement | null = null;
 
+    let pending: Promise<void> | null = null; // montagem em andamento
     const mount = async () => {
       if (scene || loading) return;
       loading = true;
@@ -173,14 +175,21 @@ export function StackStage({ tokens }: { tokens: { id: string; name: string }[] 
       hover(null, 0, 0);
     };
 
-    const ioNear = new IntersectionObserver(
-      ([e]) => {
-        near = e.isIntersecting;
-        if (near) void mount();
-        else unmount();
+    /* um contexto WebGL por vez entre STACK e AUDIT (lib/gl-slot): monta
+     * quando esta seção é a dona; ao perder, só "libera" depois que uma
+     * montagem em andamento terminou e foi descartada */
+    const releaseGL = claimGL({
+      el: stage,
+      mount() {
+        near = true;
+        pending = mount().finally(() => (pending = null));
       },
-      { rootMargin: "100% 0px" },
-    );
+      async unmount() {
+        near = false;
+        unmount();
+        await pending;
+      },
+    });
     const ioIn = new IntersectionObserver(
       ([e]) => {
         if (!e.isIntersecting) return;
@@ -189,11 +198,10 @@ export function StackStage({ tokens }: { tokens: { id: string; name: string }[] 
       },
       { threshold: 0.25 },
     );
-    ioNear.observe(stage);
     ioIn.observe(stage);
 
     return () => {
-      ioNear.disconnect();
+      releaseGL();
       ioIn.disconnect();
       unmount();
       cleanup();
