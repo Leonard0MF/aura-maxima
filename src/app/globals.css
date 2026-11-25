@@ -601,106 +601,63 @@ html[data-js] .hero[data-live] .ascii-fallback {
   color: var(--color-accent-ink);
 }
 
-/* ---------- 04 · AUDIT (camada de baixo) ----------
- * Fundo: círculo escuro numa camada sticky de 100vh. Cresce na entrada e
- * fecha na saída da seção (scroll-driven animation, só transform). */
+/* ---------- 03 · AUDIT ----------
+ * Fundo: fade simples do papel para o escuro enquanto a seção entra, e de
+ * volta quando ela sai (scroll-driven animation, só opacity). Nada sai da
+ * própria seção: relative + overflow hidden + isolation, e a camada escura
+ * ocupa exatamente a seção (inset 0). Sem suporte ou com reduced-motion: a
+ * seção é simplesmente escura. */
 .audit {
   position: relative;
+  overflow: hidden;
+  isolation: isolate;
   background: var(--color-paper);
   view-timeline-name: --audit;
 }
-/* a camada cobre a seção + 1 tela antes e 1 depois (clip); o pino sticky
- * fica preso dentro dela, então o círculo nasce e morre no centro da tela,
- * por cima do fim da seção anterior e do começo da próxima */
 .audit-bg {
   position: absolute;
-  inset: 0; /* sem animação: corte seco no limite da seção */
-  overflow: clip;
-  pointer-events: none;
-}
-.audit-pin {
-  position: sticky;
-  top: 0;
-  height: 100vh;
-}
-.audit-pin > span {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 150vmax;
-  height: 150vmax;
-  margin: -75vmax 0 0 -75vmax;
-  border-radius: 50%;
+  inset: 0;
+  z-index: -1;
   background: #0b0d10;
+  pointer-events: none;
 }
 .audit-body {
   position: relative;
-  /* sem respiro extra: o conteúdo cabe em 100svh e o círculo cresce por
-   * cima do fim da seção anterior (a camada sobe 1 tela) */
-  padding: 0;
 }
 @supports (animation-timeline: view()) {
   @media (prefers-reduced-motion: no-preference) {
-    /* sobe 1 tela (o círculo nasce por cima do fim da STACK), mas para
-     * no fim da própria seção: na saída nunca cobre o título da ABOUT */
     .audit-bg {
-      inset: -100vh 0 0;
-    }
-    .audit-pin > span {
       animation:
-        audit-in linear both,
-        audit-out linear both;
+        audit-dark-in linear both,
+        audit-dark-out linear both;
       animation-timeline: --audit, --audit;
       animation-range:
-        entry 0% entry 60%,
-        exit 18% exit 65%;
+        entry 10% entry 60%,
+        exit 30% exit 80%;
     }
-    /* o texto é claro: só fica visível enquanto o círculo escuro está atrás
-     * dele. Aparece depois que o círculo cobre a tela e some antes de ele
-     * começar a fechar (nunca texto claro sobre o papel) */
+    /* o texto é claro: só aparece com o fundo já escuro e some antes de ele
+     * clarear (nunca texto claro sobre o papel) */
     .audit-body {
       animation:
-        audit-text-in linear both,
-        audit-text-out linear both;
+        audit-dark-in linear both,
+        audit-dark-out linear both;
       animation-timeline: --audit, --audit;
       animation-range:
-        entry 35% entry 60%,
-        exit 0% exit 18%;
+        entry 60% entry 100%,
+        exit 0% exit 30%;
     }
   }
 }
-@keyframes audit-text-in {
+@keyframes audit-dark-in {
   from {
     opacity: 0;
   }
 }
-@keyframes audit-text-out {
+@keyframes audit-dark-out {
   to {
     opacity: 0;
   }
 }
-/* entrada mexe em `scale`, saída em `transform`: as duas se multiplicam,
- * então cada uma pode ficar presa no seu valor final (fill both) */
-/* segura em 0 no início: com a STACK inteira na tela a AUDIT já "entrou"
- * alguns px, e o círculo não deve aparecer por cima do canvas */
-@keyframes audit-in {
-  0%,
-  20% {
-    scale: 0;
-  }
-  to {
-    scale: 1;
-  }
-}
-@keyframes audit-out {
-  from {
-    transform: scale(1);
-  }
-  to {
-    transform: scale(0);
-  }
-}
-
 
 /* ---------- CONTACT ---------- */
 .contact-big {
