@@ -8,7 +8,7 @@ let logged = false;
 export function introSkipped(why: string) {
   const html = document.documentElement;
   if (!html.dataset.introWhy) html.dataset.introWhy = why;
-  if (html.dataset.intro === "1" || html.dataset.intro === "run") html.dataset.intro = "done";
+  if (html.dataset.intro === "pending" || html.dataset.intro === "run") html.dataset.intro = "done";
   if (process.env.NODE_ENV !== "production" && !logged) {
     logged = true;
     console.info(`[intro] skipped: ${html.dataset.introWhy}`);

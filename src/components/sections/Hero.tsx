@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 
 import { AsciiStage } from "@/components/hero/AsciiStage";
 import { HeroLayer } from "@/components/hero/HeroLayer";
+import { IntroField } from "@/components/hero/IntroField";
 import { LocalTime } from "@/components/hero/LocalTime";
 import { MobileMenu } from "@/components/hero/MobileMenu";
 import { getLocale, getTranslations } from "next-intl/server";
@@ -56,6 +57,8 @@ export async function Hero() {
       {/* intro (1ª carga da sessão): papel sobre a tipografia até o canvas da
           intro assumir. O texto embaixo está pintado desde o 1º frame (LCP). */}
       <div className="hero-intro-cover" aria-hidden="true" />
+      {/* estado inicial (data-intro="pending"): campo de glifos no lugar do retrato */}
+      <IntroField />
 
       {/* 2 · retrato ASCII ao vivo (WebGL) */}
       <AsciiStage src={portrait.src} aspect={portrait.aspect} levels={portrait.levels} bg={enigma && { src: enigma.src, aspect: enigma.aspect, levels: enigma.levels }} />

@@ -136,11 +136,11 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
     };
     const prog = link(FRAG);
     const gridProg = link(GRID_FRAG);
-    /* intro: só na 1ª carga da sessão (o boot marca data-intro="1" e anota o
+    /* intro: só na 1ª carga da sessão (o boot marca data-intro="pending" e anota o
      * motivo quando não marca; um clique/tecla/rolagem antes daqui já a
      * cancelou). ?intro=1 força, ?intro=0 desliga. */
     const token = {};
-    let intro = html.dataset.intro === "1" && !introSeen && !introOwner;
+    let intro = html.dataset.intro === "pending" && !introSeen && !introOwner;
     if (intro) introOwner = token;
     else if (!introOwner) skipped(html.dataset.introWhy || (introSeen ? "session" : "input"));
     const introProg = intro ? link(INTRO_FS, INTRO_VS) : null;
@@ -155,6 +155,9 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
     let introStart = 0;
     let started = false; // a intro chegou a rodar (data-intro="run")
+    /* 1: falta desenhar o 1º quadro da intro; 2: desenhado, "run" no próximo
+     * frame (a capa e o campo de glifos do servidor só saem com ele na tela) */
+    let runMark = 0;
     /* celular: a mesma sequência em 1,8 s (u = tempo na escala do desktop) */
     const ik = box.clientWidth < 640 ? 1.75 / INTRO_END : 1;
     let words: ReturnType<typeof createIntroWords> | null = null;
@@ -517,6 +520,12 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         gl.disable(gl.SCISSOR_TEST);
       }
+      if (runMark === 1 && intro) {
+        runMark = 2;
+        requestAnimationFrame(() => {
+          if (intro && html.dataset.intro === "pending") html.dataset.intro = "run";
+        });
+      }
       cost = cost * 0.8 + (performance.now() - now) * 0.2;
 
       /* trava real (GPU lenta, GL por software mascarado pelo navegador):
@@ -619,7 +628,7 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
       U = { time: loc(prog, "uTime"), ptr: loc(prog, "uPtr"), alpha2: loc(prog, "uAlpha2") };
 
       /* intro: palavras num canvas 2D por cima do texto real; a capa de papel
-       * do servidor (data-intro="1") sai quando ele já cobre as palavras */
+       * do servidor (data-intro="pending") sai quando ele já cobre as palavras */
       if (intro) {
         words = createIntroWords(box, family, box.clientWidth < 640);
         html.style.setProperty("--ik", String(ik));
@@ -652,10 +661,9 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
       schedule();
       box.dataset.live = "";
       if (intro) {
-        words?.draw(0);
-        html.dataset.intro = "run";
         started = true;
-      } else if (html.dataset.intro === "1" || html.dataset.intro === "run") html.dataset.intro = "done";
+        runMark = 1; // "run" só depois do 1º quadro da intro na tela (frame)
+      } else if (html.dataset.intro === "pending" || html.dataset.intro === "run") html.dataset.intro = "done";
     })();
 
     return () => {

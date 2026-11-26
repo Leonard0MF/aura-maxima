@@ -36,7 +36,7 @@ function arm() {
   armed = true;
   const html = document.documentElement;
   const ready = () => {
-    if (html.dataset.intro === "1" || html.dataset.intro === "run") return void setTimeout(ready, 300); // intro rodando: depois
+    if (html.dataset.intro === "pending" || html.dataset.intro === "run") return void setTimeout(ready, 300); // intro rodando: depois
     open = true;
     pump();
   };
