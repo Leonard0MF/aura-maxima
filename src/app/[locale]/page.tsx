@@ -3,6 +3,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import { notFound } from "next/navigation";
 
 import { ConsoleFlag } from "@/components/ConsoleFlag";
+import { OffscreenPause } from "@/components/OffscreenPause";
 import { SiteFooter } from "@/components/SiteFooter";
 import { TerminalDock } from "@/components/TerminalDock";
 import { About } from "@/components/sections/About";
@@ -33,6 +34,7 @@ export default async function Home({ params }: { params: Promise<{ locale: strin
       <SiteFooter />
       <TerminalDock data={await terminalData(locale)} />
       <ConsoleFlag text={t.raw("console") as string} />
+      <OffscreenPause />
     </>
   );
 }
