@@ -57,10 +57,12 @@ export const viewport: Viewport = {
 /*
  * Roda antes da primeira pintura:
  *  - pula a animação do scan em visitas repetidas na sessão ou com reduced-motion;
- *  - usa a imagem estática do objeto 3D com reduced-motion ou CPU fraca (≤ 4 núcleos).
+ *  - usa a imagem estática do objeto 3D com reduced-motion ou CPU fraca (≤ 4 núcleos);
+ *  - liga a transição do AUDIT (data-pin: "css" com scroll-driven animations,
+ *    "js" sem suporte); com reduced-motion fica o fade simples.
  * Storage pode lançar exceção (aba privada, bloqueio): tudo em try/catch.
  */
-const boot = `(function(){var d=document.documentElement;d.dataset.js="1";try{if(sessionStorage.getItem("recon:scan-seen")||matchMedia("(prefers-reduced-motion: reduce)").matches)d.dataset.scan="instant"}catch(e){}try{if(matchMedia("(prefers-reduced-motion: reduce)").matches||(navigator.hardwareConcurrency||8)<=4)d.dataset.fx="static";else if(!sessionStorage.getItem("recon:intro"))d.dataset.intro="1"}catch(e){}})()`;
+const boot = `(function(){var d=document.documentElement;d.dataset.js="1";try{if(sessionStorage.getItem("recon:scan-seen")||matchMedia("(prefers-reduced-motion: reduce)").matches)d.dataset.scan="instant"}catch(e){}try{if(matchMedia("(prefers-reduced-motion: reduce)").matches||(navigator.hardwareConcurrency||8)<=4)d.dataset.fx="static";else if(!sessionStorage.getItem("recon:intro"))d.dataset.intro="1"}catch(e){}try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches)d.dataset.pin=CSS.supports("animation-timeline: view()")?"css":"js"}catch(e){}})()`;
 
 export default async function LocaleLayout({ children, params }: Readonly<{ children: React.ReactNode }> & Props) {
   const { locale } = await params;

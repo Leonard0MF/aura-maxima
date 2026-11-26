@@ -835,10 +835,12 @@ html:not([data-js]) .audit-list {
     translate: 50% -50%;
   }
 }
+/* fade antigo preso à seção: só quando a transição do círculo está desligada
+ * (sem data-pin = reduced-motion, ou tela baixa em paisagem) */
 @supports (animation-timeline: view()) {
   @media (prefers-reduced-motion: no-preference) {
-    .audit-bg,
-    .audit-field {
+    html:not([data-pin]) .audit-bg,
+    html:not([data-pin]) .audit-field {
       animation:
         audit-dark-in linear both,
         audit-dark-out linear both;
@@ -849,7 +851,7 @@ html:not([data-js]) .audit-list {
     }
     /* o texto é claro: só aparece com o fundo já escuro e some antes de ele
      * clarear (nunca texto claro sobre o papel) */
-    .audit-body {
+    html:not([data-pin]) .audit-body {
       animation:
         audit-dark-in linear both,
         audit-dark-out linear both;
@@ -858,6 +860,178 @@ html:not([data-js]) .audit-list {
         entry 60% entry 100%,
         exit 0% exit 30%;
     }
+  }
+  @media (prefers-reduced-motion: no-preference) and (max-height: 520px) {
+    html[data-pin] .audit-bg,
+    html[data-pin] .audit-field {
+      animation:
+        audit-dark-in linear both,
+        audit-dark-out linear both;
+      animation-timeline: --audit, --audit;
+      animation-range:
+        entry 10% entry 60%,
+        exit 30% exit 80%;
+    }
+  }
+}
+/* reduced-motion: fade simples de 300 ms ao entrar (data-in via IO) */
+@media (prefers-reduced-motion: reduce) {
+  html[data-js] .audit {
+    opacity: 0;
+    transition: opacity 0.3s ease-out;
+  }
+  html[data-js] .audit[data-in] {
+    opacity: 1;
+  }
+}
+
+/* ---- transição "cair no buraco negro" (AuditPin) ----
+ * .audit-pin é o trecho de rolagem: 1 tela + abrir (70svh) + ler (80svh) +
+ * fechar (70svh). Sobe meia tela por cima do fim da STACK e desce meia tela
+ * por cima do começo do ABOUT; a camada sticky mostra a seção recortada por
+ * um círculo centrado no buraco negro. Tudo fica preso ao .audit-pin:
+ * relative + isolation + overflow: clip (clip, não hidden: hidden viraria
+ * contêiner de rolagem e quebraria o sticky). Ele próprio não recebe
+ * ponteiro; só a seção recebe, e o clip-path limita o acerto ao círculo. */
+@property --ko {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 1;
+}
+@property --kc {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 1;
+}
+.audit-pin {
+  position: relative; /* referência da âncora, com ou sem a transição */
+}
+.audit-anchor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+.audit-ring {
+  display: none;
+}
+@media (min-height: 521px) {
+  html[data-pin] .audit-pin {
+    /* centro do buraco negro na tela (o mesmo da cena: 25% / 50%; em tela
+     * estreita, aspecto < 0,9, ele vai para o topo, no centro) */
+    --bhx: 25%;
+    --bhy: 50%;
+    --rmax: hypot(75vw, 50svh);
+    --k: calc(var(--ko) * var(--kc));
+    --r: calc(var(--k) * var(--rmax));
+    position: relative;
+    z-index: 2;
+    isolation: isolate;
+    overflow: clip;
+    height: calc(100svh * (1 + 0.7 + 0.8 + 0.7));
+    margin-block: -50svh;
+    pointer-events: none;
+    view-timeline: --apin block;
+  }
+  html[data-pin] .audit-anchor {
+    top: 70svh;
+  }
+  html[data-pin] .audit-stick {
+    position: sticky;
+    top: 0;
+    height: 100svh;
+    overflow: clip;
+  }
+  html[data-pin] .audit {
+    height: 100svh;
+    min-height: 0;
+    background: #0b0d10;
+    clip-path: circle(var(--r) at var(--bhx) var(--bhy));
+    pointer-events: auto;
+  }
+  /* anel âmbar fino girando no limite do círculo, com uma sombra que
+   * escurece a borda dos dois lados; some com o círculo fechado ou aberto */
+  html[data-pin] .audit-ring {
+    display: block;
+    position: absolute;
+    left: var(--bhx);
+    top: var(--bhy);
+    width: calc(2 * var(--r));
+    height: calc(2 * var(--r));
+    translate: -50% -50%;
+    border-radius: 50%;
+    pointer-events: none;
+    opacity: calc(min(1, var(--k) * 25) * min(1, (1 - var(--k)) * 6));
+    box-shadow:
+      0 0 70px 28px rgb(11 13 16 / 0.42),
+      inset 0 0 50px 14px rgb(11 13 16 / 0.75);
+  }
+  html[data-pin] .audit-ring::before,
+  html[data-pin] .audit-ring::after {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: 50%;
+    background: conic-gradient(
+      from 0deg,
+      transparent 0 8%,
+      rgb(245 165 36 / 0.95) 18%,
+      transparent 30% 46%,
+      rgb(255 214 140 / 0.8) 58%,
+      transparent 70% 84%,
+      rgb(245 165 36 / 0.7) 92%,
+      transparent
+    );
+    mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
+    animation: ring-spin 7s linear infinite;
+  }
+  /* brilho: o mesmo arco, mais largo e esmaecido nas duas bordas */
+  html[data-pin] .audit-ring::after {
+    inset: -7px;
+    opacity: 0.45;
+    mask: radial-gradient(farthest-side, transparent calc(100% - 14px), #000 calc(100% - 7px), transparent);
+  }
+  @media (max-aspect-ratio: 9/10) {
+    html[data-pin] .audit-pin {
+      --bhx: 50%;
+      --bhy: 29%;
+      --rmax: hypot(50vw, 71svh);
+    }
+  }
+  /* com suporte: o raio segue a rolagem do .audit-pin (faixa "contain" = o
+   * trecho em que a camada está presa); sem suporte, o AuditPin escreve
+   * --ko/--kc num rAF */
+  html[data-pin="css"] .audit-pin {
+    animation:
+      audit-open linear both,
+      audit-close linear both;
+    animation-timeline: --apin, --apin;
+    animation-range:
+      contain 0% contain 31.82%,
+      contain 68.18% contain 100%;
+  }
+}
+@keyframes audit-open {
+  from {
+    --ko: 0;
+  }
+  to {
+    --ko: 1;
+  }
+}
+@keyframes audit-close {
+  from {
+    --kc: 1;
+  }
+  to {
+    --kc: 0;
+  }
+}
+@keyframes ring-spin {
+  to {
+    rotate: 1turn;
   }
 }
 @keyframes audit-dark-in {
