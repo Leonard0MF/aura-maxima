@@ -88,6 +88,21 @@ function texture(gl: WebGL2RenderingContext, unit: number, source: TexImageSourc
  * Também é dono da interação (ponteiro, lente, passeio sozinho): a lente em
  * si é HTML (HeroLayer under + aro); daqui saem só --lx/--ly/--lr/--ls.
  */
+/*
+ * Guard da intro no módulo: uma intro por carga de página, de UMA montagem.
+ * No dev o StrictMode monta → desmonta → monta; a 1ª montagem só reserva a
+ * vez (introOwner) e a devolve na limpeza se não chegou a começar. A flag
+ * de sessão só é gravada quando a animação termina ou o usuário a pula.
+ */
+let introOwner: object | null = null;
+let introSeen = false;
+const markIntroSeen = () => {
+  introSeen = true;
+  try {
+    sessionStorage.setItem("recon:intro", "1");
+  } catch {}
+};
+
 export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
 
@@ -124,8 +139,10 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
     /* intro: só na 1ª carga da sessão (o boot marca data-intro="1" e anota o
      * motivo quando não marca; um clique/tecla/rolagem antes daqui já a
      * cancelou). ?intro=1 força, ?intro=0 desliga. */
-    let intro = html.dataset.intro === "1";
-    if (!intro) skipped(html.dataset.introWhy || "input");
+    const token = {};
+    let intro = html.dataset.intro === "1" && !introSeen && !introOwner;
+    if (intro) introOwner = token;
+    else if (!introOwner) skipped(html.dataset.introWhy || (introSeen ? "session" : "input"));
     const introProg = intro ? link(INTRO_FS, INTRO_VS) : null;
     const parallel = gl.getExtension("KHR_parallel_shader_compile");
     gl.bindVertexArray(gl.createVertexArray());
@@ -143,9 +160,12 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
     let words: ReturnType<typeof createIntroWords> | null = null;
     let metaOn = false;
     let introCounts = { p: 0, e: 0, ex: 0, ey: 0 };
-    const finishIntro = () => {
+    /* seen: a animação foi vista até o fim ou pulada pelo usuário (grava a sessão) */
+    const finishIntro = (seen = false) => {
       if (!intro) return;
       intro = false;
+      if (seen) markIntroSeen();
+      if (introOwner === token) introOwner = null;
       words?.destroy();
       words = null;
       html.dataset.introMeta = "";
@@ -157,7 +177,7 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
       if (!intro) return;
       html.dataset.introSkip = "";
       introStart = performance.now() - INTRO_END * ik * 1000 - 1;
-      finishIntro();
+      finishIntro(started);
       schedule();
     };
     const SKIP = ["pointerdown", "keydown", "wheel", "touchstart", "scroll"] as const;
@@ -438,7 +458,7 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
           html.dataset.introMeta = "";
           box.querySelector<HTMLElement>(".lens-ring")?.setAttribute("data-wake", "");
         }
-        if (u >= INTRO_END) finishIntro();
+        if (u >= INTRO_END) finishIntro(true);
       }
       /* a lente abre junto com os metadados (sem intro: já aberta) */
       const open = u >= 99 ? 1 : Math.min(1, Math.max(0, (u - META_AT) / (INTRO_END - META_AT)));
@@ -635,9 +655,6 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
         words?.draw(0);
         html.dataset.intro = "run";
         started = true;
-        try {
-          sessionStorage.setItem("recon:intro", "1");
-        } catch {}
       } else if (html.dataset.intro === "1" || html.dataset.intro === "run") html.dataset.intro = "done";
     })();
 
@@ -645,11 +662,13 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
       alive = false;
       /* só encerra uma intro que começou: no dev o StrictMode monta, desmonta
        * e monta de novo, e marcar "done" aqui matava a intro antes do início */
-      if (started) finishIntro();
+      if (started) finishIntro(); // interrompida: mostra tudo, mas não conta como vista
       else {
         for (const ev of SKIP) removeEventListener(ev, skip);
         words?.destroy();
         words = null;
+        intro = false;
+        if (introOwner === token) introOwner = null; // a próxima montagem assume
       }
       cancelAnimationFrame(raf);
       ro.disconnect();
