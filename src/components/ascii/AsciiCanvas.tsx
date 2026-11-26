@@ -12,6 +12,24 @@ type Props = { src: string; aspect: number; levels: Levels; onFail: () => void }
 const TILE_W = 40;
 const TILE_H = Math.round(TILE_W * RATIO);
 const INTRO_END = 2;
+/* raio do ponto âmbar da lente no espaço vazio (≈10px de diâmetro) */
+const DOT_R = 5;
+
+/* alpha da foto em baixa resolução (64 colunas): "o ponteiro está sobre a silhueta?" */
+function silhouette(img: HTMLImageElement) {
+  const w = 64;
+  const h = Math.max(1, Math.round((w * img.naturalHeight) / img.naturalWidth));
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return null;
+  ctx.drawImage(img, 0, 0, w, h);
+  const rgba = ctx.getImageData(0, 0, w, h).data;
+  const a = new Uint8ClampedArray(w * h);
+  for (let i = 0; i < w * h; i++) a[i] = rgba[i * 4 + 3];
+  return { a, w, h };
+}
 
 function buildAtlas(family: string) {
   const c = document.createElement("canvas");
@@ -112,6 +130,30 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
     /* PENTESTER (camada under): cada letra na largura da letra de DEVELOPER
      * (camada surface). Medido por Range no nó de texto, sem mexer no DOM da
      * superfície; refeito no resize e quando a fonte display chega. */
+    /* Onde a lente fica grande: sobre a silhueta do retrato (alpha da foto
+     * em baixa resolução, lido 1× no cliente) ou sobre o TEXTO de FULL-STACK /
+     * DEVELOPER (retângulos medidos por Range no resize). No resto, ponto. */
+    let sil: { a: Uint8ClampedArray; w: number; h: number } | null = null;
+    let words: { x0: number; y0: number; x1: number; y1: number }[] = [];
+    const measureWords = () => {
+      const br = box.getBoundingClientRect();
+      const rg = document.createRange();
+      words = [...box.querySelectorAll(".hero-layer--surface .hl")].flatMap((el) => {
+        const tn = el.firstChild;
+        if (!tn) return [];
+        rg.selectNodeContents(tn);
+        const r = rg.getBoundingClientRect();
+        return [{ x0: r.left - br.left, y0: r.top - br.top, x1: r.right - br.left, y1: r.bottom - br.top }];
+      });
+    };
+    const overTarget = (x: number, y: number) => {
+      if (words.some((w) => x >= w.x0 && x <= w.x1 && y >= w.y0 && y <= w.y1)) return true;
+      if (!sil) return false;
+      const u = (x - rect.x) / rect.w;
+      const v = (y - rect.y) / rect.h;
+      if (u < 0 || u >= 1 || v < 0 || v >= 1) return false;
+      return sil.a[Math.floor(v * sil.h) * sil.w + Math.floor(u * sil.w)] >= 128;
+    };
     const fitLetters = () => {
       const src = box.querySelector(".hero-layer--surface .hl-bot")?.firstChild;
       const dst = box.querySelectorAll<HTMLElement>(".hero-layer--under .hl-ch");
@@ -167,6 +209,7 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
       }
       gl.viewport(0, 0, canvas.width, canvas.height);
       fitLetters();
+      measureWords();
       lastStep = -1;
       schedule();
     };
@@ -200,6 +243,7 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
     let lastInput = -Infinity;
     let inside = false;
     let lv = 0; // visibilidade da lente 0..1 (fade)
+    let big = 0; // 0 = ponto âmbar (~10px), 1 = lente inteira
     const t0 = performance.now();
 
     const at = (e: PointerEvent) => {
@@ -241,7 +285,7 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
 
     let raf = 0;
     let visible = true;
-    let shownX = NaN, shownY = NaN, shownR = NaN, shownV = NaN, lensOn = false;
+    let shownX = NaN, shownY = NaN, shownR = NaN, shownV = NaN, shownB = NaN, lensOn = false;
     let lastDraw = 0;
     let U: Record<"time" | "ptr", WebGLUniformLocation | null>;
 
@@ -271,6 +315,11 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
       const target = hoverable ? (inside ? 1 : 0) : 1;
       lv += (target - lv) * 0.18;
       if (Math.abs(target - lv) < 0.002) lv = target;
+      /* toque: a lente está sempre sobre o rosto (inteira); mouse: inteira só
+       * sobre o retrato ou as palavras, senão encolhe para o ponto */
+      const bigT = !hoverable || overTarget(tx, ty) ? 1 : 0;
+      big += (bigT - big) * 0.16;
+      if (Math.abs(bigT - big) < 0.002) big = bigT;
       const k = !hoverable && idle ? 0.05 : 0.25;
       lx += (tx - lx) * k;
       ly += (ty - ly) * k;
@@ -287,13 +336,15 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
       }
       /* a lente só abre depois que o retrato trava */
       const open = Math.min(1, Math.max(0, (it - 1.5) / 0.6));
-      const r = lensR * (1 - Math.pow(1 - open, 3)) * (0.6 + 0.4 * lv) * (lv > 0 ? 1 : 0);
+      const full = DOT_R + (lensR - DOT_R) * big;
+      const r = full * (1 - Math.pow(1 - open, 3)) * (0.6 + 0.4 * lv) * (lv > 0 ? 1 : 0);
       gl.uniform1f(U.time, t);
       gl.uniform3f(U.ptr, px * dpr, (H - py) * dpr, pa);
       /* lente: só variáveis CSS (a camada under e o aro leem daqui) */
       const lr = Math.round(r * 10) / 10;
-      if (lr !== shownR || Math.abs(lx - shownX) > 0.05 || Math.abs(ly - shownY) > 0.05 || lv !== shownV) {
+      if (lr !== shownR || Math.abs(lx - shownX) > 0.05 || Math.abs(ly - shownY) > 0.05 || lv !== shownV || big !== shownB) {
         shownV = lv;
+        shownB = big;
         shownR = lr;
         shownX = lx;
         shownY = ly;
@@ -303,25 +354,16 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
         st.setProperty("--lr", `${lr}px`);
         st.setProperty("--ls", (lr / 100).toFixed(3));
         st.setProperty("--lo", lv.toFixed(3));
+        st.setProperty("--ld", (1 - big).toFixed(3));
         if (lr > 0 && !lensOn) {
           lensOn = true;
           box.dataset.lens = "";
         }
       }
       gl.clear(gl.COLOR_BUFFER_BIT);
-      /* só sombreia onde há algo: retrato ∪ lente ∪ entorno do cursor */
-      let x0 = rect.x, y0 = rect.y, x1 = rect.x + rect.w, y1 = rect.y + rect.h;
-      const grow = (cx: number, cy: number, rr: number) => {
-        x0 = Math.min(x0, cx - rr);
-        y0 = Math.min(y0, cy - rr);
-        x1 = Math.max(x1, cx + rr);
-        y1 = Math.max(y1, cy + rr);
-      };
-      if (pa > 0.01) grow(px, py, 132);
-      x0 = Math.max(0, x0);
-      y0 = Math.max(0, y0);
-      x1 = Math.min(W, x1);
-      y1 = Math.min(H, y1);
+      /* só sombreia o retângulo do retrato (nada é desenhado fora da silhueta) */
+      const x0 = Math.max(0, rect.x), y0 = Math.max(0, rect.y);
+      const x1 = Math.min(W, rect.x + rect.w), y1 = Math.min(H, rect.y + rect.h);
       gl.enable(gl.SCISSOR_TEST);
       gl.scissor(Math.floor(x0 * dpr), Math.floor((H - y1) * dpr), Math.ceil((x1 - x0) * dpr), Math.ceil((y1 - y0) * dpr));
       gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -392,6 +434,7 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
       if (!ok) return onFail();
 
       texture(gl, 0, buildAtlas(family), false);
+      sil = silhouette(img);
       texture(gl, 1, img, true, true);
       imgW = img.naturalWidth;
       for (const p of [gridProg, prog]) {
@@ -408,7 +451,9 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
       resize();
       /* a fonte display pode chegar depois: remede as letras */
       void document.fonts.ready.then(() => {
-        if (alive) fitLetters();
+        if (!alive) return;
+        fitLetters();
+        measureWords();
       });
       const f = face();
       lx = tx = f.x;

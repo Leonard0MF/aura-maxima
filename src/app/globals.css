@@ -202,9 +202,12 @@ html[data-intro] .hero .hl-bot {
   text-align: center;
   letter-spacing: 0;
 }
-/* foto com as cores naturais, sem filtro, inversão nem blend (a inversão é
- * só dos glifos ASCII sobre as letras, e acontece no shader). O fundo
+/* foto SEMPRE em P&B (lente e ABOUT), sem inversão nem blend. O fundo
  * transparente do PNG deixa ver o escuro da lente. */
+.hero-photo img,
+.about-portrait__photo {
+  filter: grayscale(1) contrast(1.12);
+}
 .hero-photo img {
   display: block;
   width: 100%;
@@ -229,6 +232,15 @@ html[data-intro] .hero .hl-bot {
   pointer-events: none;
   transform: translate(calc(var(--lx, 0px) - 100px), calc(var(--ly, 0px) - 100px)) scale(var(--ls, 0));
   opacity: var(--lo, 0);
+}
+/* no espaço vazio a lente encolhe para um ponto âmbar (--ld: 0 = lente, 1 = ponto) */
+.lens-ring::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: #f5a524;
+  opacity: var(--ld, 0);
 }
 .hero[data-lens] .lens-ring {
   display: block;
