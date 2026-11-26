@@ -1,0 +1,459 @@
+{
+  "meta": {
+    "role": "Dev Full-Stack & Security",
+    "tagline": "Construo aplicações web de ponta a ponta e testo como um atacante faria: pentest autorizado e revisão de código com foco em segurança.",
+    "keywords": ["desenvolvedor full-stack", "segurança", "pentest", "Next.js", "React", "TypeScript", "portfólio"],
+    "skip": "Pular para o conteúdo",
+    "caseTitle": "{title} · Estudo de caso",
+    "flagDescription": "Envie as três flags."
+  },
+  "lang": {
+    "label": "Idioma",
+    "pt": "Português",
+    "en": "English",
+    "es": "Español"
+  },
+  "nav": {
+    "label": "Seções",
+    "work": "Work",
+    "stack": "Stack",
+    "audit": "Audit",
+    "about": "About",
+    "contact": "Contact",
+    "back": "Work",
+    "menu": "Menu",
+    "close": "Fechar"
+  },
+  "common": {
+    "newTab": " (abre em nova aba)",
+    "demo": "Demo",
+    "repo": "Repo",
+    "caseStudy": "Estudo de caso",
+    "private": "Sistema interno · privado"
+  },
+  "hero": {
+    "enigmaCaption": "ENIGMA · a máquina de criptografia cuja quebra, na Segunda Guerra, ajudou a transformar segurança em engenharia.",
+    "h1": "{name}, Full-Stack Developer & Pentester",
+    "portfolio": "Portfolio 2026",
+    "status": "Disponível · foco em cibersegurança",
+    "location": "Location:",
+    "place": "Brasil",
+    "localTime": "Local time:",
+    "scroll": "(Scroll)",
+    "asciiAlt": "Retrato de {name} desenhado com caracteres de código (ASCII art)"
+  },
+  "work": {
+    "title": "Projetos",
+    "lede": "Coisas que construí de ponta a ponta.",
+    "meta": "{count} findings",
+    "fig": "Fig. {n}",
+    "pending": "{title}: print pendente",
+    "internal": "interno",
+    "kinds": { "personal": "PROJETO PESSOAL", "internal": "SISTEMA INTERNO" },
+    "stackNone": "Stack: —",
+    "position": "Projeto {n} de {total}"
+  },
+  "projects": {
+    "aegis": {
+      "role": "Projeto solo · produto, front, back e segurança",
+      "summary": "Scanner da postura de segurança de um domínio. Analisa TLS, headers HTTP, cookies, DNS e e-mail, vulnerabilidades conhecidas das tecnologias detectadas, reputação e superfície de ataque, e dá uma nota de 0 a 100 com o que corrigir.",
+      "highlights": [
+        "Cruza as tecnologias detectadas com OSV, NVD e o catálogo CISA KEV de vulnerabilidades exploradas ativamente.",
+        "Passivo por padrão. Testes ativos só depois de o dono provar a posse do domínio (registro TXT ou arquivo), com token HMAC e sem banco de dados.",
+        "O próprio scanner é blindado: proteção contra SSRF com revalidação do IP a cada conexão (anti DNS rebinding), detecção sem ReDoS e rate limit na API."
+      ],
+      "alt": "Painel do Aegis: nota de segurança, certificado TLS e verificações de um domínio"
+    },
+    "bumphub": {
+      "role": "Projeto solo · arquitetura, front, back, desktop e segurança",
+      "usage": "Em produção na equipe de TI da empresa.",
+      "summary": "Workspace interno da equipe de TI da Bump Amortecedores. Junta chat em tempo real, gestão de tarefas, integração com o GitHub, inventário das máquinas da empresa e um cofre de senhas, tudo num app desktop próprio.",
+      "highlights": [
+        "Chat estilo Discord em tempo real (canais, DMs, menções, reações, anexos) com cards de PRs e issues do GitHub direto na conversa.",
+        "Inventário dos PCs da empresa com status online/offline e acesso remoto em um clique, mais histórico de manutenção de cada máquina.",
+        "Cofre de senhas criptografado no navegador (AES-256) com 2FA/TOTP: nem o banco de dados vê as senhas."
+      ],
+      "alt": "Tela de login do BUMPHUB (entrar com GitHub)",
+      "stack": {
+        "supabase": "Supabase (Postgres, RLS, Realtime, Auth com GitHub)",
+        "vscode": "Extensão de VS Code"
+      }
+    }
+  },
+  "stack": {
+    "title": "Stack",
+    "lede": "As ferramentas com que eu construo e testo.",
+    "hint": "Arraste, arremesse, clique numa peça.",
+    "meta": "{count} itens",
+    "list": "Moedas",
+    "close": "Fechar",
+    "index": "Índice da stack",
+    "clear": "Limpar filtro",
+    "usage": "Clique numa categoria para ver tudo · as moedas acendem junto",
+    "noLevel": "Conceitos não têm nível.",
+    "levelLabel": "Nível",
+    "levels": {
+      "practice": "Prática",
+      "familiar": "Familiaridade",
+      "contact": "Contato"
+    },
+    "levelsHelp": {
+      "practice": "uso em projetos reais",
+      "familiar": "já usei, sem profundidade",
+      "contact": "explorando"
+    },
+    "cats": {
+      "languages": "Linguagens",
+      "frontend": "Front-end",
+      "visual": "Bibliotecas e visual",
+      "backend": "Back-end e dados",
+      "secTools": "Segurança: ferramentas",
+      "secConcepts": "Segurança: conceitos",
+      "systems": "Sistemas"
+    },
+    "items": {
+      "rest": "APIs REST",
+      "auth": "Autenticação e sessões",
+      "vulns": "Análise de vulnerabilidades",
+      "codeaudit": "Auditoria de código",
+      "linux": "Linux (CachyOS, uso diário)"
+    },
+    "tokens": {
+      "react": "Construo as interfaces das aplicações web que desenvolvo de ponta a ponta.",
+      "nextjs": "Framework das minhas aplicações web, incluindo o Aegis e este portfólio.",
+      "typescript": "Linguagem padrão no frontend e no backend dos meus projetos.",
+      "javascript": "A base de todo o frontend que escrevo.",
+      "html5": "Marcação semântica e acessível, a base de qualquer interface.",
+      "css3": "Layout e animações, do grid editorial às transições deste site.",
+      "tailwind": "Estilização do frontend, inclusive deste site.",
+      "nodejs": "Backend: APIs REST, autenticação, sessões e integração com APIs externas.",
+      "supabase": "Banco de dados e autenticação no backend.",
+      "postgresql": "Bancos relacionais e SQL, direto ou via Supabase.",
+      "threejs": "As cenas 3D deste site: estas moedas e o buraco negro da AUDIT.",
+      "framer": "Animações de interface em componentes React.",
+      "gsap": "Animações em sequência e ligadas à rolagem em interfaces web.",
+      "vite": "Build e servidor de desenvolvimento em projetos React.",
+      "docker": "Ambientes isolados e reproduzíveis para rodar e testar serviços.",
+      "git": "Versionamento, code review dos commits do time e correções via Pull Request.",
+      "github": "Onde ficam os meus repositórios, como o deste portfólio e o do Aegis.",
+      "linux": "Meu sistema de uso diário, com SSH e redes TCP/IP.",
+      "kali": "Base dos pentests autorizados que faço, como o pentest interno semanal na BUMP.",
+      "ubuntu": "Distribuição Linux que uso em servidores e máquinas virtuais.",
+      "vercel": "Deploy dos meus projetos web, como o Aegis.",
+      "nmap": "Mapeamento de portas e serviços nos testes autorizados que faço."
+    }
+  },
+  "services": {
+    "frontend": { "term": "frontend", "items": ["HTML5", "CSS3", "JavaScript", "TypeScript", "React", "Next.js", "Tailwind CSS", "Framer Motion", "Vite", "TanStack Router/Start"] },
+    "backend": { "term": "backend-data", "items": ["Node.js", "APIs REST", "Integração com APIs externas", "Autenticação e sessões", "Supabase", "SQL", "Python"] },
+    "infra": { "term": "infra-tools", "items": ["Git/GitHub", "Docker", "Linux (uso diário)", "SSH", "Vercel", "Redes TCP/IP"] },
+    "security": {
+      "term": "security",
+      "items": [
+        "Pentest autorizado",
+        "OSINT",
+        "Análise de vulnerabilidades",
+        "Segurança de aplicações web",
+        "Revisão de código com foco em segurança",
+        "Análise de controle de acesso",
+        "Análise de tráfego"
+      ]
+    },
+    "exploring": { "term": "exploring", "items": ["Vue.js", "React Native", "Flutter", "Java", "C++"] }
+  },
+  "scan": {
+    "resolving": "resolving target",
+    "enumerating": "enumerating stack",
+    "projects": "scanning projects",
+    "posture": "checking security posture",
+    "services": "{count} services",
+    "findings": "{count} findings",
+    "pending": "pending"
+  },
+  "audit": {
+    "title": "Por dentro",
+    "lede": "Este site, visto por dentro. Passe o mouse nos pontos que brilham.",
+    "grade": "Nota",
+    "example": "dados de exemplo · sem nota",
+    "real": "resultado real gerado pelo Aegis em {date}",
+    "tradeoff": "Trade-off consciente: CSP sem nonce para manter o site estático e rápido; a superfície de XSS é mínima (sem inputs que virem HTML).",
+    "cta": "Escaneie o site da sua empresa no Aegis",
+    "hint": "arraste para girar · clique no vazio para escanear",
+    "ledeTouch": "Este site, visto por dentro. Toque nos pontos que brilham.",
+    "hintTouch": "arraste para girar · toque no vazio para escanear",
+    "status": { "pass": "ok", "warn": "atenção", "fail": "falha", "info": "info" },
+    "progress": "scan · {lit}/{total} nós",
+    "done": "scan completo · {total}/{total} nós",
+    "overall": "Nota geral",
+    "overallExample": "— · dados de exemplo, sem nota",
+    "overallPending": "— · pendente",
+    "examplePrefix": "EXEMPLO",
+    "labels": {
+      "tls": "Certificado TLS",
+      "hosting": "CDN / hospedagem",
+      "dns": "DNS / e-mail",
+      "cookies": "Cookies"
+    },
+    "exampleValues": {
+      "tls": "emissor, versão e validade entram com o scan real",
+      "dns": "CAA, DNSSEC, SPF e DMARC entram com o scan real",
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' (sem nonce)",
+      "cookies": "Secure, HttpOnly e SameSite entram com o scan real"
+    },
+    "band": { "ok": "postura excelente", "warn": "postura moderada", "bad": "postura fraca" }
+  },
+  "about": {
+    "title": "Sobre mim",
+    "heading": "Aprendo construindo. E construo para entender.",
+    "body": [
+      "Sou o Leonardo, desenvolvedor full-stack com foco em segurança. Aprendi na prática, criando projetos, quebrando coisas e investigando por que elas quebram. Hoje trabalho com desenvolvimento, mas é para a cibersegurança que direciono meus estudos e minha carreira.",
+      "Na Bump Amortecedores, faço pentest interno toda semana, QA, revisão de código e correções via Pull Request, e criei sozinho o BumpHub, o workspace interno da equipe de TI."
+    ],
+    "howTitle": "Como eu trabalho",
+    "principles": [
+      { "title": "Aprendo na prática.", "body": "Cada tecnologia que listo aqui entrou num projeto real." },
+      { "title": "Segurança desde o primeiro commit.", "body": "Penso em quem vai tentar quebrar antes de entregar." },
+      { "title": "Investigo antes de corrigir.", "body": "Entender a causa vale mais do que esconder o sintoma." }
+    ],
+    "nowTitle": "Estudando agora",
+    "now": [{ "title": "Segurança de Redes e Infraestrutura", "body": "protocolos TCP/IP, análise de tráfego, monitoramento de conexões e hardening de redes locais." }],
+    "nextTitle": "Próximo objetivo",
+    "next": [{ "title": "Certificação CompTIA Security+" }],
+    "quote": "Não quero só saber como as coisas funcionam. Quero entender por quê, como melhorá-las e o que posso construir em seguida.",
+    "photoAlt": "Foto de {name}",
+    "journeyKicker": "git log --reverse",
+    "journeyTitle": "Trajetória",
+    "journey": [
+      { "date": "2021", "title": "Primeiras linhas de código", "phrase": "" },
+      { "date": "2024", "title": "Comecei a estudar cibersegurança e Linux", "phrase": "Estudei Kali Linux e passei a usar Linux no dia a dia. Foi aí que segurança deixou de ser curiosidade e virou direção." },
+      { "date": "dez/2025", "title": "Fundei a Elyra Studio", "phrase": "" },
+      { "date": "out/2026", "title": "Bump Amortecedores: TI e Desenvolvimento", "phrase": "Pentest interno, QA, code review e criação do BumpHub, o workspace interno da TI." },
+      { "date": "Próximo", "title": "CompTIA Security+", "phrase": "" }
+    ],
+    "experienceTitle": "Experiência",
+    "experience": [
+      { "org": "Bump Amortecedores", "role": "TI e Desenvolvimento", "period": "out/2026 → atual" },
+      { "org": "Elyra Studio", "role": "Fundador", "period": "dez/2025" }
+    ],
+    "facts": [
+      { "label": "Cidade", "value": "TODO: cidade" },
+      { "label": "Formação", "value": "TODO: formação / cursos" },
+      { "label": "Idiomas", "value": "TODO: idiomas" },
+      { "label": "Fora do código", "value": "TODO: algo fora do código" }
+    ],
+    "cv": "Baixar currículo (PDF)"
+  },
+  "contact": {
+    "title": "Vamos conversar",
+    "lede": "Aberto a oportunidades em cibersegurança e desenvolvimento seguro.",
+    "done": "scan complete · 0 vulnerabilidades críticas no candidato"
+  },
+  "footer": {
+    "enigmaCredit": "Foto da Enigma",
+    "headers": "Headers de segurança ativos",
+    "verify": "Verifique",
+    "verifySr": " (abre securityheaders.com em nova aba)"
+  },
+  "case": {
+    "label": "Estudo de caso",
+    "role": "Papel",
+    "year": "Ano",
+    "usage": "Uso",
+    "stack": "Stack",
+    "bands": "Faixas",
+    "range": "{grade}: {min} a {max}",
+    "sources": "Fontes",
+    "diagram": "Diagrama: {flow}"
+  },
+  "cases": {
+    "aegis": {
+      "problem": {
+        "title": "O problema",
+        "body": [
+          "Avaliar a segurança de um domínio exige juntar dezenas de verificações e fontes diferentes: certificado, headers, DNS, e-mail, vulnerabilidades conhecidas, listas de bloqueio, subdomínios esquecidos.",
+          "O Aegis faz isso num scan só e diz o que corrigir."
+        ]
+      },
+      "checks": {
+        "title": "O que é verificado",
+        "groups": [
+          { "label": "TLS", "items": "Validade e cadeia do certificado, versões aceitas (1.0 a 1.3), cifras fracas, tamanho da chave, algoritmo de assinatura, OCSP stapling." },
+          { "label": "Transporte e headers", "items": "Redirect HTTP→HTTPS, HSTS, CSP, clickjacking, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, exposição de versão do servidor, security.txt." },
+          { "label": "Cookies", "items": "Secure, HttpOnly, SameSite." },
+          { "label": "DNS e e-mail", "items": "SPF (com o limite de 10 consultas), DMARC (inclusive herdado), DKIM, MTA-STS, TLS-RPT, CAA, DNSSEC." },
+          { "label": "Vulnerabilidades", "items": "Tecnologias detectadas cruzadas com OSV, NVD e CISA KEV." },
+          { "label": "Reputação", "items": "Spamhaus, SURBL e, opcionalmente, Google Safe Browsing e URLhaus." },
+          { "label": "Superfície de ataque", "items": "Subdomínios via Certificate Transparency (crt.sh, Cert Spotter) e HackerTarget, com detecção de subdomain takeover, IPs internos no DNS público e subdomínios sensíveis." },
+          { "label": "Testes ativos (só com prova de posse)", "items": "Arquivos sensíveis expostos (.env, .git, backups, painéis) e portas de serviços internos." }
+        ]
+      },
+      "score": {
+        "title": "Como a nota funciona",
+        "body": ["Média ponderada das verificações: pass vale o peso cheio, warn vale metade.", "Achados graves limitam a nota, por melhor que seja o resto:"],
+        "caps": ["Arquivo sensível exposto", "CVE explorada ativamente (CISA KEV)", "Subdomain takeover", "Domínio em lista de bloqueio"]
+      },
+      "ethics": {
+        "title": "Ético por design",
+        "body": [
+          "Varrer portas ou procurar arquivos em sites de terceiros sem autorização é crime (Lei 12.737/2012). Por isso os testes ativos exigem prova de posse: um registro TXT em _aegis-verify.<domínio> ou um arquivo em /.well-known/aegis-verify.txt, com um token HMAC do domínio.",
+          "Em CDN ou hospedagem compartilhada, a varredura de portas é pulada: aquele IP atende outros clientes."
+        ]
+      },
+      "self": {
+        "title": "Segurança do próprio Aegis",
+        "items": [
+          "SSRF: recusa IPs privados e revalida o IP na conexão e em cada redirect.",
+          "Orçamento de tempo por scan (45 s) e limite de tamanho nas respostas externas.",
+          "Detecção sem regex vulnerável a ReDoS.",
+          "CSP com nonce e strict-dynamic.",
+          "Rate limit de 30 req/min por IP no Vercel Firewall."
+        ]
+      },
+      "arch": {
+        "title": "Arquitetura",
+        "body": [
+          "Sem conta e sem banco: o histórico fica no localStorage do navegador, exportável em JSON.",
+          "Nenhuma dependência além de lucide-react: o globo é Canvas 2D e os gráficos são SVG."
+        ],
+        "flow": [
+          { "label": "Navegador", "note": "UI, histórico em localStorage" },
+          { "label": "API", "note": "rotas /api/* na Vercel (gru1), rate limit" },
+          { "label": "Scanner", "note": "verificações com orçamento de 45 s, anti-SSRF" },
+          { "label": "Fontes externas", "note": "DNS, TLS, OSV, NVD, KEV, CT, listas" }
+        ]
+      },
+      "next": {
+        "title": "Limitações e próximos passos",
+        "items": [
+          "Falsos positivos possíveis em CVEs de servidor, por backport de correções nas distros (a versão anunciada não muda).",
+          "Próximo passo: testes automatizados."
+        ]
+      }
+    },
+    "bumphub": {
+      "problem": {
+        "title": "O problema",
+        "body": [
+          "A TI precisava de um lugar só para conversar, distribuir tarefas, acompanhar o trabalho no GitHub e gerenciar as máquinas da empresa, sem depender de várias ferramentas soltas."
+        ]
+      },
+      "features": {
+        "title": "O que tem no sistema",
+        "groups": [
+          { "label": "Chat em tempo real", "items": "Canais, DMs, Markdown e código, reações, menções, \"digitando...\", anexos, não lidas e notificações." },
+          { "label": "Tópicos", "items": "Tópicos por canal, com status e link para a issue ou o PR." },
+          { "label": "Atribuições", "items": "4 níveis de urgência, prazo e notificação, para uma pessoa ou para um cargo." },
+          { "label": "GitHub", "items": "PRs, issues, merges, commits e eventos ao vivo." },
+          { "label": "Streak", "items": "Dias úteis com entregas, com mapa de calor no estilo do GitHub." },
+          { "label": "Codando agora", "items": "Status \"codando agora\" via extensão própria do VS Code." },
+          { "label": "Inventário de máquinas", "items": "Setor, sala, responsável, hardware e rede, com online/offline e acesso remoto." },
+          { "label": "Equipe e cargos", "items": "Equipe e cargos no estilo do Discord." },
+          { "label": "Status automático", "items": "Disponível, ausente e não perturbe." },
+          { "label": "Diário do time", "items": "Diário do time com mini agenda." },
+          { "label": "Busca", "items": "Busca global com Ctrl+K." },
+          { "label": "Tema", "items": "Preto e amarelo, com modo claro." }
+        ]
+      },
+      "arch": {
+        "title": "Três apps num monorepo",
+        "body": [
+          "web (Next.js): a interface e a API.",
+          "desktop (Electron para Linux): distribuído em .deb, com bandeja, notificações nativas e início automático.",
+          "vscode-extension: publica o status \"codando agora\", autenticada por token individual."
+        ],
+        "flow": [
+          [
+            { "label": "web", "note": "Next.js: interface + API" },
+            { "label": "desktop", "note": "Electron (Linux, .deb): bandeja, notificações nativas, início automático" },
+            { "label": "vscode-extension", "note": "status \"codando agora\", token individual" }
+          ],
+          { "label": "Supabase", "note": "Postgres, RLS, Realtime, Auth com GitHub" },
+          [
+            { "label": "GitHub", "note": "API + webhooks" },
+            { "label": "Tailscale", "note": "API, somente leitura" },
+            { "label": "Acesso remoto", "note": "às máquinas do inventário" }
+          ]
+        ],
+        "caption": "Visão geral simplificada: os três apps, o Supabase e as integrações."
+      },
+      "security": {
+        "title": "Segurança",
+        "items": [
+          "Row Level Security em todas as tabelas, com allowlist: quem não está liberado não lê nada.",
+          "Mensagens diretas visíveis só para os participantes.",
+          "Cofre de senhas criptografado no navegador (AES-256) com 2FA/TOTP: nem o banco de dados vê as senhas.",
+          "O servidor oficial só aceita o aplicativo desktop, como camada extra.",
+          "Webhook do GitHub validado por assinatura.",
+          "Integração com o Tailscale somente leitura.",
+          "Segredos só nas variáveis de ambiente, nunca no repositório."
+        ]
+      },
+      "result": {
+        "title": "Resultado",
+        "items": ["Em produção na equipe de TI.", "Release do app desktop via GitHub Releases.", "Deploy contínuo, com prévia por Pull Request."]
+      }
+    }
+  },
+  "terminal": {
+    "aria": "Terminal",
+    "close": "fechar",
+    "shortcuts": "atalhos:",
+    "shortcutsLabel": "Atalhos do terminal",
+    "inputLabel": "Comando do terminal (digite help para ver os comandos)",
+    "ready": "report ready · digite {help} ou use os atalhos abaixo",
+    "cleared": "Tela limpa.",
+    "newTab": " (abre em nova aba)",
+    "whoami": [
+      "Léo Machmann · Dev Full-Stack & Security · Brasil",
+      "Construo aplicações web de ponta a ponta (React, Next.js, Node.js).",
+      "Faço pentest autorizado e code review com foco em segurança na BUMP."
+    ],
+    "help": [
+      ["help", "lista os comandos"],
+      ["whoami", "quem é o alvo"],
+      ["ls projects", "lista os findings"],
+      ["cat <projeto>", "detalha um finding (ex.: cat aegis)"],
+      ["skills", "stack técnica"],
+      ["contact", "canais de contato"],
+      ["cv", "baixa o currículo (PDF)"],
+      ["history", "comandos anteriores"],
+      ["clear", "limpa a tela"]
+    ],
+    "available": "comandos disponíveis:",
+    "tip": "dica: Tab autocompleta, ↑/↓ navegam no histórico.",
+    "noSuchFile": "ls: {arg}: no such file or directory",
+    "catUsage": "uso: cat <projeto>  (ex.: cat aegis)",
+    "noSuchFinding": "cat: {arg}: no such finding. try 'ls projects'",
+    "caseStudy": "estudo de caso",
+    "repo": "repositório",
+    "demo": "demo",
+    "cv": "[+] baixando currículo… ",
+    "cvMissing": "[!] currículo ainda não disponível.",
+    "cvLink": "link direto",
+    "empty": "(vazio)",
+    "sudoPrompt": "[sudo] senha para recrutador: ",
+    "sudoOk": "[✓] permissão concedida. Ótima decisão.",
+    "sudoNext": "Próximo passo: ",
+    "sudoDeny": "{input}: este incidente será reportado. 😉 tente 'sudo hire leo'",
+    "notFound": "{cmd}: command not found. try 'help'",
+    "listHint": "use 'cat <slug>' para detalhes"
+  },
+  "ctf": {
+    "console": "Curioso, hein? Flag 1/3: {flag}\nJunte as 3 e envie em /flag.",
+    "title": "Capture the flag",
+    "intro": "Há três flags no formato <code>{format}</code> escondidas neste site. Achou as três?",
+    "hints": ["Abra o DevTools.", "Olhe os headers da resposta.", "O que os robôs não devem ver?"],
+    "flag": "Flag {n}",
+    "hint": "Dica: {hint}",
+    "submit": "Enviar",
+    "wrong": "[x] {count} flag(s) incorreta(s).",
+    "win": "Você acharia bugs no meu time também. Vamos conversar?",
+    "archiveTitle": "Disallow não é controle de acesso.",
+    "archiveSend": "Enviar flags"
+  },
+  "notFound": {
+    "title": "404 · nada exposto aqui",
+    "body": "A página que você procura não existe.",
+    "back": "voltar ao relatório"
+  }
+}

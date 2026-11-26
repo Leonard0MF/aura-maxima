@@ -1,58 +1,42 @@
 /*
- * Fonte única de conteúdo do portfólio.
- *
- * Os dois modos (terminal e clean) leem daqui. Onde o texto muda entre
- * os modos, o item tem `term` e `clean`; caso contrário, um texto só.
+ * Dados do portfólio (o que NÃO é texto traduzível): ids, links, stacks,
+ * tipos de projeto, caminhos. Todo texto exibido vive em messages/{pt,en,es}.json
+ * e é buscado pela mesma chave (ex.: projects.aegis.summary).
  *
  * Tudo marcado com `TODO:` é informação que ainda falta: não invente,
  * preencha com o dado real.
  */
-import type { Localized } from "@/lib/i18n";
-
-import { auditGrade } from "./audit";
-
-export type Link = { label: Localized; href: string; external?: boolean };
-
-export type Severity = "critical" | "high" | "medium";
+/* tipo do projeto: rótulo neutro no WORK (work.kinds.<kind> em messages).
+ * Não é severidade: nada de CRITICAL/HIGH, que podem ser lidos como
+ * vulnerabilidades encontradas nos sistemas. */
+export type ProjectKind = "personal" | "internal";
 
 export type Project = {
   id: string; // FND-001
-  slug: string;
-  severity: Severity;
+  slug: "aegis" | "bumphub"; // chave em messages: projects.<slug> e cases.<slug>
+  kind: ProjectKind;
   title: string;
   /** nome curto em caixa alta, usado gigante no bloco do WORK */
   display: string;
   year?: string;
-  role?: Localized;
-  summary: Localized;
-  highlights?: Localized[]; // 3 destaques numerados no WORK
-  stack: string[];
+  /** nomes de tecnologia; `{ key }` = item com texto traduzível em projects.<slug>.stack.<key> */
+  stack: (string | { key: string })[];
   links: { demo?: string; repo?: string };
-  /* TODO: prints reais (BUMPHUB anonimizado). Coloque em public/projects/ e
-     preencha, ex.: { src: "/projects/aegis.png", alt: { pt: "..." } }.
-     De preferência tema claro: o ASCII desenha o escuro. Sem `image`, o bloco
-     usa public/projects/placeholder.png (wireframe neutro). */
-  image?: { src: string; width: number; height: number; alt: Localized };
+  /* Print do projeto em public/. Para trocar: substitua o arquivo (mesmo
+     nome) e atualize width/height. A legenda (figcaption no WORK e alt no
+     estudo de caso) vem de `caption` quando existe; sem ela, de messages
+     (projects.<slug>.alt). */
+  image?: { src: string; width: number; height: number; caption?: { pt: string; en: string; es: string } };
   /** sistema interno: sem links externos, mostra a etiqueta "privado" */
   private?: boolean;
-  /** onde/como está em uso, ex.: "Em produção na equipe de TI da empresa." */
-  usage?: Localized;
+  /** tem projects.<slug>.usage em messages ("Em produção na equipe de TI...") */
+  usage?: boolean;
 };
 
 export type ServiceGroup = {
-  id: string;
-  port: string; // usado só no modo terminal
-  title: { term: Localized; clean: Localized };
-  items: string[];
+  id: "frontend" | "backend" | "infra" | "security" | "exploring"; // messages: services.<id>
+  port: string; // usado só no terminal
   state: "open" | "filtered"; // "filtered" = explorando
-};
-
-export type Activity = {
-  org: string;
-  role: Localized;
-  period: Localized;
-  current?: boolean;
-  bullets: Localized[];
 };
 
 /* TODO: domínio final do site (usado em metadata, sitemap e no selo). */
@@ -61,18 +45,6 @@ export const SITE_URL = "https://aura-maxima.vercel.app";
 export const profile = {
   name: "Léo Machmann",
   fullName: "Leonardo Machmann Francisco",
-  role: { pt: "Dev Full-Stack & Security" } satisfies Localized,
-  tagline: {
-    pt: "Construo aplicações web de ponta a ponta e testo como um atacante faria: pentest autorizado e revisão de código com foco em segurança.",
-  } satisfies Localized,
-  location: { pt: "Brasil" } satisfies Localized,
-  status: { pt: "Disponível para oportunidades" } satisfies Localized,
-  /* Saída do comando `whoami` no terminal do hero (3 linhas). */
-  whoami: [
-    { pt: "Léo Machmann · Dev Full-Stack & Security · Brasil" },
-    { pt: "Construo aplicações web de ponta a ponta (React, Next.js, Node.js)." },
-    { pt: "Faço pentest autorizado e code review com foco em segurança na BUMP." },
-  ] satisfies Localized[],
   lastScan: "2026-11", // atualize quando mexer no conteúdo
 
   contact: {
@@ -80,151 +52,191 @@ export const profile = {
     github: "https://github.com/Leonard0MF",
     githubHandle: "Leonard0MF",
     linkedin: "https://www.linkedin.com/in/TODO", // TODO: URL do LinkedIn
-    cv: "/cv/leo-machmann.pdf", // TODO: adicionar o PDF em public/cv/
   },
 
   aegisUrl: "https://aegis-ten-zeta.vercel.app/",
 } as const;
 
 export const services: ServiceGroup[] = [
+  { id: "frontend", port: "443/tcp", state: "open" },
+  { id: "backend", port: "8080/tcp", state: "open" },
+  { id: "infra", port: "22/tcp", state: "open" },
+  { id: "security", port: "8443/tcp", state: "open" },
+  { id: "exploring", port: "9000/tcp", state: "filtered" },
+];
+
+/*
+ * Seção 02 · STACK.
+ *
+ * stackIndex: o índice em texto, por categoria. `level` em todas as
+ * ferramentas; os conceitos de segurança não têm nível:
+ *   practice = Prática (uso em projetos reais), familiar = Familiaridade (já
+ *   usei, sem profundidade), contact = Contato (explorando).
+ * `name` ausente = nome traduzível em messages (stack.items.<id>).
+ *
+ * stackCoins: as moedas 3D (ids do índice + Vercel, que só existe como moeda).
+ * A ordem é a do desenho; no celular entram só as de stackCoinsMobile.
+ * A frase de cada moeda fica em messages (stack.tokens.<id>).
+ */
+export type StackLevel = "practice" | "familiar" | "contact";
+export type StackItem = { id: string; name?: string; level?: StackLevel };
+export type StackCategory = { id: string; items: StackItem[] };
+
+export const stackIndex: StackCategory[] = [
+  {
+    id: "languages",
+    items: [
+      { id: "javascript", name: "JavaScript", level: "practice" },
+      { id: "typescript", name: "TypeScript", level: "practice" },
+      { id: "html5", name: "HTML5", level: "practice" },
+      { id: "css3", name: "CSS3", level: "practice" },
+      { id: "cpp", name: "C++", level: "contact" },
+      { id: "java", name: "Java", level: "contact" },
+    ],
+  },
   {
     id: "frontend",
-    port: "443/tcp",
-    state: "open",
-    title: { term: { pt: "frontend" }, clean: { pt: "Frontend" } },
     items: [
-      "HTML5",
-      "CSS3",
-      "JavaScript",
-      "TypeScript",
-      "React",
-      "Next.js",
-      "Tailwind CSS",
-      "Framer Motion",
-      "Vite",
-      "TanStack Router/Start",
+      { id: "react", name: "React", level: "practice" },
+      { id: "nextjs", name: "Next.js", level: "practice" },
+      { id: "tailwind", name: "Tailwind CSS", level: "practice" },
+      { id: "vite", name: "Vite", level: "familiar" },
+      { id: "vue", name: "Vue.js", level: "contact" },
+      { id: "reactnative", name: "React Native", level: "contact" },
+      { id: "flutter", name: "Flutter", level: "contact" },
+    ],
+  },
+  {
+    id: "visual",
+    items: [
+      { id: "threejs", name: "Three.js", level: "practice" },
+      { id: "r3f", name: "React Three Fiber", level: "practice" },
+      { id: "webgl", name: "WebGL", level: "familiar" },
+      { id: "gsap", name: "GSAP", level: "familiar" },
+      { id: "framer", name: "Framer Motion", level: "practice" },
+      { id: "lenis", name: "Lenis", level: "familiar" },
+      { id: "lucide", name: "Lucide React", level: "practice" },
+      { id: "tsrouter", name: "TanStack Router", level: "practice" },
+      { id: "tsstart", name: "TanStack Start", level: "practice" },
     ],
   },
   {
     id: "backend",
-    port: "8080/tcp",
-    state: "open",
-    title: { term: { pt: "backend-data" }, clean: { pt: "Backend & Dados" } },
     items: [
-      "Node.js",
-      "APIs REST",
-      "Integração com APIs externas",
-      "Autenticação e sessões",
-      "Supabase",
-      "SQL",
-      "Python",
+      { id: "nodejs", name: "Node.js", level: "practice" },
+      { id: "supabase", name: "Supabase", level: "practice" },
+      { id: "postgresql", name: "PostgreSQL", level: "practice" },
+      { id: "sql", name: "SQL", level: "familiar" },
+      { id: "rest", level: "practice" },
+      { id: "auth", level: "practice" },
+      { id: "rls", name: "Row Level Security (RLS)", level: "practice" },
     ],
   },
   {
-    id: "infra",
-    port: "22/tcp",
-    state: "open",
-    title: { term: { pt: "infra-tools" }, clean: { pt: "Infra & Ferramentas" } },
-    items: ["Git/GitHub", "Docker", "Linux (uso diário)", "SSH", "Vercel", "Redes TCP/IP"],
-  },
-  {
-    id: "security",
-    port: "8443/tcp",
-    state: "open",
-    title: { term: { pt: "security" }, clean: { pt: "Segurança" } },
+    id: "secTools",
     items: [
-      "Pentest autorizado",
-      "OSINT",
-      "Análise de vulnerabilidades",
-      "Segurança de aplicações web",
-      "Revisão de código com foco em segurança",
-      "Análise de controle de acesso",
-      "Análise de tráfego",
+      { id: "kali", name: "Kali Linux", level: "practice" },
+      { id: "nmap", name: "Nmap", level: "practice" },
+      { id: "docker", name: "Docker", level: "familiar" },
+      { id: "git", name: "Git", level: "practice" },
+      { id: "github", name: "GitHub", level: "practice" },
     ],
   },
   {
-    id: "exploring",
-    port: "9000/tcp",
-    state: "filtered",
-    title: { term: { pt: "exploring" }, clean: { pt: "Explorando" } },
-    items: ["Vue.js", "React Native", "Flutter", "Java", "C++"],
+    id: "secConcepts",
+    items: [
+      { id: "vulns" },
+      { id: "codeaudit" },
+      { id: "osint", name: "OSINT" },
+      { id: "netenum", name: "Network Enumeration" },
+      { id: "tcpip", name: "TCP/IP" },
+      { id: "dns", name: "DNS" },
+      { id: "http", name: "HTTP/HTTPS" },
+      { id: "tls", name: "TLS" },
+      { id: "websec", name: "Web Security" },
+      { id: "hardening", name: "Security Hardening" },
+      { id: "threat", name: "Threat Modeling" },
+      { id: "securearch", name: "Secure Architecture" },
+      { id: "netmon", name: "Network Monitoring" },
+    ],
+  },
+  {
+    id: "systems",
+    items: [
+      { id: "linux", level: "practice" },
+      { id: "kali", name: "Kali Linux", level: "practice" },
+      { id: "ubuntu", name: "Ubuntu", level: "practice" },
+      { id: "windows", name: "Windows", level: "practice" },
+    ],
   },
 ];
 
-/*
- * Seção 02 · STACK (peças 3D). A ordem é a prioridade: no celular entram só
- * as 10 primeiras. `match` são os nomes usados em `projects[].stack` (para
- * mostrar quais projetos usam cada tecnologia).
- */
-/* `use`: frase curta de como uso. Escritas a partir do que já está neste
- * arquivo (whoami, services, activity). TODO: revisar com as suas palavras. */
-export const stackTokens: { id: string; name: string; use: string; match?: string[] }[] = [
-  { id: "react", name: "React", use: "Construo as interfaces das aplicações web que desenvolvo de ponta a ponta.", match: ["React", "Next.js"] },
-  { id: "nextjs", name: "Next.js", use: "Framework das minhas aplicações web, incluindo o Aegis e este portfólio." },
-  { id: "typescript", name: "TypeScript", use: "Linguagem padrão no frontend e no backend dos meus projetos." },
-  { id: "nodejs", name: "Node.js", use: "Backend: APIs REST, autenticação, sessões e integração com APIs externas." },
-  { id: "tailwind", name: "Tailwind CSS", use: "Estilização do frontend, inclusive deste site.", match: ["Tailwind", "Tailwind CSS"] },
-  { id: "python", name: "Python", use: "Scripts e automação no backend." },
-  { id: "docker", name: "Docker", use: "Ambientes isolados e reproduzíveis para rodar e testar serviços." },
-  { id: "postgresql", name: "PostgreSQL", use: "Bancos relacionais e SQL, direto ou via Supabase.", match: ["PostgreSQL", "Postgres", "SQL"] },
-  { id: "linux", name: "Linux", use: "Meu sistema de uso diário, com SSH e redes TCP/IP." },
-  { id: "kali", name: "Kali Linux", use: "Base dos pentests autorizados que faço, como o pentest interno semanal na BUMP." },
-  { id: "javascript", name: "JavaScript", use: "A base de todo o frontend que escrevo." },
-  { id: "supabase", name: "Supabase", use: "Banco de dados e autenticação no backend." },
-  { id: "git", name: "Git", use: "Versionamento, code review dos commits do time e correções via Pull Request." },
-  { id: "vite", name: "Vite", use: "Build e servidor de desenvolvimento em projetos React." },
-  { id: "html5", name: "HTML5", use: "Marcação semântica e acessível, a base de qualquer interface.", match: ["HTML", "HTML5"] },
-  { id: "css3", name: "CSS3", use: "Layout e animações, do grid editorial às transições deste site.", match: ["CSS", "CSS3"] },
-  { id: "vercel", name: "Vercel", use: "Deploy dos meus projetos web, como o Aegis." },
+export const stackCoins: { id: string; name: string }[] = [
+  { id: "react", name: "React" },
+  { id: "nextjs", name: "Next.js" },
+  { id: "typescript", name: "TypeScript" },
+  { id: "javascript", name: "JavaScript" },
+  { id: "html5", name: "HTML5" },
+  { id: "css3", name: "CSS3" },
+  { id: "tailwind", name: "Tailwind CSS" },
+  { id: "nodejs", name: "Node.js" },
+  { id: "supabase", name: "Supabase" },
+  { id: "postgresql", name: "PostgreSQL" },
+  { id: "threejs", name: "Three.js" },
+  { id: "framer", name: "Framer Motion" },
+  { id: "gsap", name: "GSAP" },
+  { id: "vite", name: "Vite" },
+  { id: "docker", name: "Docker" },
+  { id: "git", name: "Git" },
+  { id: "github", name: "GitHub" },
+  { id: "linux", name: "Linux" },
+  { id: "kali", name: "Kali Linux" },
+  { id: "ubuntu", name: "Ubuntu" },
+  { id: "vercel", name: "Vercel" },
+  { id: "nmap", name: "Nmap" },
 ];
+
+/* celular: ~10 moedas (as de uso diário e as de segurança) */
+export const stackCoinsMobile = ["react", "nextjs", "typescript", "javascript", "nodejs", "tailwind", "supabase", "linux", "kali", "nmap"];
+
+/* nível de cada id (primeira ocorrência no índice que tem nível) */
+export function stackLevel(id: string): StackLevel | undefined {
+  for (const c of stackIndex) for (const it of c.items) if (it.id === id && it.level) return it.level;
+  return undefined;
+}
+
+/* total real de itens: ids únicos do índice + moedas que só existem como moeda */
+export const stackCount = new Set([...stackIndex.flatMap((c) => c.items.map((i) => i.id)), ...stackCoins.map((c) => c.id)]).size;
 
 export const projects: Project[] = [
   {
     id: "FND-001",
     slug: "aegis",
-    severity: "critical",
+    kind: "personal",
     title: "Aegis",
     display: "AEGIS",
     year: "2026",
-    role: { pt: "Projeto solo · produto, front, back e segurança" },
-    summary: {
-      pt: "Scanner da postura de segurança de um domínio. Analisa TLS, headers HTTP, cookies, DNS e e-mail, vulnerabilidades conhecidas das tecnologias detectadas, reputação e superfície de ataque, e dá uma nota de 0 a 100 com o que corrigir.",
-    },
-    highlights: [
-      { pt: "Cruza as tecnologias detectadas com OSV, NVD e o catálogo CISA KEV de vulnerabilidades exploradas ativamente." },
-      { pt: "Passivo por padrão. Testes ativos só depois de o dono provar a posse do domínio (registro TXT ou arquivo), com token HMAC e sem banco de dados." },
-      { pt: "O próprio scanner é blindado: proteção contra SSRF com revalidação do IP a cada conexão (anti DNS rebinding), detecção sem ReDoS e rate limit na API." },
-    ],
     stack: ["Next.js 16", "React 19", "TypeScript", "Tailwind CSS 4", "Canvas 2D", "SVG", "Vercel (gru1)", "Vercel Firewall"],
     links: {
       repo: "https://github.com/Leonard0MF/aegis",
       demo: "https://aegis-ten-zeta.vercel.app/",
     },
-    image: { src: "/aegis.png", width: 1896, height: 914, alt: { pt: "Painel do Aegis: nota de segurança, certificado TLS e verificações de um domínio" } },
+    image: { src: "/aegis.png", width: 1896, height: 914 },
   },
   {
     id: "FND-002",
     slug: "bumphub",
-    severity: "high",
+    kind: "internal",
     title: "BUMPHUB",
     display: "BUMPHUB",
     year: undefined, // TODO: ano
-    role: { pt: "Projeto solo · arquitetura, front, back, desktop e segurança" },
-    usage: { pt: "Em produção na equipe de TI da empresa." },
-    summary: {
-      pt: "Workspace interno da equipe de TI da Bump Amortecedores. Junta chat em tempo real, gestão de tarefas, integração com o GitHub, inventário das máquinas da empresa e um cofre de senhas, tudo num app desktop próprio.",
-    },
-    highlights: [
-      { pt: "Chat estilo Discord em tempo real (canais, DMs, menções, reações, anexos) com cards de PRs e issues do GitHub direto na conversa." },
-      { pt: "Inventário dos PCs da empresa com status online/offline e acesso remoto em um clique, mais histórico de manutenção de cada máquina." },
-      { pt: "Cofre de senhas criptografado no navegador (AES-256) com 2FA/TOTP: nem o banco de dados vê as senhas." },
-    ],
+    usage: true,
     stack: [
       "Next.js 16",
       "TypeScript",
-      "Supabase (Postgres, RLS, Realtime, Auth com GitHub)",
+      { key: "supabase" },
       "Electron",
-      "Extensão de VS Code",
+      { key: "vscode" },
       "GitHub API + webhooks",
       "Tailscale API",
       "Web Crypto",
@@ -232,69 +244,27 @@ export const projects: Project[] = [
     ],
     links: {},
     private: true,
-    image: { src: "/bumphub.png", width: 1922, height: 976, alt: { pt: "Tela de login do BUMPHUB (entrar com GitHub)" } },
+    /* TODO: ao trocar o print, atualize width/height e a legenda abaixo */
+    image: {
+      src: "/bumphub.png",
+      width: 1922,
+      height: 976,
+      caption: {
+        pt: "Tela de login do BUMPHUB (entrar com GitHub)",
+        en: "BUMPHUB login screen (sign in with GitHub)",
+        es: "Pantalla de inicio de sesión de BUMPHUB (entrar con GitHub)",
+      },
+    },
   },
 ];
 
-export const activity: Activity[] = [
-  {
-    org: "Bump Amortecedores",
-    role: { pt: "TI e Desenvolvimento" },
-    period: { pt: "out/2026 → atual" },
-    current: true,
-    bullets: [
-      { pt: "Pentest interno semanal" },
-      { pt: "QA e identificação de regressões" },
-      { pt: "Code review dos commits do time" },
-      { pt: "Correções via Pull Request" },
-      { pt: "Suporte de TI a 3 setores" },
-    ],
-  },
-  {
-    org: "Elyra Studio",
-    role: { pt: "Fundador" },
-    period: { pt: "TODO: período" },
-    bullets: [{ pt: "TODO: descrição da Elyra Studio (startup própria, encerrada)." }],
-  },
-];
+/* Trajetória (ABOUT): os marcos ficam em messages (about.journey), com
+ * TODO no ano do primeiro código, no período e na descrição da Elyra Studio
+ * (startup própria, encerrada) e nas frases desses dois marcos. */
 
-/*
- * 04 · ABOUT. Texto em primeira pessoa. Os `facts` com "TODO:" não aparecem
- * no site até serem preenchidos.
- */
-export const about = {
-  /** public/portrait.png: foto do Léo (P&B é aplicado no CSS). Enquanto o
-   * arquivo não existir, a seção mostra uma moldura marcada como pendente. */
-  photo: "/portrait.png",
-  opening: { pt: "Construo aplicações web de ponta a ponta e depois tento quebrá-las antes que alguém de fora tente." },
-  body: {
-    pt: "Sou o Léo, desenvolvedor full-stack com foco em segurança. Hoje cuido de TI e desenvolvimento na Bump Amortecedores: faço pentest interno toda semana, QA, revisão de código e correções via Pull Request, e criei e mantenho sozinho o BumpHub, o workspace interno da equipe de TI. Antes disso, fundei a Elyra Studio, minha própria startup. Uso Linux no dia a dia, gosto de entender como as coisas funcionam por baixo e acredito que segurança se resolve no código, não depois do deploy.",
-  },
-  principles: [
-    { pt: "Segurança desde o primeiro commit" },
-    { pt: "Code review e PRs pequenos" },
-    { pt: "Entender o problema antes de escolher a ferramenta" },
-  ],
-  facts: [
-    { label: { pt: "Cidade" }, value: { pt: "TODO: cidade" } },
-    { label: { pt: "Formação" }, value: { pt: "TODO: formação / cursos" } },
-    { label: { pt: "Idiomas" }, value: { pt: "TODO: idiomas" } },
-    { label: { pt: "Fora do código" }, value: { pt: "TODO: algo fora do código" } },
-  ],
-};
+/* 04 · ABOUT. A foto vem de src/content/portrait.ts (fonte única). */
+export const about = { author: "Leonardo Machmann" };
 
-/* TODO: preencher com os números reais. */
-export const metrics: { value: string; label: Localized }[] = [
-  { value: "TODO", label: { pt: "pentests internos realizados" } },
-  { value: "TODO", label: { pt: "vulnerabilidades encontradas e corrigidas" } },
-  { value: "TODO", label: { pt: "PRs de correção" } },
-  { value: "3", label: { pt: "setores atendidos com suporte de TI" } },
-];
-
-export const scanLines: { label: string; result: string }[] = [
-  { label: "resolving target", result: "ok" },
-  { label: "enumerating stack", result: `${services.filter((s) => s.state === "open").reduce((n, s) => n + s.items.length, 0)} services` },
-  { label: "scanning projects", result: `${projects.length} findings` },
-  /* Vem da auditoria real; sem nota, mostra "pending" em vez de inventar. */
-  { label: "checking security posture", result: auditGrade ?? "pending" },
-];
+/* TODO: números reais para uma futura seção de métricas (ainda não exibida):
+ * pentests internos realizados, vulnerabilidades encontradas e corrigidas,
+ * PRs de correção, 3 setores atendidos com suporte de TI. */

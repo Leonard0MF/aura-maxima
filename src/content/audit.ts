@@ -2,7 +2,8 @@
  * 03 · AUDIT: a constelação mostra a postura de segurança REAL deste site,
  * vinda de um scan do Aegis sobre o domínio publicado.
  *
- * Os dados vêm de `audit.json` (gerado rodando o Aegis no domínio publicado).
+ * Os dados vêm de `audit.json`, gerado por `npm run audit:import -- <export>`
+ * a partir do JSON exportado pelo Aegis (passo a passo no README).
  * NUNCA invente nem infle a nota: a seção mostra exatamente o JSON. Enquanto
  * `example` for true, os dados são de EXEMPLO: a seção avisa isso e NÃO
  * mostra nota (score/grade são ignorados).
@@ -17,9 +18,10 @@
  *   "scannedAt":   string | null  // data ISO 8601 do scan, ex.: "2026-12-01T14:03:00Z"
  *   "score":       number | null  // 0–100, como o Aegis reporta
  *   "grade":       string | null  // "A" | "B" | "C" | "D" | "F"
+ *   "band":        "ok" | "warn" | "bad" | null  // faixa do Aegis: ≥ 80 / ≥ 50 / < 50
  *   "nodes": [                    // 8–10 "nós principais" da constelação, na ordem do cartão
  *     {
- *       "id":     string          // único, ex.: "tls", "hsts", "csp", "hosting", "dns"
+ *       "id":     string          // tls, hsts, csp, xfo, nosniff, referrer, permissions, cookies, dns, hosting
  *       "label":  string          // nome exibido, ex.: "Certificado TLS"
  *       "value":  string          // o dado em uma linha, ex.: "Let's Encrypt R11 · TLS 1.3 · até 2027-02-01"
  *       "status": "pass" | "warn" | "fail" | "info"
@@ -28,8 +30,10 @@
  * }
  *
  * O nó da nota geral é gerado a partir de score/grade (não precisa estar em
- * `nodes`). Nós sugeridos: certificado TLS (emissor, versão, validade), cada
- * header de segurança, CDN/hospedagem e DNS (CAA, DNSSEC).
+ * `nodes`). Tradução: `label` e o prefixo "EXEMPLO ·" são trocados pelos de
+ * messages (audit.labels.<id>, audit.examplePrefix) quando existem; com
+ * `example`, audit.exampleValues.<id> substitui o texto explicativo. Os
+ * valores técnicos (headers, emissor, detalhes do Aegis) não são traduzidos.
  */
 import data from "./audit.json";
 
@@ -44,6 +48,7 @@ export type Audit = {
   scannedAt: string | null;
   score: number | null;
   grade: string | null;
+  band: "ok" | "warn" | "bad" | null;
   nodes: AuditNode[];
 };
 
@@ -52,16 +57,4 @@ export const audit = data as Audit;
 /* nota só existe para dados reais */
 export const auditGrade = audit.example ? null : audit.grade;
 export const auditScore = audit.example ? null : audit.score;
-
-/* todos os nós da constelação: os do JSON + a nota geral */
-export const auditNodes: AuditNode[] = [
-  ...audit.nodes,
-  {
-    id: "grade",
-    label: "Nota geral",
-    value: auditGrade ? `${auditGrade} · ${auditScore ?? "—"}/100` : audit.example ? "— · dados de exemplo, sem nota" : "— · pendente",
-    status: "info",
-  },
-];
-
-export const auditDate = audit.scannedAt ? new Date(audit.scannedAt).toLocaleDateString("pt-BR", { timeZone: "UTC" }) : null;
+export const auditBand = audit.example ? null : audit.band;

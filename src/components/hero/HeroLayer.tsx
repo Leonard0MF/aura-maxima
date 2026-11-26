@@ -1,6 +1,7 @@
+import type { CSSProperties } from "react";
+
 import type { AsciiImageData } from "@/lib/ascii/image";
 import { portraitBoxStyle } from "@/lib/ascii/core";
-import { profile } from "@/content/profile";
 
 /*
  * Conteúdo do hero (tipografia + área do retrato). Renderizado DUAS vezes
@@ -16,10 +17,24 @@ import { profile } from "@/content/profile";
  * A diferença entre as duas é só cor e conteúdo, nunca layout. A camada under
  * é recortada por um círculo (clip-path) que segue a lente via variáveis CSS.
  */
-export function HeroLayer({ variant, portrait }: { variant: "surface" | "under"; portrait: AsciiImageData }) {
+export function HeroLayer({ variant, portrait, bg, alt }: { variant: "surface" | "under"; portrait: AsciiImageData; bg?: AsciiImageData; alt: string }) {
   const under = variant === "under";
   return (
     <div className={`hero-layer hero-layer--${variant}`} aria-hidden={under || undefined}>
+      {/* Enigma (fundo, atrás do retrato): na superfície, o ASCII fino estático
+          (fallback); na lente, a foto real em P&B. Caixa: .hero-enigma-box,
+          a mesma conta de enigmaRect() no shader. Decorativa (alt vazio). */}
+      {bg && (
+        <div className={under ? "hero-enigma-box hero-photo" : "hero-enigma-box ascii-fallback ascii-fallback--bg"} style={{ "--ea": bg.aspect } as CSSProperties}>
+          {under ? (
+            // eslint-disable-next-line @next/next/no-img-element -- mesma URL da textura do shader
+            <img src={bg.src} alt="" decoding="async" loading="eager" style={{ maskImage: `url(${bg.mask})`, WebkitMaskImage: `url(${bg.mask})` }} />
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element -- data URI gerado no build
+            <img src={bg.svg.src} width={bg.svg.width} height={bg.svg.height} alt="" decoding="async" />
+          )}
+        </div>
+      )}
       {/* retrato: o MESMO retângulo que o shader usa (portraitBoxStyle ≡ portraitRect) */}
       <div className={under ? "hero-photo" : "ascii-fallback"} style={portraitBoxStyle(portrait.aspect)}>
         {under ? (
@@ -28,7 +43,9 @@ export function HeroLayer({ variant, portrait }: { variant: "surface" | "under";
             src={portrait.src}
             alt=""
             decoding="async"
-            loading="lazy"
+            /* eager: a camada começa escondida (display: none) e uma imagem lazy
+               só carregaria quando a lente abrisse, deixando o círculo vazio */
+            loading="eager"
             style={{ maskImage: `url(${portrait.mask})`, WebkitMaskImage: `url(${portrait.mask})` }}
           />
         ) : (
@@ -37,7 +54,7 @@ export function HeroLayer({ variant, portrait }: { variant: "surface" | "under";
             src={portrait.svg.src}
             width={portrait.svg.width}
             height={portrait.svg.height}
-            alt={`Retrato de ${profile.name} desenhado com caracteres de código (ASCII art)`}
+            alt={alt}
             decoding="async"
           />
         )}

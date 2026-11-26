@@ -1,120 +1,158 @@
-import fs from "node:fs";
-import path from "node:path";
+import { getLocale, getTranslations } from "next-intl/server";
+
 import Image from "next/image";
 
+import { Journey, type Milestone } from "@/components/about/Journey";
 import { Decrypt } from "@/components/Decrypt";
-import { SectionHead } from "@/components/SectionHead";
-import { about, activity, profile } from "@/content/profile";
-import { t } from "@/lib/i18n";
+import { about, profile } from "@/content/profile";
+import { portrait } from "@/content/portrait";
+import { getPortrait } from "@/lib/ascii/image";
+import { cvFor } from "@/lib/site";
 
 const isTodo = (s: string) => s.trim().startsWith("TODO");
-/* roda no build (a home é SSG): o que não existe em public/ não vira link quebrado */
-const inPublic = (url: string) => fs.existsSync(path.join(process.cwd(), "public", url.replace(/^\//, "")));
+type Item = { title: string; body: string };
 
 /*
- * 04 · ABOUT (cabe em 100svh). Esquerda: foto em P&B, tratamento editorial.
- * Direita: abertura grande, texto em primeira pessoa, "Como eu trabalho",
- * experiência em tabela curta e o currículo. Dados em content/profile.ts.
+ * 04 · ABOUT em dois blocos, cada um cabendo em 100svh. Textos em messages
+ * (about.*).
+ *   1. foto editorial (P&B, sem efeito) + título, dois parágrafos,
+ *      "Estudando agora" e "Próximo objetivo"
+ *   2. Trajetória (linha do tempo), "Como eu trabalho", a assinatura,
+ *      experiência e o currículo (se houver)
  */
-export function About() {
-  const hasPhoto = inPublic(about.photo);
-  const cv = inPublic(profile.contact.cv) ? profile.contact.cv : null;
-  const facts = about.facts.filter((f) => !isTodo(t(f.value)));
+export async function About() {
+  const locale = await getLocale();
+  const t = await getTranslations("about");
+  const tn = await getTranslations("nav");
+  /* máscara de alpha da foto (gerada no build): recorta o grão pela silhueta */
+  const { mask, aspect } = await getPortrait();
+  const cv = cvFor(locale);
+  const facts = (t.raw("facts") as { label: string; value: string }[]).filter((f) => !isTodo(f.value));
   const meta = "font-mono text-[11px] tracking-wide uppercase sm:text-xs";
 
   return (
     <section id="about" aria-labelledby="about-title" className="bg-paper text-ink">
-      <SectionHead n="04" label="About" title="Sobre mim" id="about-title" meta="whoami" />
+      {/* faixa do cabeçalho no topo; o título vai para a coluna do texto, para
+          a foto ocupar a altura inteira do bloco */}
+      <header className="sh about-sh">
+        <div className="sh-label">
+          <span>04 — {tn("about")}</span>
+          <span className="text-right opacity-70">whoami</span>
+        </div>
+      </header>
 
-      <div className="sec-end px-4 sm:px-6">
-        <div className="grid gap-8 lg:grid-cols-12 lg:gap-10">
-          <figure className="lg:col-span-3">
-            <div className="about-photo relative aspect-[4/5] w-full max-w-[420px] overflow-hidden border border-ink/20">
-              {hasPhoto ? (
-                <Image src={about.photo} alt={`Foto de ${profile.name}`} fill sizes="(min-width: 1024px) 30vw, 100vw" className="object-cover" />
-              ) : (
-                <div className="absolute inset-0 grid place-items-center bg-ink/5 p-6 text-center">
-                  <p className={`${meta} text-ink-soft`}>
-                    Foto pendente
-                    <br />
-                    <span className="normal-case">public/portrait.png</span>
-                  </p>
-                </div>
-              )}
-            </div>
-            <figcaption className={`mt-2 ${meta} text-ink-soft`}>{profile.name}</figcaption>
-          </figure>
-
-          <div className="flex flex-col gap-6 lg:col-span-9">
-            <p className="max-w-[26ch] text-[clamp(1.6rem,2.6vw,2.6rem)] leading-[1.08] font-medium tracking-tight">
-              <Decrypt text={t(about.opening)} />
-            </p>
-            <p className="max-w-[72ch] text-[15px] leading-relaxed xl:text-base">{t(about.body)}</p>
-
-            <div className="grid gap-6 border-t border-ink/20 pt-4 md:grid-cols-2 md:gap-10">
-              <div>
-                <h3 className={`${meta} text-ink-soft`}>Como eu trabalho</h3>
-                <ol className="mt-2 space-y-1.5 text-[15px] leading-snug">
-                  {about.principles.map((p, i) => (
-                    <li key={i} className="flex gap-3">
-                      <span aria-hidden="true" className="font-mono text-xs leading-5 text-accent-ink">
-                        {String(i + 1).padStart(2, "0")}
-                      </span>
-                      {t(p)}
-                    </li>
-                  ))}
-                </ol>
-              </div>
-
-              <div>
-                <h3 className={`${meta} text-ink-soft`}>Experiência</h3>
-                <table className="mt-2 w-full text-left text-sm">
-                  <tbody>
-                    {activity.map((a) => {
-                      const period = t(a.period);
-                      return (
-                        <tr key={a.org} className="border-b border-ink/20 align-baseline">
-                          <th scope="row" className="py-2 pr-4 font-mono text-xs font-normal tracking-wide whitespace-nowrap uppercase">
-                            {a.org}
-                          </th>
-                          <td className="py-2 pr-4 text-ink-soft">{t(a.role)}</td>
-                          <td className="py-2 font-mono text-xs whitespace-nowrap uppercase">
-                            {isTodo(period) ? "—" : period}
-                            {a.current && (
-                              <>
-                                <span className="ml-2 inline-block size-1.5 rounded-full bg-accent align-middle" aria-hidden="true" />
-                                <span className="sr-only"> (atual)</span>
-                              </>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {(facts.length > 0 || cv) && (
-              <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
-                {facts.length > 0 && (
-                  <dl className={`flex flex-wrap gap-x-6 gap-y-1 ${meta}`}>
-                    {facts.map((f) => (
-                      <div key={t(f.label)} className="flex gap-2">
-                        <dt className="text-ink-soft">{t(f.label)}:</dt>
-                        <dd>{t(f.value)}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                )}
-                {cv && (
-                  <a href={cv} download className="about-cv">
-                    Baixar currículo (PDF) <span aria-hidden="true">↓</span>
-                  </a>
-                )}
-              </div>
-            )}
+      <div className="about-block about-intro px-4 sm:px-6">
+        <figure className="about-figure">
+          <div className="about-photo" style={{ "--a": aspect, "--m": `url(${mask})` } as React.CSSProperties}>
+            <Image
+              src={portrait.photo}
+              alt={t("photoAlt", { name: profile.name })}
+              sizes="(min-width: 1024px) 34vw, (min-width: 640px) 22rem, 90vw"
+              quality={80}
+            />
           </div>
+          <figcaption className={`${meta} text-ink-soft`}>{profile.name}</figcaption>
+        </figure>
+
+        <div className="about-text">
+          <h2 id="about-title" className="sh-title font-display">
+            <Decrypt text={t("title")} />
+          </h2>
+          <p className="about-title font-display">
+            <Decrypt text={t("heading")} />
+          </p>
+          <div className="about-body">
+            {(t.raw("body") as string[]).map((p, i) => (
+              <p key={i}>{p}</p>
+            ))}
+          </div>
+
+          <div className="about-now">
+            <div>
+              <h3 className={`${meta} text-ink-soft`}>{t("nowTitle")}</h3>
+              <ul className="mt-1.5">
+                {(t.raw("now") as Item[]).map((s) => (
+                  <li key={s.title}>
+                    <strong className="font-medium">{s.title}</strong>: {s.body}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h3 className={`${meta} text-ink-soft`}>{t("nextTitle")}</h3>
+              <ul className="mt-1.5">
+                {(t.raw("next") as { title: string }[]).map((s) => (
+                  <li key={s.title} className="flex items-center gap-2">
+                    <span className="about-pulse" aria-hidden="true" />
+                    <strong className="font-medium">{s.title}</strong>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          {facts.length > 0 && (
+            <dl className={`flex flex-wrap gap-x-6 gap-y-1 ${meta}`}>
+              {facts.map((f) => (
+                <div key={f.label} className="flex gap-2">
+                  <dt className="text-ink-soft">{f.label}:</dt>
+                  <dd>{f.value}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </div>
+      </div>
+
+      <div className="about-block about-journey sec-end px-4 sm:px-6">
+        <h3 className="about-journey__title">
+          <span className={`${meta} text-ink-soft`}>{t("journeyKicker")}</span>
+          <span className="font-display">{t("journeyTitle")}</span>
+        </h3>
+        <Journey items={t.raw("journey") as Milestone[]} label={t("journeyTitle")} />
+
+        <div className="about-how border-t border-ink/20 pt-4">
+          <h3 className={`${meta} text-ink-soft`}>{t("howTitle")}</h3>
+          <ol className="mt-2 grid gap-4 md:grid-cols-3 md:gap-8">
+            {(t.raw("principles") as Item[]).map((p, i) => (
+              <li key={i} className="flex gap-3 text-[15px] leading-snug">
+                <span aria-hidden="true" className="font-mono text-xs leading-5 text-accent-ink">
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <span>
+                  <strong className="block font-mono text-[13px] font-medium tracking-tight">{p.title}</strong>
+                  {p.body}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+
+        <figure className="about-sign border-t border-ink/20 pt-4">
+          <blockquote className="max-w-[70ch] italic">“{t("quote")}”</blockquote>
+          <figcaption className={`mt-1.5 ${meta} text-ink-soft`}>— {about.author}</figcaption>
+        </figure>
+
+        <div className="about-exp border-t border-ink/20 pt-4">
+          <div>
+            <h3 className={`${meta} text-ink-soft`}>{t("experienceTitle")}</h3>
+            <ul className="mt-2 space-y-1 text-[15px] leading-snug">
+              {(t.raw("experience") as { org: string; role: string; period: string }[]).map((e) => (
+                <li key={e.org}>
+                  <span className="font-mono text-[13px] font-medium tracking-wide uppercase">{e.org}</span>
+                  <span className="text-ink-soft"> · </span>
+                  {e.role}
+                  <span className="text-ink-soft"> · </span>
+                  <span className="font-mono text-[13px]">{e.period}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          {cv && (
+            <a href={cv} download className="about-cv">
+              {t("cv")} <span aria-hidden="true">↓</span>
+            </a>
+          )}
         </div>
       </div>
     </section>

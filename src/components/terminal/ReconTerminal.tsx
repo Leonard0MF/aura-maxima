@@ -37,7 +37,7 @@ function Prompt() {
   );
 }
 
-function Out({ lines }: { lines: Line[] }) {
+function Out({ lines, newTab }: { lines: Line[]; newTab: string }) {
   return (
     <>
       {lines.map((line, i) => (
@@ -62,7 +62,7 @@ function Out({ lines }: { lines: Line[] }) {
                 {...(ext ? { target: "_blank", rel: "noopener noreferrer" } : {})}
               >
                 {seg.t}
-                {ext ? <span className="sr-only"> (abre em nova aba)</span> : null}
+                {ext ? <span className="sr-only">{newTab}</span> : null}
               </a>
             );
           })}
@@ -87,6 +87,7 @@ export function ReconTerminal({ data }: { data: TerminalData }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const nextId = useRef(0);
+  const ready = data.strings.ready.split("{help}");
 
   useEffect(() => {
     try {
@@ -110,7 +111,7 @@ export function ReconTerminal({ data }: { data: TerminalData }) {
     if (res.clear) {
       setEntries([]);
       setCleared(true);
-      setAnnounce("Tela limpa.");
+      setAnnounce(data.strings.cleared);
       return;
     }
     setEntries((e) => [...e, { id: nextId.current++, cmd: trimmed, out: res.out }]);
@@ -201,7 +202,9 @@ export function ReconTerminal({ data }: { data: TerminalData }) {
                 </div>
               ))}
               <div className="scan-line text-ok" style={{ "--i": data.scan.length + 1 } as React.CSSProperties}>
-                [✓] report ready · digite <span className="text-accent">help</span> ou use os atalhos abaixo
+                [✓] {ready[0]}
+                <span className="text-accent">help</span>
+                {ready[1]}
               </div>
             </div>
           ) : null}
@@ -212,7 +215,7 @@ export function ReconTerminal({ data }: { data: TerminalData }) {
                 <Prompt />
                 <span className="text-fg">{e.cmd}</span>
               </div>
-              <Out lines={e.out} />
+              <Out lines={e.out} newTab={data.strings.newTab} />
             </div>
           ))}
 
@@ -220,7 +223,7 @@ export function ReconTerminal({ data }: { data: TerminalData }) {
             <Prompt />
             <span className="relative min-w-0 flex-1">
             <label htmlFor="term-input" className="sr-only">
-              Comando do terminal (digite help para ver os comandos)
+              {data.strings.inputLabel}
             </label>
             <input
               ref={inputRef}
@@ -242,8 +245,8 @@ export function ReconTerminal({ data }: { data: TerminalData }) {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Atalhos do terminal">
-        <span className="font-mono text-[11px] text-dim">atalhos:</span>
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label={data.strings.shortcutsLabel}>
+        <span className="font-mono text-[11px] text-dim">{data.strings.shortcuts}</span>
         {CHIPS.map((c) => (
           <button
             key={c.cmd}

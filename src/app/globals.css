@@ -42,6 +42,20 @@ html {
   -webkit-text-size-adjust: 100%;
 }
 
+/* margens laterais que respeitam as safe areas (notch em paisagem) */
+:root {
+  --gx: 1rem;
+  --safe-l: max(var(--gx), env(safe-area-inset-left, 0px));
+  --safe-r: max(var(--gx), env(safe-area-inset-right, 0px));
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+@media (min-width: 640px) {
+  :root {
+    --gx: 1.5rem;
+  }
+}
+
 body {
   margin: 0;
   min-height: 100dvh;
@@ -114,8 +128,8 @@ html[data-scan="instant"] .scan-line {
 }
 .hl {
   position: absolute;
-  left: 1rem;
-  right: 1rem;
+  left: var(--safe-l);
+  right: var(--safe-r);
   /* "FULL-STACK" ≈ 6.9em em Archivo Black: cabe na largura útil */
   font-size: min(calc((100cqw - 2rem) / 6.95), 24cqh);
   line-height: 0.8;
@@ -132,24 +146,101 @@ html[data-scan="instant"] .scan-line {
 }
 @media (min-width: 640px) {
   .hl {
-    left: 1.5rem;
-    right: 1.5rem;
     font-size: min(calc((100cqw - 3rem) / 6.95), 24cqh);
   }
 }
-/* Entrada: a tipografia sobe enquanto o retrato se monta (só na 1ª carga da
- * sessão, nunca com reduced-motion). Opacidade nunca chega a 0: não atrasa o LCP. */
-@keyframes hl-in {
-  from {
-    opacity: 0.12;
-    transform: translateY(0.3em);
+/* Celular em pé (mesma condição de isNarrow em lib/ascii/core.ts): retrato
+ * menor no centro e as palavras logo acima e logo abaixo dele. Corpo com
+ * clamp em vw: cabe sem cortar de 320px para cima. */
+@container (max-width: 639px) and (max-aspect-ratio: 5 / 6) {
+  .hero-layer {
+    --ph: 0.42;
+  }
+  .hero-layer .hl {
+    font-size: clamp(2rem, calc((100vw - 2rem) / 7.05), 5.5rem);
+  }
+  .hero-layer .hl-top {
+    top: auto;
+    bottom: calc(50cqh + min(21cqh, 47.5cqw / var(--pa, 0.67)) + 0.1em);
+  }
+  .hero-layer .hl-bot {
+    bottom: auto;
+    top: calc(50cqh + min(21cqh, 47.5cqw / var(--pa, 0.67)) + 0.1em);
   }
 }
-html[data-intro] .hero .hl {
-  animation: hl-in 1.3s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+/* Intro "descriptografia" (1ª carga da sessão; nunca com reduced-motion nem
+ * no modo estático: o boot nem marca data-intro). A tipografia real é pintada
+ * desde o 1º frame (é o LCP) e NUNCA recebe opacity/visibility: a intro é uma
+ * camada por cima.
+ *   data-intro="1"   (boot) papel sobre o hero até o canvas assumir
+ *   data-intro="run" o canvas 2D das palavras cobre só as palavras
+ *   data-intro-meta  metadados, navegação e idiomas entram em sequência
+ *   data-intro="done" fim (ou pulado por clique/tecla/rolagem)
+ * Segurança: se o JS não chegar em 2,5 s, a capa sai e os metadados
+ * aparecem (o canvas que chegar depois não refaz a intro). */
+.hero-intro-cover,
+.hero-intro-words {
+  position: absolute;
+  inset: 0;
+  z-index: 1; /* acima da tipografia, abaixo do retrato (z 2) */
+  pointer-events: none;
 }
-html[data-intro] .hero .hl-bot {
-  animation-delay: 0.15s;
+.hero-intro-cover {
+  display: none;
+  background: var(--color-paper);
+}
+.hero-intro-words {
+  width: 100%;
+  height: 100%;
+}
+@keyframes intro-safety {
+  to {
+    visibility: hidden;
+  }
+}
+@keyframes intro-safety-show {
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+html[data-intro="1"]:not([data-fx="static"]) .hero-intro-cover {
+  display: block;
+  animation: intro-safety 0s linear 2.5s forwards;
+}
+html[data-intro="1"]:not([data-fx="static"]) .hero [data-intro-item],
+html[data-intro="run"] .hero [data-intro-item] {
+  opacity: 0;
+  translate: 0 8px;
+}
+html[data-intro="1"]:not([data-fx="static"]) .hero [data-intro-item] {
+  animation: intro-safety-show 0s linear 2.5s forwards;
+}
+html[data-intro-meta] .hero [data-intro-item] {
+  opacity: 1;
+  translate: 0 0;
+  transition:
+    opacity calc(0.3s * var(--ik, 1)) ease-out,
+    translate calc(0.3s * var(--ik, 1)) cubic-bezier(0.16, 1, 0.3, 1);
+  transition-delay: calc(var(--i, 0) * 0.12s * var(--ik, 1));
+}
+html[data-intro-skip] .hero [data-intro-item] {
+  transition: none;
+}
+/* a lente "acorda": um pulso âmbar no aro */
+@keyframes lens-wake {
+  0% {
+    box-shadow: 0 0 0 0 rgb(245 165 36 / 0.65);
+  }
+  100% {
+    box-shadow: 0 0 0 18px rgb(245 165 36 / 0);
+  }
+}
+.lens-ring[data-wake] {
+  animation: lens-wake 0.6s ease-out 2;
+}
+html[data-intro-skip] .lens-ring[data-wake] {
+  animation: none;
 }
 
 /* Retrato: canvas do tamanho do hero (o shader centraliza o retrato). */
@@ -182,6 +273,8 @@ html[data-intro] .hero .hl-bot {
   background: #0e0e10;
   color: #f5a524;
   clip-path: circle(var(--lr, 0px) at var(--lx, 50%) var(--ly, 50%));
+  /* --lo: visibilidade da lente (fade de entrada/saída do ponteiro) */
+  opacity: var(--lo, 0);
   pointer-events: none;
 }
 .hero[data-lens] .hero-layer--under {
@@ -200,20 +293,78 @@ html[data-intro] .hero .hl-bot {
   text-align: center;
   letter-spacing: 0;
 }
-/* foto com as cores naturais: P&B com contraste levemente aumentado. Sem
- * inversão nem blend (a inversão é só dos glifos ASCII sobre as letras, e
- * acontece no shader, não aqui) */
+/* foto SEMPRE em P&B (lente e ABOUT), sem inversão nem blend. O fundo
+ * transparente do PNG deixa ver o escuro da lente. */
+.hero-photo img,
+.about-photo img {
+  filter: grayscale(1) contrast(1.12);
+}
 .hero-photo img {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  filter: grayscale(1) contrast(1.12);
   /* o fundo da foto é recortado pela máscara gerada no build (image.ts) */
   mask-size: 100% 100%;
   mask-repeat: no-repeat;
   -webkit-mask-size: 100% 100%;
   -webkit-mask-repeat: no-repeat;
+}
+/* ---------- Enigma (fundo do hero) ----------
+ * Caixa = enigmaRect() em core.ts (mesmas constantes, em unidades do .hero):
+ * altura min(46cqh, 38cqw / proporção); centro em (max(19cqw, 2cqw +
+ * largura/2), 50cqh): à esquerda do retrato, entre FULL-STACK e DEVELOPER.
+ * Abaixo de 640px: min(20cqh, 55cqw / proporção), centro em (30cqw, 40cqh). */
+.hero-enigma-box {
+  --eh: min(46cqh, 38cqw / var(--ea));
+  position: absolute;
+ left: max(19cqw, calc(2cqw + var(--eh) * var(--ea) / 2));
+  top: 50cqh;
+  height: var(--eh);
+  aspect-ratio: var(--ea);
+  translate: -50% -50%;
+}
+@container (width < 640px) {
+  .hero-enigma-box {
+    --eh: min(20cqh, 55cqw / var(--ea));
+    left: max(30cqw, calc(2cqw + var(--eh) * var(--ea) / 2));
+    top: 40cqh;
+  }
+  .ascii-fallback--bg img {
+    opacity: 0.35;
+  }
+}
+/* fallback estático: mesma opacidade do canvas (abaixo do retrato) */
+.ascii-fallback--bg img {
+  opacity: 0.52;
+}
+/* legenda: canto inferior direito, só com a lente sobre a Enigma */
+.hero-enigma-cap {
+  position: absolute;
+  right: 1.5rem;
+  bottom: 1.5rem;
+  z-index: 11;
+  max-width: min(60ch, 42cqw);
+  font-size: 11px;
+  line-height: 1.5;
+  letter-spacing: 0.04em;
+  text-align: right;
+  color: var(--color-ink);
+  opacity: 0;
+  translate: 0 4px;
+  transition:
+    opacity 0.25s,
+    translate 0.25s;
+  pointer-events: none;
+}
+.hero[data-enigma] .hero-enigma-cap {
+  opacity: 1;
+  translate: 0 0;
+}
+@container (width < 640px) {
+  .hero-enigma-cap {
+    display: none;
+  }
 }
 .lens-ring {
   display: none;
@@ -227,6 +378,16 @@ html[data-intro] .hero .hl-bot {
   border-radius: 50%;
   pointer-events: none;
   transform: translate(calc(var(--lx, 0px) - 100px), calc(var(--ly, 0px) - 100px)) scale(var(--ls, 0));
+  opacity: var(--lo, 0);
+}
+/* no espaço vazio a lente encolhe para um ponto âmbar (--ld: 0 = lente, 1 = ponto) */
+.lens-ring::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: #f5a524;
+  opacity: var(--ld, 0);
 }
 .hero[data-lens] .lens-ring {
   display: block;
@@ -241,6 +402,10 @@ html[data-js]:not([data-fx="static"]) .ascii-fallback {
 }
 html[data-js] .hero[data-live] .ascii-fallback {
   opacity: 0;
+}
+/* na intro os glifos voam para o lugar: o esboço estático sai na hora */
+html[data-intro="run"] .hero[data-live] .ascii-fallback {
+  transition: none;
 }
 .ascii-fallback img {
   position: absolute;
@@ -444,17 +609,263 @@ html[data-js] .hero[data-live] .ascii-fallback {
 }
 
 /* ---------- 02 · STACK ---------- */
-/* a seção inteira cabe em 100svh: cabeçalho compacto (~12rem) + canvas */
+/* a seção inteira cabe em 100svh: cabeçalho compacto (~12rem) + canvas e
+ * índice. Desktop: canvas à esquerda (~60%), índice à direita (~40%);
+ * abaixo de 1024px: canvas em cima, índice embaixo. */
+.stack-layout {
+  border-top: 1px solid rgb(20 20 20 / 0.2);
+  border-bottom: 1px solid rgb(20 20 20 / 0.2);
+}
 .stack-box {
   position: relative;
   height: clamp(360px, calc(100svh - 13rem), 820px);
   overflow: hidden;
-  border-top: 1px solid rgb(20 20 20 / 0.2);
-  border-bottom: 1px solid rgb(20 20 20 / 0.2);
 }
-@media (max-width: 639px) {
+@media (min-width: 1024px) {
+  .stack-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    height: clamp(420px, calc(100svh - 13rem), 820px);
+  }
   .stack-box {
-    height: 66svh;
+    height: 100%;
+    border-right: 1px solid rgb(20 20 20 / 0.2);
+  }
+}
+
+/* índice em acordeão: 7 linhas fechadas (nº, nome, guia pontilhada,
+ * quantidade) com hairlines e respiro; abrir uma mostra os itens em lista
+ * vertical (2 colunas quando couber) e fecha as outras. Sem JS: tudo aberto. */
+.stack-index {
+  display: flex;
+  flex-direction: column;
+  padding: 1.75rem var(--gx, 1rem) 2rem;
+}
+@media (min-width: 640px) {
+  .stack-index {
+    padding-inline: 2rem;
+  }
+}
+@media (min-width: 1024px) {
+  .stack-index {
+    justify-content: safe center; /* alinhado ao centro do canvas; se não couber, começa do topo */
+    min-height: 0;
+    overflow-y: auto; /* só se a altura não der (telas muito baixas) */
+    padding: 1.25rem clamp(1.5rem, 3.2vw, 3.5rem);
+  }
+}
+/* legenda dos níveis: uma linha discreta no topo */
+.stack-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.25rem;
+  padding-bottom: 1rem;
+  color: var(--color-ink-soft);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.stack-legend > span {
+  display: inline-flex;
+  align-items: center;
+}
+.stack-legend > .stack-legend__note {
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+/* dica de uso, logo acima das categorias */
+.stack-usage {
+  padding-bottom: 0.6rem;
+  color: var(--color-ink-soft);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+/* etiqueta de nível do popup da moeda (inalterada) */
+.stack-lvl {
+  display: inline-block;
+  margin-left: 0.4em;
+  padding: 0 0.3em;
+  border: 1px solid rgb(20 20 20 / 0.22);
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.05em;
+  line-height: 1.5;
+  text-transform: uppercase;
+  vertical-align: 0.12em;
+  color: var(--color-ink-soft);
+}
+/* nível: ponto pequeno antes do nome (âmbar = prática, cinza escuro =
+ * familiaridade, cinza claro vazado = contato; sem nível = só o espaço) */
+.stack-dot {
+  display: inline-block;
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-right: 0.6em;
+  border-radius: 50%;
+}
+.stack-dot--practice {
+  background: var(--color-accent);
+}
+.stack-dot--familiar {
+  background: #57534c;
+}
+.stack-dot--contact {
+  box-shadow: inset 0 0 0 1.5px #a9a59c;
+}
+.stack-cat {
+  border-top: 1px solid rgb(20 20 20 / 0.16);
+  transition: opacity 0.25s;
+}
+.stack-cat:last-child {
+  border-bottom: 1px solid rgb(20 20 20 / 0.16);
+}
+/* com uma categoria aberta, as fechadas recuam um pouco */
+.stack-index:has(.stack-cat[data-open]) .stack-cat:not([data-open]) {
+  opacity: 0.55;
+}
+.stack-cat__btn {
+  display: flex;
+  width: 100%;
+  min-height: clamp(44px, 6.2svh, 56px);
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+}
+.stack-cat__n,
+.stack-cat__count {
+  color: var(--color-ink-soft);
+}
+.stack-cat__lead {
+  flex: 1;
+  min-width: 1.5rem;
+  height: 1px;
+  align-self: center;
+  translate: 0 0.25em;
+  background: radial-gradient(circle, rgb(20 20 20 / 0.3) 0.75px, transparent 1px) 0 50% / 6px 2px repeat-x;
+}
+.stack-cat__btn:hover .stack-cat__name,
+.stack-cat__btn[aria-expanded="true"] .stack-cat__name {
+  color: var(--color-accent-ink);
+}
+.stack-cat__btn::after {
+  content: "+";
+  width: 1ch;
+  color: var(--color-ink-soft);
+  transition: rotate 0.25s;
+}
+.stack-cat__btn[aria-expanded="true"]::after {
+  rotate: 45deg;
+}
+/* primeira visita: o "+" da primeira categoria pulsa 2× */
+.stack-cat__btn[data-pulse]::after {
+  animation: stack-plus 0.55s ease-in-out 2;
+}
+@keyframes stack-plus {
+  50% {
+    scale: 1.9;
+    color: var(--color-accent-ink);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stack-cat__btn[data-pulse]::after {
+    animation: none;
+  }
+}
+.stack-cat__items {
+  columns: 2 9.5rem;
+  column-gap: 1.5rem;
+  padding: 0.15rem 0 0.9rem 2.15rem; /* alinhado ao nome, depois do número */
+  font-size: 15px;
+  line-height: 1.6;
+}
+@media (min-width: 1280px) {
+  .stack-cat__items {
+    font-size: 16px;
+  }
+}
+html[data-js] .stack-cat:not([data-open]) .stack-cat__items {
+  display: none;
+}
+.stack-cat[data-open] .stack-cat__items {
+  animation: stack-cat-in 0.28s ease-out;
+}
+@keyframes stack-cat-in {
+  from {
+    opacity: 0;
+    translate: 0 -4px;
+  }
+}
+.stack-cat__items li {
+  break-inside: avoid;
+}
+.stack-item {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0;
+  text-align: left;
+}
+.stack-item--coin {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: rgb(20 20 20 / 0.25);
+  text-underline-offset: 0.2em;
+}
+.stack-item--coin:hover,
+.stack-item--coin:focus-visible {
+  color: var(--color-accent-ink);
+  text-decoration-color: currentColor;
+}
+/* toque: categorias e itens do acordeão com alvo de 44 px */
+@media (pointer: coarse) {
+  .stack-cat__items li {
+    display: flex;
+    min-height: 44px;
+    align-items: center;
+  }
+  .stack-item--coin {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  /* crédito da foto no rodapé: links com 44 px de altura */
+  .footer-credit {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 0.4em;
+    padding-bottom: 0.5rem;
+  }
+  .footer-credit a {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+  }
+  /* "(Scroll) ↓" do hero nos tablets (no celular ele some) */
+  .hero-scroll {
+    min-width: 44px;
+    min-height: 44px;
+    align-items: center;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stack-cat[data-open] .stack-cat__items {
+    animation: none;
+  }
+}
+/* celular: ~70svh (a seção não precisa caber inteira: rola normalmente) */
+@media (max-width: 639px), (max-height: 520px) {
+  .stack-box {
+    height: 70svh;
+    min-height: 260px;
   }
 }
 .stack-stage,
@@ -463,6 +874,48 @@ html[data-js] .hero[data-live] .ascii-fallback {
   inset: 0;
   width: 100%;
   height: 100%;
+}
+/* placeholder discreto enquanto o 3D carrega e snapshot do último frame
+ * depois que ele desmonta: mesmo tamanho do canvas, nada salta */
+.stack-ph,
+.stack-snap {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  transition: opacity 0.25s;
+}
+.stack-ph {
+  background:
+    radial-gradient(60% 45% at 50% 60%, rgb(20 20 20 / 0.06), transparent 70%),
+    repeating-linear-gradient(90deg, rgb(20 20 20 / 0.035) 0 1px, transparent 1px 64px);
+  animation: stack-ph 1.6s ease-in-out infinite alternate;
+}
+@keyframes stack-ph {
+  to {
+    opacity: 0.45;
+  }
+}
+.stack-snap {
+  object-fit: cover;
+  opacity: 0;
+}
+[data-stack][data-snap] .stack-snap {
+  opacity: 1;
+}
+[data-stack][data-snap] .stack-ph,
+[data-stack][data-live] .stack-ph,
+[data-stack][data-live] .stack-snap,
+[data-stack][data-static] .stack-ph,
+html:not([data-js]) .stack-ph {
+  opacity: 0;
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .stack-ph {
+    animation: none;
+  }
 }
 /* o palco vazio (modo estático) não pode bloquear o grid por baixo */
 .stack-stage {
@@ -487,32 +940,20 @@ html[data-js] .hero[data-live] .ascii-fallback {
     padding: 0 1.5rem;
   }
 }
-/* 3D ativo: o grid sai de vista, mas segue acessível pelo teclado (aparece
- * como uma faixa de botões quando recebe foco) */
-[data-stack][data-live] .stack-grid {
-  inset: auto 0 0 0;
-  z-index: 3;
-  clip-path: inset(50%);
-  grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
-  padding-block: 0.5rem;
-  background: var(--color-paper);
-  border-top: 1px solid rgb(20 20 20 / 0.2);
+/* o grid de logos é só o visual do modo estático (sem JS ou data-static:
+ * reduced-motion, aparelho fraco, sem WebGL2, marcado pela STACK na
+ * montagem). Com o 3D disponível ele não existe; para leitores de tela e
+ * teclado, a lista é o índice ao lado. */
+html[data-js] [data-stack]:not([data-static]) .stack-grid {
+  display: none;
 }
-[data-stack][data-live] .stack-grid:focus-within {
-  clip-path: none;
-}
-[data-stack][data-live] .stack-cell {
-  flex-direction: row;
-  padding: 0.5rem 0.25rem;
-  border: 0;
-}
-[data-stack][data-live] .stack-cell svg {
-  width: 1rem;
-  height: 1rem;
+.stack-cell[data-dim] {
+  opacity: 0.3;
 }
 .stack-cell {
   display: flex;
   width: 100%;
+  min-height: 44px;
   flex-direction: column;
   align-items: flex-start;
   gap: 0.9rem;
@@ -568,15 +1009,36 @@ html[data-js] .hero[data-live] .ascii-fallback {
 .stack-dialog[hidden] {
   display: none;
 }
+/* celular: bottom sheet (largura toda, colado embaixo, sobe deslizando) */
 @media (max-width: 639px) {
   .stack-dialog {
-    left: 0.75rem;
-    right: 0.75rem;
+    left: 0;
+    right: 0;
     top: auto;
-    bottom: 0.75rem;
+    bottom: 0;
     width: auto;
     translate: none;
-    padding: 1.1rem;
+    padding: 1.6rem var(--safe-r) max(1.25rem, var(--safe-b)) var(--safe-l);
+    border-width: 1px 0 0;
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -10px 30px rgb(20 20 20 / 0.12);
+    animation-name: sheet-in;
+  }
+  .stack-dialog::before {
+    content: "";
+    position: absolute;
+    top: 0.5rem;
+    left: 50%;
+    width: 2.5rem;
+    height: 4px;
+    translate: -50% 0;
+    border-radius: 2px;
+    background: rgb(20 20 20 / 0.2);
+  }
+}
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
   }
 }
 @keyframes dialog-in {
@@ -595,8 +1057,8 @@ html[data-js] .hero[data-live] .ascii-fallback {
   top: 0.5rem;
   right: 0.5rem;
   display: grid;
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 2.75rem;
+  height: 2.75rem;
   place-items: center;
   font-size: 1.5rem;
   line-height: 1;
@@ -669,6 +1131,25 @@ html[data-js] .hero[data-live] .ascii-fallback {
   gap: 1.5rem 3rem;
   padding-bottom: 3rem;
 }
+/* desktop: o texto vai para a direita; o terço esquerdo é do buraco negro */
+@media (min-width: 1024px) {
+  .audit-foot {
+    flex-direction: column;
+    align-items: flex-end;
+  }
+  .audit-copy {
+    max-width: 50ch;
+  }
+  .audit-progress {
+    right: auto;
+    left: 1.5rem;
+  }
+  /* fallback estático: texto à esquerda, abaixo do buraco negro; lista à direita */
+  .audit[data-static] .audit-foot {
+    flex-direction: row;
+    align-items: flex-end;
+  }
+}
 /* lista em texto: escondida (só leitores de tela) quando a rede está viva;
  * visível no fallback estático e sem JS */
 .audit-list {
@@ -721,73 +1202,111 @@ html:not([data-js]) .audit-list {
   z-index: 2;
   pointer-events: none;
 }
-.audit-grade {
+/* ---- entrada do AUDIT (AuditReveal): animação de tempo, sem pin ----
+ * Quando o topo da seção cruza ~60% da viewport (data-in), um círculo
+ * escuro nasce no centro do buraco negro e cobre a seção em ~900 ms
+ * (ease-out). Nada fica preso na tela. Tudo restrito ao .audit-wrap
+ * (relative + isolation + overflow: clip): nem o círculo nem o anel vazam
+ * para outras seções. Sem JS: a seção aparece pronta. */
+@property --k {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 1;
+}
+.audit-wrap {
+  position: relative;
+  isolation: isolate;
+  overflow: clip;
+  --bhx: 25%;
+  --bhy: 50%;
+  --rmax: 150vmax;
+}
+.audit-ring {
+  display: none;
+}
+html[data-reveal] .audit-wrap {
+  --k: 0;
+  --r: calc(var(--k) * var(--rmax));
+  transition: --k 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+}
+html[data-reveal] .audit-wrap:has(.audit[data-in]) {
+  --k: 1;
+}
+html[data-reveal] .audit-wrap:has(.audit[data-reset]) {
+  transition: none;
+}
+html[data-reveal] .audit {
+  background: #0b0d10;
+  clip-path: circle(var(--r) at var(--bhx) var(--bhy));
+}
+/* anel âmbar fino girando no limite do círculo, só enquanto ele cresce */
+html[data-reveal] .audit-ring {
+  display: block;
   position: absolute;
-  right: 6%;
-  top: 50%;
+  left: var(--bhx);
+  top: var(--bhy);
   z-index: 2;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  translate: 0 -50%;
-  color: var(--color-accent);
+  width: calc(2 * var(--r));
+  height: calc(2 * var(--r));
+  translate: -50% -50%;
+  border-radius: 50%;
   pointer-events: none;
-  text-shadow: 0 0 40px rgb(245 165 36 / 0.35);
-  animation: grade-in 0.6s cubic-bezier(0.2, 1.3, 0.4, 1) both;
+  opacity: calc(min(1, var(--k) * 25) * min(1, (1 - var(--k)) * 6));
+  box-shadow:
+    0 0 70px 28px rgb(11 13 16 / 0.42),
+    inset 0 0 50px 14px rgb(11 13 16 / 0.75);
 }
-.audit-grade > span:first-child {
-  font-size: clamp(7rem, 16vw, 15rem);
+html[data-reveal] .audit-ring::before,
+html[data-reveal] .audit-ring::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0 8%,
+    rgb(245 165 36 / 0.95) 18%,
+    transparent 30% 46%,
+    rgb(255 214 140 / 0.8) 58%,
+    transparent 70% 84%,
+    rgb(245 165 36 / 0.7) 92%,
+    transparent
+  );
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
+  animation: ring-spin 7s linear infinite;
 }
-/* sem nota (exemplo/pendente): um traço contido, não uma barra gigante */
-.audit-grade--none > span:first-child {
-  font-family: var(--font-mono);
-  font-size: clamp(2.5rem, 4vw, 3.5rem);
+html[data-reveal] .audit-ring::after {
+  inset: -7px;
+  opacity: 0.45;
+  mask: radial-gradient(farthest-side, transparent calc(100% - 14px), #000 calc(100% - 7px), transparent);
 }
-@keyframes grade-in {
-  from {
+@keyframes ring-spin {
+  to {
+    rotate: 1turn;
+  }
+}
+/* reduced-motion: fade simples de 300 ms ao entrar */
+@media (prefers-reduced-motion: reduce) {
+  html[data-js] .audit {
     opacity: 0;
-    scale: 1.6;
+    transition: opacity 0.3s ease-out;
+  }
+  html[data-js] .audit[data-in] {
+    opacity: 1;
   }
 }
-@media (max-width: 767px) {
-  .audit-grade {
-    right: 50%;
-    translate: 50% -50%;
-  }
-}
+/* saída para o ABOUT: o ABOUT entra rolando, com um fade curto no limite */
 @supports (animation-timeline: view()) {
   @media (prefers-reduced-motion: no-preference) {
-    .audit-bg,
-    .audit-field {
-      animation:
-        audit-dark-in linear both,
-        audit-dark-out linear both;
-      animation-timeline: --audit, --audit;
-      animation-range:
-        entry 10% entry 60%,
-        exit 30% exit 80%;
-    }
-    /* o texto é claro: só aparece com o fundo já escuro e some antes de ele
-     * clarear (nunca texto claro sobre o papel) */
-    .audit-body {
-      animation:
-        audit-dark-in linear both,
-        audit-dark-out linear both;
-      animation-timeline: --audit, --audit;
-      animation-range:
-        entry 60% entry 100%,
-        exit 0% exit 30%;
+    .about-sh {
+      animation: about-in linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 40%;
     }
   }
 }
-@keyframes audit-dark-in {
+@keyframes about-in {
   from {
-    opacity: 0;
-  }
-}
-@keyframes audit-dark-out {
-  to {
     opacity: 0;
   }
 }
@@ -809,6 +1328,7 @@ html:not([data-js]) .audit-list {
 .audit-cta {
   display: inline-flex;
   align-items: center;
+  min-height: 44px;
   gap: 0.6rem;
   font-size: clamp(1.25rem, 2.4vw, 2rem);
   font-weight: 500;
@@ -823,13 +1343,349 @@ html:not([data-js]) .audit-list {
 }
 
 /* ---------- 04 · ABOUT ---------- */
-/* foto editorial: P&B com contraste; no hover, um pouco mais de contraste */
-.about-photo img {
-  filter: grayscale(1) contrast(1.08);
-  transition: filter 0.4s ease;
+/* dois blocos; cada um cabe em 100svh (o 1º divide a altura com o cabeçalho) */
+.about-sh {
+  padding-bottom: 0;
 }
-.about-photo:hover img {
-  filter: grayscale(1) contrast(1.25);
+.about-intro {
+  display: grid;
+  gap: 2rem;
+  align-items: center;
+  padding-top: 1.5rem;
+  padding-bottom: 3rem;
+}
+@media (min-width: 1024px) {
+  .about-intro {
+    grid-template-columns: 5fr 7fr;
+    gap: 3rem;
+    min-height: calc(100svh - 5rem);
+    padding-bottom: 2rem;
+  }
+}
+/* foto editorial: só a foto (P&B, sem efeito), tamanho limitado pela altura
+ * do bloco; a legenda tem a largura da foto */
+.about-figure {
+  min-width: 0;
+  width: min(100%, 22rem, calc((100svh - 12rem) * var(--a, 0.67)));
+  margin-inline: auto;
+}
+@media (min-width: 1024px) {
+  .about-figure {
+    width: min(100%, calc((100svh - 10rem) * var(--a, 0.67)));
+  }
+}
+/* grão sutil recortado pela própria silhueta (nada de retângulo) */
+.about-photo {
+  position: relative;
+  aspect-ratio: var(--a, 0.67);
+}
+.about-photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.about-photo::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.22;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 1.2 -.1'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  mask-image: var(--m);
+  mask-size: 100% 100%;
+  -webkit-mask-image: var(--m);
+  -webkit-mask-size: 100% 100%;
+}
+.about-figure > figcaption {
+  padding-top: 0.5rem;
+  border-top: 1px solid color-mix(in srgb, var(--color-ink) 25%, transparent);
+}
+.about-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+.about-text > .sh-title {
+  margin-bottom: 0.25rem;
+}
+.about-title {
+  max-width: 20ch;
+  font-size: clamp(2rem, min(3.4vw, 5.2svh), 3.75rem);
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+.about-body {
+  max-width: 60ch;
+  font-size: clamp(18px, 1.35vw, 20px);
+  line-height: 1.5;
+}
+.about-body > p + p {
+  margin-top: 0.8em;
+}
+.about-now {
+  display: grid;
+  gap: 1rem 2.5rem;
+  max-width: 60ch;
+  padding-top: 1rem;
+  border-top: 1px solid color-mix(in srgb, var(--color-ink) 20%, transparent);
+  font-size: 15px;
+  line-height: 1.5;
+}
+@media (min-width: 640px) {
+  .about-now {
+    grid-template-columns: 3fr 2fr;
+  }
+}
+/* ponto âmbar pulsando: o próximo objetivo (lista e linha do tempo) */
+.about-pulse,
+.journey__item[data-next] .journey__dot {
+  position: relative;
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--color-accent);
+}
+.about-pulse::after,
+.journey__item[data-next] .journey__dot::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: 50%;
+  border: 2px solid var(--color-accent);
+  animation: about-pulse 1.8s ease-out infinite;
+}
+@keyframes about-pulse {
+  from {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(2.8);
+  }
+}
+
+/* bloco 2: trajetória + como eu trabalho + assinatura */
+.about-journey {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: clamp(1.25rem, 3.4svh, 2.25rem);
+  min-height: min(100svh, 56rem);
+  padding-top: clamp(1.5rem, 5svh, 3rem);
+  border-top: 1px solid color-mix(in srgb, var(--color-ink) 18%, transparent);
+}
+.about-journey__title {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.about-journey__title .font-display {
+  font-size: clamp(2.25rem, min(4.5vw, 7svh), 4.5rem);
+  line-height: 0.9;
+  letter-spacing: -0.02em;
+}
+
+/* linha do tempo: vertical (celular) → horizontal (desktop) */
+.journey {
+  --dot: 11px;
+  --line: color-mix(in srgb, var(--color-ink) 55%, transparent);
+  display: grid;
+}
+.journey__item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 2rem 1fr;
+  grid-template-rows: auto auto;
+  align-content: start;
+  padding-bottom: 1.25rem;
+}
+.journey__dot {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: start;
+  justify-self: center;
+  width: var(--dot);
+  height: var(--dot);
+  margin-top: 16.5px;
+  border-radius: 50%;
+  background: var(--color-ink);
+  box-shadow: 0 0 0 4px var(--color-paper);
+  z-index: 1;
+}
+.journey__item[data-next] .journey__dot {
+  margin-top: 17.5px;
+}
+.journey__btn {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  min-height: 44px;
+  padding: 0.35rem 0;
+  text-align: left;
+  cursor: pointer;
+}
+.journey__btn:disabled {
+  cursor: default;
+}
+.journey__btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+.journey__date {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ink-soft);
+}
+.journey__item[data-next] .journey__date {
+  color: var(--color-accent-ink);
+}
+.journey__title {
+  font-size: 16px;
+  line-height: 1.3;
+  font-weight: 500;
+}
+.journey__btn:not(:disabled):hover .journey__title,
+.journey__item[data-on] .journey__title {
+  text-decoration: underline;
+  text-decoration-color: var(--color-accent);
+  text-underline-offset: 3px;
+}
+/* frase: espaço reservado no desktop (nada pula); no celular abre embaixo */
+.journey__phrase {
+  grid-column: 2;
+  grid-row: 2;
+  display: grid;
+  grid-template-rows: 0fr;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--color-ink-soft);
+  opacity: 0;
+  transition: grid-template-rows 0.25s ease, opacity 0.25s ease;
+}
+.journey__phrase > span {
+  min-height: 0;
+}
+.journey__item[data-on] .journey__phrase {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+/* segmento até o próximo marco */
+.journey__seg {
+  position: absolute;
+  overflow: visible;
+  pointer-events: none;
+  /* vertical: do centro do ponto até o centro do próximo */
+  left: calc(1rem - 1px);
+  top: calc(16.5px + var(--dot) / 2);
+  width: 2px;
+  height: 100%;
+}
+.journey__seg line {
+  stroke: var(--line);
+  stroke-width: 2;
+  fill: none;
+}
+.journey__h {
+  display: none;
+}
+/* a linha da máscara do tracejado é branca (senão herda a cor escura acima
+ * e o tracejado quase some) */
+.journey__seg mask line {
+  stroke: #fff;
+  stroke-width: 6;
+}
+.journey .journey__dash {
+  stroke: var(--color-accent);
+  stroke-dasharray: 5 5;
+}
+@media (min-width: 1024px) {
+  .journey {
+    grid-template-columns: repeat(var(--n), minmax(0, 1fr));
+  }
+  .journey__item {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto;
+    justify-items: start;
+    padding: 0 1.5rem 0 0;
+  }
+  .journey__dot,
+  .journey__item[data-next] .journey__dot {
+    grid-column: 1;
+    grid-row: 1;
+    justify-self: start;
+    margin: 0 0 0.75rem;
+  }
+  .journey__btn {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .journey__phrase {
+    grid-column: 1;
+    grid-row: 3;
+    grid-template-rows: 1fr;
+    min-height: 4.4em;
+  }
+  .journey__seg {
+    left: calc(var(--dot) / 2);
+    top: calc(var(--dot) / 2 - 1px);
+    width: 100%;
+    height: 2px;
+  }
+  .journey__h {
+    display: inline;
+  }
+  .journey__v {
+    display: none;
+  }
+}
+/* animação: só com JS e sem reduced-motion (sem isso, tudo aparece pronto) */
+@media (prefers-reduced-motion: no-preference) {
+  html[data-js] .journey .journey__draw {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    transition: stroke-dashoffset 0.5s ease calc(var(--i) * 0.42s + 0.15s);
+  }
+  html[data-js] .journey__dot,
+  html[data-js] .journey__btn {
+    opacity: 0;
+    translate: 0 6px;
+    transition: opacity 0.35s ease calc(var(--i) * 0.42s), translate 0.35s ease calc(var(--i) * 0.42s);
+  }
+  html[data-js] .journey[data-in] .journey__draw {
+    stroke-dashoffset: 0;
+  }
+  html[data-js] .journey[data-in] .journey__dot,
+  html[data-js] .journey[data-in] .journey__btn {
+    opacity: 1;
+    translate: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .about-pulse::after,
+  .journey__item[data-next] .journey__dot::after {
+    animation: none;
+  }
+}
+.about-exp {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem 2rem;
+}
+.about-sign blockquote {
+  font-size: clamp(1rem, 1.25vw, 1.15rem);
+  line-height: 1.4;
 }
 .about-cv {
   display: inline-flex;
@@ -849,4 +1705,304 @@ html:not([data-js]) .audit-list {
 .about-cv:hover {
   background: transparent;
   color: var(--color-ink);
+}
+
+/* ---------- celular / toque ---------- */
+/* fora de @layer: vence px-4 / sm:px-6 do Tailwind e aplica as safe areas */
+.px-4,
+.sh {
+  padding-left: var(--safe-l);
+  padding-right: var(--safe-r);
+}
+.hero-meta {
+  padding: max(var(--gx), var(--safe-t)) var(--safe-r) max(var(--gx), var(--safe-b)) var(--safe-l);
+}
+footer {
+  padding-bottom: var(--safe-b);
+}
+/* alvos de toque ≥ 44px em telas de toque, sem mudar o desenho no desktop */
+@media (pointer: coarse) {
+  /* :not(.hidden): não reexibe o que o Tailwind esconde em telas pequenas */
+  .tap:not(.hidden) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* menu do celular (MobileMenu) */
+.menu-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 44px;
+  min-width: 44px;
+  margin: -12px -10px -12px 0;
+  padding: 0 10px;
+  font: inherit;
+  text-transform: uppercase;
+  letter-spacing: inherit;
+}
+.menu-btn:hover {
+  color: var(--color-accent-ink);
+}
+html:not([data-js]) .menu-btn {
+  display: none;
+}
+.menu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: max(var(--gx), var(--safe-t)) var(--safe-r) max(1.5rem, var(--safe-b)) var(--safe-l);
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.menu-overlay__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+}
+.menu-overlay__nav {
+  display: grid;
+  border-top: 1px solid color-mix(in srgb, var(--color-ink) 20%, transparent);
+}
+.menu-overlay__nav a {
+  display: flex;
+  align-items: baseline;
+  gap: 0.9rem;
+  min-height: 44px;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-ink) 20%, transparent);
+  font-size: clamp(2rem, 11vw, 3.5rem);
+  line-height: 1;
+  letter-spacing: -0.02em;
+  text-transform: none;
+}
+.menu-overlay__nav a:hover,
+.menu-overlay__nav a:focus-visible {
+  color: var(--color-accent-ink);
+}
+.menu-overlay__n {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--color-ink-soft);
+}
+.menu-overlay__lang {
+  margin-top: auto;
+  font-size: 15px;
+  gap: 0.25rem;
+}
+
+/* WORK no celular/tablet: nome → print → texto → links (o bloco de texto se
+ * desfaz em itens soltos do mesmo fluxo; no desktop volta às duas colunas) */
+@media (max-width: 1023px) {
+  .work-grid {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+  .work-info {
+    display: contents;
+  }
+  .work-info > * {
+    order: 2;
+  }
+  .work-info > .work-top {
+    order: 0;
+  }
+  .work-figure {
+    order: 1;
+    margin-block: 0.5rem 0.75rem;
+  }
+}
+
+/* CONTACT: e-mail/endereço grande quebra linha sem estourar a largura */
+.contact-wrap {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  min-height: 44px;
+}
+
+/* mouse x toque: textos com as duas versões; o CSS mostra uma só */
+.on-coarse {
+  display: none;
+}
+@media (pointer: coarse) {
+  .on-fine {
+    display: none;
+  }
+  .on-coarse {
+    display: inline;
+  }
+}
+
+/* AUDIT no celular em pé: cabeçalho (título + frase) → campo (~55svh:
+ * buraco negro no topo, constelação abaixo) → bloco de texto (nota,
+ * trade-off, CTA). Tudo em 100svh e nada por cima da constelação: nota,
+ * progresso do scan e cartão saem do canvas. */
+@media (max-width: 639px) {
+  .audit {
+    display: grid;
+    grid-template-areas: "head" "field" "foot";
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    /* a seção é exatamente a tela: o campo fica com o que sobra (≥ ~55svh) */
+    height: 100svh;
+    min-height: 560px;
+  }
+  .audit-body {
+    display: contents;
+  }
+  .audit-body > .sh {
+    grid-area: head;
+    position: relative;
+    z-index: 1;
+    padding-top: 0.75rem;
+    padding-bottom: 0.25rem;
+  }
+  .audit-body > .sh h2 {
+    font-size: clamp(2.25rem, 11vw, 3rem);
+  }
+  .audit-field {
+    grid-area: field;
+    position: relative;
+    inset: auto;
+    z-index: auto; /* sem contexto de empilhamento: o bottom sheet fica acima do texto */
+    height: auto;
+    min-height: 0;
+  }
+  .audit-foot {
+    grid-area: foot;
+    position: relative;
+    z-index: 1;
+    gap: 0.75rem;
+    padding-top: 0;
+    padding-bottom: max(0.85rem, var(--safe-b));
+  }
+  .audit-foot .mt-4 {
+    margin-top: 0.5rem;
+  }
+  .audit-hint {
+    font-size: 10.5px;
+    letter-spacing: 0.01em;
+  }
+  /* nada de texto dentro do canvas: o progresso vira só leitura de tela */
+  .audit-progress {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  /* CTA: quebra como texto, a seta vai junto com a última palavra */
+  .audit-cta {
+    display: inline;
+    font-size: 1.1rem;
+    line-height: 1.5;
+    padding-block: 0.7rem; /* alvo de 44 px mesmo com uma linha só */
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+  }
+  /* cartão do nó: bottom sheet fixo, com botão de fechar */
+  .audit-card {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 20;
+    width: auto;
+    max-width: none;
+    padding: 1.4rem calc(3.5rem + var(--safe-r)) max(1.1rem, var(--safe-b)) calc(1rem + var(--safe-l));
+    border-width: 1px 0 0;
+    border-radius: 14px 14px 0 0;
+    background: #0b0d10;
+    box-shadow: 0 -12px 30px rgb(0 0 0 / 0.5);
+    transform: none !important;
+    pointer-events: auto;
+    animation: sheet-in 0.3s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+  .audit-card::before {
+    content: "";
+    position: absolute;
+    top: 0.5rem;
+    left: 50%;
+    width: 2.5rem;
+    height: 4px;
+    translate: -50% 0;
+    border-radius: 2px;
+    background: rgb(255 255 255 / 0.2);
+  }
+  .audit-card p:first-of-type {
+    font-size: 11px;
+  }
+  .audit-card p + p {
+    font-size: 15px;
+  }
+}
+.audit-card__close {
+  display: none;
+}
+@media (max-width: 639px) {
+  .audit-card__close {
+    position: absolute;
+    top: 0.5rem;
+    right: calc(0.5rem + var(--safe-r));
+    display: grid;
+    width: 2.75rem;
+    height: 2.75rem;
+    place-items: center;
+    font-size: 1.5rem;
+    color: var(--color-paper);
+  }
+}
+
+/* celular em paisagem (tela baixa): o hero cabe na altura da tela, com as
+ * palavras limitadas pela altura (24cqh) e o retrato entre as linhas de meta */
+@media (max-height: 520px) and (orientation: landscape) {
+  .hero {
+    height: 100svh;
+    min-height: 320px;
+  }
+  .hl-top {
+    top: 4.25rem;
+  }
+  .hl-bot {
+    bottom: 3rem;
+  }
+}
+@media (max-width: 639px) {
+  .audit-bg {
+    background: #000;
+  }
+}
+
+/* cabeçalho do hero: navegação completa no desktop/tablet; botão Menu no
+ * celular (em pé < 768px ou qualquer tela baixa em paisagem) */
+.hdr-menu {
+  display: none;
+}
+@media (max-width: 767px), (max-height: 520px) and (orientation: landscape) {
+  .hdr-full {
+    display: none !important;
+  }
+  .hdr-menu {
+    display: block;
+  }
+}
+@media (max-width: 639px), (max-height: 520px) and (orientation: landscape) {
+  .hero-scroll {
+    display: none !important;
+  }
 }
