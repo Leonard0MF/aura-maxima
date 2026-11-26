@@ -3,7 +3,9 @@ import Link from "next/link";
 
 import { getLocale, getTranslations } from "next-intl/server";
 
+import { Decrypt } from "@/components/Decrypt";
 import { SectionHead } from "@/components/SectionHead";
+import { WorkAim } from "@/components/work/WorkAim";
 import { projects, type Project } from "@/content/profile";
 import { localePath, type Locale } from "@/i18n/routing";
 
@@ -64,6 +66,7 @@ function WorkItem({ p, i, total, t, locale }: { p: Project; i: number; total: nu
                   sizes="(min-width: 1024px) 58vw, 100vw"
                   className="work-media h-full w-full object-cover object-top"
                 />
+                <WorkAim />
               </span>
             )}
           </Link>
@@ -87,7 +90,7 @@ function WorkItem({ p, i, total, t, locale }: { p: Project; i: number; total: nu
           </div>
 
           <h3 id={`w-${p.slug}`} className="work-top work-name font-display">
-            {p.display}
+            <Decrypt text={p.display} trigger="event" dur={400} />
           </h3>
 
           <p className={`work-top ${meta} text-ink-soft`}>
