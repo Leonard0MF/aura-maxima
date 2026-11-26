@@ -37,6 +37,37 @@ type Scene = {
 export function StackStage({ tokens, mobile: mobileIds, cats }: { tokens: { id: string; name: string }[]; mobile: string[]; cats: Record<string, string[]> }) {
   const ref = useRef<HTMLDivElement>(null);
 
+  /* dica de uso: na primeira vez que o índice entra na tela, o "+" da
+   * primeira categoria pulsa duas vezes (uma vez por sessão; sem animação
+   * com reduced-motion, que o CSS já corta) */
+  useEffect(() => {
+    const ix = ref.current?.closest("[data-stack]")?.querySelector<HTMLElement>(".stack-index");
+    const first = ix?.querySelector<HTMLElement>(".stack-cat__btn");
+    if (!ix || !first) return;
+    const KEY = "stack-hint";
+    try {
+      if (sessionStorage.getItem(KEY)) return;
+    } catch {
+      /* sem storage: pulsa nesta visita */
+    }
+    const io = new IntersectionObserver(
+      ([e]) => {
+        if (!e.isIntersecting) return;
+        io.disconnect();
+        try {
+          sessionStorage.setItem(KEY, "1");
+        } catch {
+          /* ignora */
+        }
+        first.dataset.pulse = "";
+        first.addEventListener("animationend", () => delete first.dataset.pulse, { once: true });
+      },
+      { threshold: 0.5 },
+    );
+    io.observe(first);
+    return () => io.disconnect();
+  }, []);
+
   useEffect(() => {
     const stage = ref.current;
     const section = stage?.closest<HTMLElement>("[data-stack]");

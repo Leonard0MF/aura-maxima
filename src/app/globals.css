@@ -575,6 +575,18 @@ html[data-js] .hero[data-live] .ascii-fallback {
   display: inline-flex;
   align-items: center;
 }
+.stack-legend > .stack-legend__note {
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+/* dica de uso, logo acima das categorias */
+.stack-usage {
+  padding-bottom: 0.6rem;
+  color: var(--color-ink-soft);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
 /* etiqueta de nível do popup da moeda (inalterada) */
 .stack-lvl {
   display: inline-block;
@@ -658,6 +670,21 @@ html[data-js] .hero[data-live] .ascii-fallback {
 }
 .stack-cat__btn[aria-expanded="true"]::after {
   rotate: 45deg;
+}
+/* primeira visita: o "+" da primeira categoria pulsa 2× */
+.stack-cat__btn[data-pulse]::after {
+  animation: stack-plus 0.55s ease-in-out 2;
+}
+@keyframes stack-plus {
+  50% {
+    scale: 1.9;
+    color: var(--color-accent-ink);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stack-cat__btn[data-pulse]::after {
+    animation: none;
+  }
 }
 .stack-cat__items {
   columns: 2 9.5rem;

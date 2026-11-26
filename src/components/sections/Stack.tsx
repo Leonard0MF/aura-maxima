@@ -92,8 +92,9 @@ export async function Stack() {
                 <span className="sr-only">: {tr(`levelsHelp.${l}`)}.</span>
               </span>
             ))}
+            <span className="stack-legend__note">{tr("noLevel")}</span>
           </p>
-          <p className="sr-only">{tr("filterHint")}</p>
+          <p className="stack-usage">{tr("usage")}</p>
           {/* acordeão: todas fechadas; abrir uma fecha as outras e destaca as moedas dela */}
           {stackIndex.map((c, i) => (
             <div key={c.id} className="stack-cat" data-cat={c.id}>

@@ -87,7 +87,8 @@
     "close": "Cerrar",
     "index": "Índice del stack",
     "clear": "Quitar filtro",
-    "filterHint": "Haz clic en una categoría para destacar sus monedas.",
+    "usage": "Haz clic en una categoría para verlo todo · las monedas se iluminan también",
+    "noLevel": "Los conceptos no tienen nivel.",
     "levelLabel": "Nivel",
     "levels": {
       "practice": "Práctica",

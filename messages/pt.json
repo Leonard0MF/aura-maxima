@@ -87,7 +87,8 @@
     "close": "Fechar",
     "index": "Índice da stack",
     "clear": "Limpar filtro",
-    "filterHint": "Clique numa categoria para destacar as moedas dela.",
+    "usage": "Clique numa categoria para ver tudo · as moedas acendem junto",
+    "noLevel": "Conceitos não têm nível.",
     "levelLabel": "Nível",
     "levels": {
       "practice": "Prática",
