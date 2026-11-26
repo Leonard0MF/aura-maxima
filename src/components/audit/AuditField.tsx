@@ -15,7 +15,7 @@ const STATUS: Record<CheckStatus, string> = {
 };
 
 /* textos do servidor (messages: audit.*); progress/done usam {lit} e {total} */
-export type AuditLabels = { status: Record<string, string>; progress: string; done: string; gradeExample: string; gradePending: string };
+export type AuditLabels = { status: Record<string, string>; progress: string; done: string; gradeExample: string; gradePending: string; close: string };
 const fill = (s: string, v: Record<string, number>) => s.replace(/\{(\w+)\}/g, (_, k: string) => String(v[k] ?? ""));
 
 /*
@@ -23,7 +23,11 @@ const fill = (s: string, v: Record<string, number>) => s.replace(/\{(\w+)\}/g, (
  * texto da seção.
  * - hover/toque num nó brilhante: cartão com o dado
  * - arrastar: gira o sistema em volta do buraco negro (o scroll vertical nunca
- *   é capturado: touch-action pan-y, nenhum listener de wheel)
+ *   é capturado: touch-action pan-y, nenhum listener de wheel). No toque, o
+ *   gesto só é nosso se começar horizontal (pan-y deixa o vertical para a
+ *   página) ou sobre um nó (touchstart com preventDefault só nesse caso)
+ * - toque (pointer: coarse): sem efeito de cursor na cena; no celular o
+ *   cartão é um bottom sheet com botão de fechar (tocar fora ou rolar fecha)
  * - clique no vazio: onda de scan saindo do horizonte; os nós acendem em
  *   sequência e a nota aparece grande ao lado
  * Celular e máquinas fracas: versão simplificada (sem o pass de lente).
@@ -41,6 +45,7 @@ export function AuditField({ nodes, grade, score, example, labels }: { nodes: Au
   const [svg, setSvg] = useState<string | null>(null);
   const sceneRef = useRef<Constellation | null>(null);
   const cardIdx = useRef(-1);
+  const closeCard = useRef<() => void>(() => {});
 
   useEffect(() => {
     const field = ref.current!;
@@ -94,6 +99,8 @@ export function AuditField({ nodes, grade, score, example, labels }: { nodes: Au
         return;
       }
       sceneRef.current = scene;
+      /* testes automatizados (?auditdebug) */
+      if (location.search.includes("auditdebug")) (window as unknown as { __audit?: Constellation }).__audit = scene;
       section.dataset.live = "";
       sync();
     };
@@ -133,6 +140,8 @@ export function AuditField({ nodes, grade, score, example, labels }: { nodes: Au
       const r = field.getBoundingClientRect();
       return { x: e.clientX - r.left, y: e.clientY - r.top };
     };
+    /* celular: o cartão é um bottom sheet fixo (não segue o nó) */
+    const sheet = matchMedia("(max-width: 639px)");
     /* o cartão segue o nó enquanto a rede gira (escrita direta no DOM) */
     const place = () => {
       follow = 0;
@@ -141,6 +150,11 @@ export function AuditField({ nodes, grade, score, example, labels }: { nodes: Au
       if (!scene || i < 0) return;
       if (!el) {
         follow = requestAnimationFrame(place); // o cartão ainda não foi renderizado
+        return;
+      }
+      if (sheet.matches) {
+        el.style.transform = "";
+        el.style.visibility = "visible";
         return;
       }
       const p = scene.nodeAt(i);
@@ -153,9 +167,11 @@ export function AuditField({ nodes, grade, score, example, labels }: { nodes: Au
       el.style.visibility = "visible";
       follow = requestAnimationFrame(place);
     };
+    let openY = 0;
     const show = (i: number) => {
       if (cardIdx.current === i) return;
       cardIdx.current = i;
+      openY = scrollY;
       scene?.hover(i);
       setCard(i);
       cancelAnimationFrame(follow);
@@ -181,8 +197,8 @@ export function AuditField({ nodes, grade, score, example, labels }: { nodes: Au
           return;
         }
       }
-      scene.pointer(p.x, p.y, true);
       if (e.pointerType === "mouse") {
+        scene.pointer(p.x, p.y, true); // efeito de cursor: só com mouse
         const i = scene.hit(p.x, p.y);
         field.style.cursor = i >= 0 ? "pointer" : "";
         show(i);
@@ -202,6 +218,11 @@ export function AuditField({ nodes, grade, score, example, labels }: { nodes: Au
       const i = scene.hit(p.x, p.y);
       if (i >= 0) {
         show(cardIdx.current === i && e.pointerType !== "mouse" ? -1 : i); // toque: abre/fecha
+        return;
+      }
+      /* toque no vazio com um cartão aberto: só fecha (não escaneia) */
+      if (e.pointerType !== "mouse" && cardIdx.current >= 0) {
+        show(-1);
         return;
       }
       show(-1);
@@ -224,6 +245,28 @@ export function AuditField({ nodes, grade, score, example, labels }: { nodes: Au
       down = null;
       scene?.pointer(0, 0, false);
     };
+    /* toque que começa num nó é nosso (sem rolar a página); fora dele, o
+     * navegador decide: vertical rola, horizontal vira arrasto (pan-y) */
+    const onTouch = (e: TouchEvent) => {
+      if (!scene || e.touches.length !== 1) return;
+      const r = field.getBoundingClientRect();
+      const t = e.touches[0];
+      if (scene.hit(t.clientX - r.left, t.clientY - r.top) >= 0) e.preventDefault();
+    };
+    /* bottom sheet: tocar fora fecha; rolar a página também */
+    const onDocDown = (e: PointerEvent) => {
+      if (cardIdx.current < 0 || !sheet.matches) return;
+      const t = e.target as Node;
+      if (cardRef.current?.contains(t) || field.contains(t)) return;
+      show(-1);
+    };
+    const onScroll = () => {
+      if (cardIdx.current >= 0 && sheet.matches && Math.abs(scrollY - openY) > 40) show(-1);
+    };
+    closeCard.current = () => show(-1);
+    field.addEventListener("touchstart", onTouch, { passive: false });
+    document.addEventListener("pointerdown", onDocDown);
+    addEventListener("scroll", onScroll, { passive: true });
     field.addEventListener("pointermove", onMove);
     field.addEventListener("pointerdown", onDown);
     field.addEventListener("pointerup", onUp);
@@ -233,6 +276,9 @@ export function AuditField({ nodes, grade, score, example, labels }: { nodes: Au
     return () => {
       io.disconnect();
       document.removeEventListener("visibilitychange", sync);
+      field.removeEventListener("touchstart", onTouch);
+      document.removeEventListener("pointerdown", onDocDown);
+      removeEventListener("scroll", onScroll);
       field.removeEventListener("pointermove", onMove);
       field.removeEventListener("pointerdown", onDown);
       field.removeEventListener("pointerup", onUp);
@@ -252,6 +298,9 @@ export function AuditField({ nodes, grade, score, example, labels }: { nodes: Au
 
       {node && (
         <div ref={cardRef} className="audit-card" role="status">
+          <button type="button" className="audit-card__close" aria-label={labels.close} onClick={() => closeCard.current()}>
+            <span aria-hidden="true">×</span>
+          </button>
           <p className="flex items-center gap-2 text-[10px] tracking-wide text-dim uppercase">
             <span aria-hidden="true" className={`size-1.5 rounded-full ${STATUS[node.status]}`} />
             {labels.status[node.status]} · {node.label}

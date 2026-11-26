@@ -2,6 +2,8 @@
 
 import { useEffect, useRef } from "react";
 
+import { holeCenter } from "./layout";
+
 /*
  * Transição "cair no buraco negro" do AUDIT.
  *
@@ -27,6 +29,27 @@ export function AuditPin({ children }: { children: React.ReactNode }) {
     const pin = ref.current!;
     const html = document.documentElement;
     const section = pin.querySelector<HTMLElement>("section")!;
+    const field = section.querySelector<HTMLElement>(".audit-field");
+
+    /* centro do círculo = centro do buraco negro, pela mesma conta da cena
+     * (layout.holeCenter) sobre a caixa real do campo: no celular o campo
+     * fica abaixo do cabeçalho, então 50%/29% fixos não acertariam */
+    const center = () => {
+      if (!field) return;
+      const s = section.getBoundingClientRect(), f = field.getBoundingClientRect();
+      if (!f.width || !f.height) return;
+      const c = holeCenter(f.width, f.height);
+      const x = f.left - s.left + c.x, y = f.top - s.top + c.y;
+      pin.style.setProperty("--bhx", `${x.toFixed(1)}px`);
+      pin.style.setProperty("--bhy", `${y.toFixed(1)}px`);
+      /* raio que cobre a tela inteira: até o canto mais distante */
+      const rmax = Math.hypot(Math.max(x, s.width - x), Math.max(y, innerHeight - y));
+      pin.style.setProperty("--rmax", `${Math.ceil(rmax + 2)}px`);
+    };
+    const ro = new ResizeObserver(center);
+    ro.observe(section);
+    if (field) ro.observe(field);
+    center();
 
     /* reduced-motion: fade simples */
     if (!html.dataset.pin) {
@@ -35,9 +58,12 @@ export function AuditPin({ children }: { children: React.ReactNode }) {
         else delete section.dataset.in;
       }, { threshold: 0.15 });
       io.observe(section);
-      return () => io.disconnect();
+      return () => {
+        io.disconnect();
+        ro.disconnect();
+      };
     }
-    if (html.dataset.pin !== "js") return;
+    if (html.dataset.pin !== "js") return () => ro.disconnect();
 
     /* fallback em JS: um rAF por rolagem, escrita direta no estilo */
     const tall = matchMedia("(min-height: 521px)");
@@ -64,6 +90,7 @@ export function AuditPin({ children }: { children: React.ReactNode }) {
     addEventListener("scroll", schedule, { passive: true });
     addEventListener("resize", schedule);
     return () => {
+      ro.disconnect();
       cancelAnimationFrame(raf);
       removeEventListener("scroll", schedule);
       removeEventListener("resize", schedule);

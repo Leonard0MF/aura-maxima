@@ -45,7 +45,7 @@ import {
   WebGLRenderTarget,
 } from "three";
 
-import { CAMERA_Z, DUST_TILT, FOV, HALF_H, makeLayout, orbitPos } from "./layout";
+import { CAMERA_Z, DISK_RS, DUST_TILT, FOV, HALF_H, holeCenter, makeLayout, orbitPos } from "./layout";
 
 const MAX_NODES = 12;
 /* raio da sombra em rs (≈ 2,6 rs: 3√3/2) */
@@ -321,6 +321,8 @@ export type Constellation = {
   hover(i: number): void;
   /** onda de scan saindo do horizonte; acende os nós na ordem em que o anel os alcança */
   wave(onLit: (i: number) => void, onEnd: () => void): void;
+  /** testes: centro e raio do disco (px) e os nós na tela */
+  debug(): { hole: { x: number; y: number; r: number }; nodes: { x: number; y: number }[]; w: number; h: number };
   destroy(): void;
 };
 
@@ -352,8 +354,20 @@ export function createConstellation(
   const nodePos = new Float32Array(n * 3);
   const nodeVec = Array.from({ length: MAX_NODES }, () => new Vector3());
   const tmp = [0, 0, 0];
+  /* tela estreita: nós em posições fixas (layoutNarrow), com uma oscilação
+   * de ~2 px para não parecerem congelados */
+  let fixed: Float32Array | null = null;
+  let wob = 0;
   const updateNodes = (t: number) => {
     for (let i = 0; i < n; i++) {
+      if (fixed) {
+        tmp[0] = fixed[i * 3] + Math.sin(t * 0.7 + i * 1.7) * wob;
+        tmp[1] = fixed[i * 3 + 1] + Math.cos(t * 0.55 + i * 2.3) * wob;
+        tmp[2] = fixed[i * 3 + 2];
+        nodePos.set(tmp, i * 3);
+        nodeVec[i].set(tmp[0], tmp[1], tmp[2]);
+        continue;
+      }
       orbitPos(L.orbits[i], t, tmp);
       nodePos.set(tmp, i * 3);
       nodeVec[i].set(tmp[0], tmp[1], tmp[2]);
@@ -523,17 +537,21 @@ export function createConstellation(
     camera.updateProjectionMatrix();
     dustMat.uniforms.uAspect.value = w / h;
     const asp = w / h;
-    const narrow = asp < 0.9;
-    /* desktop: buraco negro no terço esquerdo; telas estreitas: no topo, menor */
-    bhNdc.x = narrow ? 0 : -0.5;
-    bhNdc.y = narrow ? 0.42 : 0;
-    pxPerRs = narrow ? w * 0.026 : Math.min(h * 0.026, w * 0.018);
+    /* desktop: buraco negro no terço esquerdo; telas estreitas: no topo,
+     * centralizado e menor (layout.holeCenter, o mesmo da transição) */
+    const hc = holeCenter(w, h);
+    const narrow = hc.narrow;
+    bhNdc.x = (hc.x / w) * 2 - 1;
+    bhNdc.y = 1 - (hc.y / h) * 2;
+    pxPerRs = hc.rs;
     group.position.set(bhNdc.x * HALF_H * asp, bhNdc.y * HALF_H, 0);
     rot.z = narrow ? -Math.PI / 2 : 0;
     /* a constelação abre para o lado livre: cabe na largura (desktop) ou na altura (celular) */
     const room = narrow ? (bhNdc.y + 0.55) * HALF_H : 1.45 * HALF_H * asp;
     const k = Math.min(1, room / 5.4);
     group.scale.setScalar(k);
+    fixed = narrow ? layoutNarrow(w, h, hc) : null;
+    wob = narrow ? (2 * ((2 * HALF_H) / h)) / k : 0;
     const worldPerPx = (2 * HALF_H) / h;
     dustMat.uniforms.uHz.value = (SHADOW * pxPerRs * worldPerPx) / k;
     renderer.getDrawingBufferSize(buf);
@@ -546,6 +564,74 @@ export function createConstellation(
       else rt.setSize(buf.x, buf.y);
       bhUniforms.tScene.value = rt.texture;
     }
+  }
+
+  /*
+   * Tela estreita: os nós principais saem das órbitas (no instante 0, para
+   * manter os vizinhos e os filamentos) e são relaxados para a área abaixo
+   * do buraco negro: margem de 24 px nas bordas, ≥ 56 px entre nós (o alvo
+   * de toque é 48) e nunca a menos de 1,5× o raio do disco do centro.
+   */
+  const MARGIN = 24, MIN_D = 56;
+  function layoutNarrow(w: number, h: number, hc: { x: number; y: number; rs: number }) {
+    const keep = 1.5 * DISK_RS * hc.rs + 6;
+    const top = hc.y + 7.7 * hc.rs * 0.6;
+    const asp = w / h;
+    /* 1. órbitas no instante 0, projetadas com o grupo em repouso */
+    const saved = group.rotation.clone();
+    group.rotation.set(0, 0, rot.z);
+    group.updateMatrixWorld();
+    const pts: number[][] = [];
+    for (let i = 0; i < n; i++) {
+      orbitPos(L.orbits[i], 0, tmp);
+      v.set(tmp[0], tmp[1], tmp[2]).applyMatrix4(group.matrixWorld).project(camera);
+      pts.push([(v.x * 0.5 + 0.5) * w, (-v.y * 0.5 + 0.5) * h]);
+    }
+    /* 2. encaixa o desenho na área livre (escala uniforme) */
+    const x0 = MARGIN, x1 = w - MARGIN, y0 = Math.max(top, MARGIN), y1 = h - MARGIN;
+    let bx0 = Infinity, bx1 = -Infinity, by0 = Infinity, by1 = -Infinity;
+    for (const [x, y] of pts) {
+      bx0 = Math.min(bx0, x); bx1 = Math.max(bx1, x);
+      by0 = Math.min(by0, y); by1 = Math.max(by1, y);
+    }
+    const sc = Math.min((x1 - x0) / Math.max(1, bx1 - bx0), (y1 - y0) / Math.max(1, by1 - by0));
+    const ox = (x0 + x1) / 2 - ((bx0 + bx1) / 2) * sc, oy = (y0 + y1) / 2 - ((by0 + by1) / 2) * sc;
+    for (const p of pts) {
+      p[0] = p[0] * sc + ox;
+      p[1] = p[1] * sc + oy;
+    }
+    /* 3. relaxa: afasta pares próximos, empurra para fora do disco, prende na área */
+    for (let it = 0; it < 120; it++) {
+      for (let i = 0; i < n; i++)
+        for (let j = i + 1; j < n; j++) {
+          const dx = pts[j][0] - pts[i][0], dy = pts[j][1] - pts[i][1];
+          const d = Math.hypot(dx, dy) || 0.01;
+          if (d < MIN_D) {
+            const push = (MIN_D - d) / 2 / d;
+            pts[i][0] -= dx * push; pts[i][1] -= dy * push;
+            pts[j][0] += dx * push; pts[j][1] += dy * push;
+          }
+        }
+      for (const p of pts) {
+        const dx = p[0] - hc.x, dy = p[1] - hc.y, d = Math.hypot(dx, dy) || 0.01;
+        if (d < keep) {
+          p[0] = hc.x + (dx / d) * keep;
+          p[1] = hc.y + (dy / d) * keep;
+        }
+        p[0] = Math.max(x0, Math.min(x1, p[0]));
+        p[1] = Math.max(y0, Math.min(y1, p[1]));
+      }
+    }
+    /* 4. tela → plano z = 0 → espaço local do grupo */
+    const out = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) {
+      v.set(((pts[i][0] / w) * 2 - 1) * HALF_H * asp, (1 - (pts[i][1] / h) * 2) * HALF_H, 0);
+      group.worldToLocal(v);
+      out.set([v.x, v.y, v.z], i * 3);
+    }
+    group.rotation.copy(saved);
+    group.updateMatrixWorld();
+    return out;
   }
 
   function project() {
@@ -729,6 +815,14 @@ export function createConstellation(
     },
     nodeAt(i) {
       return { x: screen[i * 2], y: screen[i * 2 + 1] };
+    },
+    debug() {
+      return {
+        hole: { x: (bhNdc.x * 0.5 + 0.5) * W, y: (-bhNdc.y * 0.5 + 0.5) * H, r: DISK_RS * pxPerRs },
+        nodes: Array.from({ length: n }, (_, i) => ({ x: screen[i * 2], y: screen[i * 2 + 1] })),
+        w: W,
+        h: H,
+      };
     },
     hover(i) {
       nodeMat.uniforms.uHover.value = i;

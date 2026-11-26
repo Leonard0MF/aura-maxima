@@ -142,3 +142,23 @@ export function projectStatic(x: number, y: number, z: number, w: number, h: num
   const d = CAMERA_Z - z;
   return { x: w / 2 + ((x * f) / d) * (h / 2), y: h / 2 - ((y * f) / d) * (h / 2), s: CAMERA_Z / d };
 }
+
+/** raio externo do disco de acreção, em rs (o mesmo ROUT do shader) */
+export const DISK_RS = 9;
+
+/*
+ * Onde fica o buraco negro num campo de w × h px. Fonte única para a cena e
+ * para o círculo da transição (AuditPin).
+ *  - largo: terço esquerdo, na altura do meio
+ *  - estreito (aspecto < 0,9 ou < 640 px): no topo, centralizado,
+ *    com o disco ocupando ~35% da largura
+ */
+export function holeCenter(w: number, h: number) {
+  /* < 640 px de largura é sempre o layout do celular, mesmo com o campo
+   * quase quadrado (ex.: 360 × 370) */
+  const narrow = w / h < 0.9 || w < 640;
+  if (!narrow) return { narrow, x: w * 0.25, y: h * 0.5, rs: Math.min(h * 0.026, w * 0.018) };
+  const rs = (w * 0.35) / (2 * DISK_RS);
+  /* o arco de cima da lente sobe ~7,7 rs: cabe com folga */
+  return { narrow, x: w / 2, y: Math.max(h * 0.19, 7.7 * rs + 18), rs };
+}

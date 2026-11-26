@@ -27,6 +27,7 @@ export async function Audit() {
     done: t.raw("done") as string,
     gradeExample: t("gradeExample"),
     gradePending: t("gradePending"),
+    close: tn("close"),
   };
   const meta = "font-mono text-[11px] tracking-wide uppercase sm:text-xs";
   return (
@@ -37,7 +38,10 @@ export async function Audit() {
 
         <div className="audit-body text-fg">
           <SectionHead n="03" label={tn("audit")} title={t("title")} id="audit-title" meta={`aegis · ${audit.target}`}>
-            <span className="text-muted">{t("lede")}</span>
+            {/* mouse x toque: as duas versões no HTML, o CSS mostra uma pela media
+                query (pointer: coarse); sem troca depois da hidratação */}
+            <span className="on-fine text-muted">{t("lede")}</span>
+            <span className="on-coarse text-muted">{t("ledeTouch")}</span>
           </SectionHead>
 
           <div className="audit-foot px-4 sm:px-6">
@@ -56,11 +60,15 @@ export async function Audit() {
               </p>
               <p className="mt-4">
                 <a href={profile.aegisUrl} target="_blank" rel="noopener noreferrer" className="audit-cta">
-                  {t("cta")} <span aria-hidden="true">↗</span>
+                  {t("cta")}{"\u00a0"}
+                  <span aria-hidden="true">↗</span>
                   <span className="sr-only">{tc("newTab")}</span>
                 </a>
               </p>
-              <p className={`audit-hint mt-4 ${meta} text-dim`}>{t("hint")}</p>
+              <p className={`audit-hint mt-4 ${meta} text-dim`}>
+                <span className="on-fine">{t("hint")}</span>
+                <span className="on-coarse">{t("hintTouch")}</span>
+              </p>
             </div>
 
             {/* os dados em texto: visíveis no fallback, sempre lidos por leitores de tela */}
