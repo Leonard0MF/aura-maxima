@@ -616,33 +616,29 @@ html[data-intro="run"] .hero[data-live] .ascii-fallback {
 }
 .work-media {
   display: block;
-  transition:
-    transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1),
-    filter 0.35s ease;
 }
-/* mira (WorkAim liga data-aim): print levemente mais nítido, escala ≤ 1.01 */
-.work-item[data-aim] .work-media,
+/* teclado (foco dentro do projeto): o print fica levemente mais nítido */
 .work-item:focus-within .work-media {
   transform: scale(1.01);
   filter: contrast(1.07) saturate(1.04);
 }
+/* Mira do WORK (WorkAim, Web Animations API). Aqui só o estado de repouso;
+ * quem anima é o componente (cada elemento guarda a sua animação e a
+ * cancela antes da próxima). */
 .work-aim {
   position: absolute;
   inset: 0;
   z-index: 1;
   pointer-events: none;
 }
-/* cantoneiras: 2 px, braço de 16 px; fechadas a 10 px das bordas; abertas
- * (e invisíveis) 14 px para fora */
+/* cantoneiras: 2 px, braço de 16 px; fechadas a 10 px das bordas; em
+ * repouso, abertas 14 px para fora e invisíveis */
 .work-aim i {
   position: absolute;
   width: 16px;
   height: 16px;
   border: 0 solid var(--color-accent);
   opacity: 0;
-  transition:
-    transform 0.25s cubic-bezier(0.2, 0.7, 0.2, 1),
-    opacity 0.25s ease-out;
 }
 .work-aim i:nth-child(1) {
   top: 10px;
@@ -672,12 +668,8 @@ html[data-intro="run"] .hero[data-live] .ascii-fallback {
   border-right-width: 2px;
   transform: translate(14px, 14px);
 }
-.work-item[data-aim] .work-aim i {
-  opacity: 1;
-  transform: none;
-}
 /* linha de scan: o bloco inteiro desce (translateY 0 → 100%) com a linha de
- * 1 px na borda de cima; uma vez por data-aim */
+ * 1 px na borda de cima */
 .work-scan {
   position: absolute;
   inset: 0;
@@ -695,34 +687,25 @@ html[data-intro="run"] .hero[data-live] .ascii-fallback {
     0 0 6px 1px rgb(245 165 36 / 0.6),
     0 0 18px 2px rgb(245 165 36 / 0.25);
 }
-.work-item[data-aim] .work-scan {
-  animation: work-scan 0.7s cubic-bezier(0.45, 0, 0.25, 1) forwards;
+/* links: a seta desliza 3 px no hover de cada link */
+.work-arrow {
+  display: inline-block;
+  transition: translate 0.2s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
-@keyframes work-scan {
-  0% {
-    transform: translateY(0);
-    opacity: 0;
-  }
-  8%,
-  90% {
-    opacity: 1;
-  }
-  100% {
-    transform: translateY(100%);
-    opacity: 0;
-  }
+.work-links a:hover .work-arrow,
+.work-links a:focus-visible .work-arrow {
+  translate: 3px 0;
 }
 @media (prefers-reduced-motion: reduce) {
-  .work-scan {
-    display: none;
-  }
-  .work-aim i,
-  .work-media {
-    transition: none;
-  }
-  .work-item[data-aim] .work-media,
   .work-item:focus-within .work-media {
     transform: none;
+  }
+  .work-arrow {
+    transition: none;
+  }
+  .work-links a:hover .work-arrow,
+  .work-links a:focus-visible .work-arrow {
+    translate: none;
   }
 }
 /* placeholder: hachura fina + nome em contorno, até existir o print */
