@@ -86,6 +86,12 @@ const DROP_H = 4.5;
 /* acima disso a peça não projeta sombra (nada de sombra sem peça à vista) */
 const SHADOW_Y = 2;
 const DROP_MS = 750;
+/* índice → 3D */
+const DIM_COLOR = new Color("#2b2620");
+const DIM_MIX = 0.62; // quanto a moeda fora da categoria escurece
+const DIM_SINK = 0.24; // e quanto afunda
+const HOP_MS = 460;
+const HOP_H = 0.95;
 const DROP_GAP = 85;
 
 /* moeda com borda arredondada (perfil girado em torno de Y) */
@@ -156,6 +162,16 @@ type Piece = {
   t0: number;
   yaw0: number;
   landed: boolean;
+  /* destaque por categoria: 0 = normal, 1 = apagada (escura e afundada) */
+  dim: number;
+  dimT: number;
+  /* pulo (índice → moeda): início em ms, 0 = parado */
+  hop: number;
+  oy: number; // deslocamento vertical só visual (afundar + pulo)
+  body: MeshPhysicalMaterial;
+  logo: MeshPhysicalMaterial;
+  base: Color;
+  logoBase: Color;
   /* mola da geleia: x = achatamento no eixo n (frame local da peça) */
   sx: number;
   sv: number;
@@ -234,7 +250,7 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
   const build = (token: Token): Piece => {
     const base = tone(token.hex);
     const bodyMat = new MeshPhysicalMaterial({
-      color: base,
+      color: base.clone(),
       roughness: 0.34,
       clearcoat: 1,
       clearcoatRoughness: 0.12,
@@ -242,8 +258,9 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
       sheenRoughness: 0.5,
       sheenColor: new Color("#ffc779"),
     });
+    const logoBase = (lum(base) < 0.16 ? PAPER : INK).clone();
     const logoMat = new MeshPhysicalMaterial({
-      color: lum(base) < 0.16 ? PAPER : INK,
+      color: logoBase.clone(),
       roughness: 0.4,
       clearcoat: 0.7,
       clearcoatRoughness: 0.2,
@@ -267,6 +284,7 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
       token, group, hit, state: "hidden",
       x: 0, z: 0, vx: 0, vz: 0, yaw: 0, w: 0, rest: 0, asleep: true, y: 0,
       t0: 0, yaw0: 0, landed: false,
+      dim: 0, dimT: 0, hop: 0, oy: 0, body: bodyMat, logo: logoMat, base, logoBase,
       sx: 0, sv: 0, n: new Vector3(0, 1, 0),
     };
     hit.userData.piece = piece;
@@ -639,7 +657,7 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
 
   /* pose → matriz, com a deformação da geleia no eixo n */
   const pose = (p: Piece, yaw: number) => {
-    pos.set(p.x, p.y, p.z);
+    pos.set(p.x, p.y + p.oy, p.z);
     quat.setFromAxisAngle(up, yaw);
     M.compose(pos, quat, one);
     if (p.sx !== 0) {
@@ -707,6 +725,29 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
         if (Math.abs(p.sx) < 0.002 && Math.abs(p.sv) < 0.02) p.sx = p.sv = 0;
         else active = true;
       }
+      /* destaque por categoria: escurece e afunda devagar */
+      if (p.dim !== p.dimT) {
+        p.dim += (p.dimT - p.dim) * (1 - Math.exp(-9 * dt));
+        if (Math.abs(p.dim - p.dimT) < 0.003) p.dim = p.dimT;
+        p.body.color.copy(p.base).lerp(DIM_COLOR, DIM_MIX * p.dim);
+        p.logo.color.copy(p.logoBase).lerp(DIM_COLOR, DIM_MIX * p.dim);
+        /* sem isso o reflexo do verniz e do ambiente esconde a mudança de cor */
+        p.body.clearcoat = 1 - 0.75 * p.dim;
+        p.body.envMapIntensity = p.logo.envMapIntensity = 1 - 0.55 * p.dim;
+        p.body.sheen = 0.35 * (1 - p.dim);
+        active = true;
+      }
+      let oy = -DIM_SINK * p.dim;
+      /* pulo: parábola com squash na saída e no pouso */
+      if (p.hop) {
+        const k = (now - p.hop) / HOP_MS;
+        if (k >= 1) {
+          p.hop = 0;
+          squash(p, 0, 1, 0, 5.5);
+        } else if (k > 0) oy += Math.sin(Math.PI * k) * HOP_H;
+        active = true;
+      }
+      p.oy = oy;
       if (p.state === "drag" || (p.state === "table" && !p.asleep)) active = true;
       pose(p, yaw);
     }
@@ -883,15 +924,69 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
   for (const p of pieces) p.group.visible = false;
   veil.visible = false;
 
+  /* volta à seção: as peças reaparecem onde estavam, sem nova queda */
+  const restore = (saved: { id: string; x: number; z: number; yaw: number }[]) => {
+    dropped = true;
+    for (const p of pieces) {
+      const q = saved.find((s) => s.id === p.token.id);
+      if (!q) continue;
+      p.state = "table";
+      p.x = clamp(q.x, -bounds.x, bounds.x);
+      p.z = clamp(q.z, bounds.z0, bounds.z1);
+      p.yaw = q.yaw;
+      p.vx = p.vz = p.w = 0;
+      p.y = 0;
+      p.landed = true;
+      castShadow(p, true);
+      p.group.visible = true;
+      wakeP(p);
+    }
+    wake();
+  };
+
+  /* índice: destaca as moedas de uma categoria (null limpa) */
+  const highlight = (ids: string[] | null) => {
+    for (const p of pieces) p.dimT = ids && !ids.includes(p.token.id) ? 1 : 0;
+    wake();
+  };
+  /* índice: a moeda pula (squash); devolve false se ela não está na mesa */
+  const bump = (id: string) => {
+    const p = pieces.find((q) => q.token.id === id);
+    if (!p || p.state !== "table") return false;
+    p.hop = performance.now();
+    squash(p, 0, 1, 0, 4);
+    wake();
+    return true;
+  };
+
   return {
     drop,
+    restore,
+    highlight,
+    bump,
+    /* posições das peças na mesa (para restore); as que ainda caem já têm
+     * x/z/yaw finais */
+    state: () => pieces.filter((p) => p.state !== "hidden").map((p) => ({ id: p.token.id, x: p.x, z: p.z, yaw: p.yaw })),
+    /* último frame, sem o véu do popup (para o snapshot estático ao desmontar) */
+    snapshot() {
+      if (!dropped) return null;
+      const v = veil.visible;
+      veil.visible = false;
+      renderer.render(scene, camera);
+      veil.visible = v;
+      try {
+        return canvas.toDataURL("image/webp", 0.82);
+      } catch {
+        return null;
+      }
+    },
     focus: focusOn,
     unfocus: focusOff,
     /* testes: estado da mesa (posições, velocidades, rotação) */
     debug: () =>
       pieces.map((p) => {
         const sp = new Vector3(p.x, T / 2, p.z).project(camera);
-        return { id: p.token.id, state: p.state, x: p.x, z: p.z, v: Math.hypot(p.vx, p.vz), w: p.w, yaw: p.yaw, asleep: p.asleep, bounds: { ...bounds }, sx: ((sp.x + 1) / 2) * W, sy: ((1 - sp.y) / 2) * H };
+        return { id: p.token.id, state: p.state, x: p.x, z: p.z, v: Math.hypot(p.vx, p.vz), w: p.w, yaw: p.yaw, asleep: p.asleep, dim: +p.dim.toFixed(3), dimT: p.dimT, bounds: { ...bounds }, sx: ((sp.x + 1) / 2) * W, sy: ((1 - sp.y) / 2) * H };
       }),
     destroy() {
       cancelAnimationFrame(raf);

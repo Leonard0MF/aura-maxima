@@ -38,7 +38,9 @@ export type TerminalData = {
     id: string;
     slug: string;
     title: string;
-    severity: string;
+    kind: string;
+    /** rótulo neutro já traduzido (PROJETO PESSOAL, SISTEMA INTERNO) */
+    label: string;
     summary: string;
     stack: string[];
     href: string;
