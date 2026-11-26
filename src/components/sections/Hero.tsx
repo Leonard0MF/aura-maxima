@@ -51,6 +51,10 @@ export async function Hero() {
       {/* 0–1 · superfície: tipografia + fallback estático do retrato */}
       <HeroLayer variant="surface" portrait={portrait} bg={enigma} alt={t("asciiAlt", { name: profile.name })} />
 
+      {/* intro (1ª carga da sessão): papel sobre a tipografia até o canvas da
+          intro assumir. O texto embaixo está pintado desde o 1º frame (LCP). */}
+      <div className="hero-intro-cover" aria-hidden="true" />
+
       {/* 2 · retrato ASCII ao vivo (WebGL) */}
       <AsciiStage src={portrait.src} aspect={portrait.aspect} levels={portrait.levels} bg={{ src: enigma.src, aspect: enigma.aspect, levels: enigma.levels }} />
 
@@ -65,7 +69,7 @@ export async function Hero() {
       {/* 4 · metadados */}
       <div className="hero-meta relative z-10 flex h-full flex-col justify-between p-4 font-mono text-[11px] tracking-wide uppercase sm:p-6 sm:text-xs">
         <div className="flex items-start justify-between gap-4">
-          <div className="leading-relaxed">
+          <div className="leading-relaxed" data-intro-item style={{ "--i": 0 } as CSSProperties}>
             <p>{profile.name}</p>
             <p className="flex flex-wrap items-center gap-x-2">
               <span className="text-ink-soft">{t("portfolio")}</span>
@@ -76,7 +80,7 @@ export async function Hero() {
               </span>
             </p>
           </div>
-          <nav aria-label={tn("label")} className="hidden md:block">
+          <nav aria-label={tn("label")} className="hidden md:block" data-intro-item style={{ "--i": 1 } as CSSProperties}>
             <ul className="flex gap-4 lg:gap-6">
               {nav.map((i) => (
                 <li key={i.n}>
@@ -89,6 +93,7 @@ export async function Hero() {
             </ul>
           </nav>
           <LangSwitch
+            intro={2}
             locale={locale}
             path="/"
             label={tl("label")}
@@ -98,7 +103,7 @@ export async function Hero() {
         </div>
 
         <div className="grid grid-cols-1 items-end gap-4 pr-32 sm:grid-cols-3 sm:pr-0">
-          <dl className="leading-relaxed">
+          <dl className="leading-relaxed" data-intro-item style={{ "--i": 0 } as CSSProperties}>
             <div className="flex gap-1.5">
               <dt className="text-ink-soft">{t("location")}</dt>
               <dd>{t("place")}</dd>
@@ -110,7 +115,7 @@ export async function Hero() {
               </dd>
             </div>
           </dl>
-          <a href="#findings" className="hidden justify-self-center hover:text-accent-ink sm:block">
+          <a href="#findings" className="hidden justify-self-center hover:text-accent-ink sm:block" data-intro-item style={{ "--i": 1 } as CSSProperties}>
             {t("scroll")} <span aria-hidden="true">↓</span>
           </a>
         </div>

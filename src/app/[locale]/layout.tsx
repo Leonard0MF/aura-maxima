@@ -62,7 +62,7 @@ export const viewport: Viewport = {
  *    reduced-motion fica o fade simples.
  * Storage pode lançar exceção (aba privada, bloqueio): tudo em try/catch.
  */
-const boot = `(function(){var d=document.documentElement;d.dataset.js="1";try{if(sessionStorage.getItem("recon:scan-seen")||matchMedia("(prefers-reduced-motion: reduce)").matches)d.dataset.scan="instant"}catch(e){}try{if(matchMedia("(prefers-reduced-motion: reduce)").matches||(navigator.hardwareConcurrency||8)<=4)d.dataset.fx="static";else if(!sessionStorage.getItem("recon:intro"))d.dataset.intro="1"}catch(e){}try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches)d.dataset.reveal="1"}catch(e){}})()`;
+const boot = `(function(){var d=document.documentElement;d.dataset.js="1";try{if(sessionStorage.getItem("recon:scan-seen")||matchMedia("(prefers-reduced-motion: reduce)").matches)d.dataset.scan="instant"}catch(e){}try{if(matchMedia("(prefers-reduced-motion: reduce)").matches||(navigator.hardwareConcurrency||8)<=4)d.dataset.fx="static";else if(!sessionStorage.getItem("recon:intro")){d.dataset.intro="1";var s=function(){if(d.dataset.intro==="1")d.dataset.intro="done"};["pointerdown","keydown","wheel","touchstart","scroll"].forEach(function(n){addEventListener(n,s,{once:true,passive:true})})}}catch(e){}try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches)d.dataset.reveal="1"}catch(e){}})()`;
 
 export default async function LocaleLayout({ children, params }: Readonly<{ children: React.ReactNode }> & Props) {
   const { locale } = await params;
