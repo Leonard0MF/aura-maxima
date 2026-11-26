@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { claimGL } from "@/lib/gl-slot";
+import { prewarm } from "@/lib/prewarm";
 
 type Saved = { id: string; x: number; z: number; yaw: number }[];
 type Scene = {
@@ -10,7 +11,7 @@ type Scene = {
   highlight(ids: string[] | null): void;
   bump(id: string): boolean;
   state(): Saved;
-  snapshot(): string | null;
+  snapshot(): Promise<string | null>;
   focus(id: string): void;
   unfocus(): void;
   pause(on: boolean): void;
@@ -249,23 +250,19 @@ export function StackStage({ tokens, mobile: mobileIds, cats }: { tokens: { id: 
     let saved: Saved | null = null;
     const snap = stage.querySelector<HTMLImageElement>(".stack-snap")!;
 
-    /* pré-carga do código (three + física + ícones) bem antes de chegar */
+    /* pré-carga do código (three + física + ícones) em idle logo depois do
+     * hero (lib/prewarm), nunca no meio da rolagem; se a pessoa chegar antes
+     * disso, o gl-slot carrega na hora */
     const load = () => Promise.all([import("./scene"), import("@/lib/stack-icons")]);
-    const ioPre = new IntersectionObserver(
-      ([e]) => {
-        if (!e.isIntersecting) return;
-        ioPre.disconnect();
-        void load();
-      },
-      { rootMargin: "150% 0px" },
-    );
-    ioPre.observe(stage);
+    const stopPrewarm = prewarm(load);
 
     let pending: Promise<void> | null = null; // montagem em andamento
     const mount = async () => {
       if (scene || loading) return;
       loading = true;
       const [{ createStackScene }, { STACK_ICONS }] = await load();
+      /* começa num momento ocioso, nunca no meio de um frame de rolagem */
+      await new Promise<void>((r) => ("requestIdleCallback" in window ? requestIdleCallback(() => r(), { timeout: 300 }) : setTimeout(r, 0)));
       if (!near) {
         loading = false;
         return;
@@ -316,11 +313,12 @@ export function StackStage({ tokens, mobile: mobileIds, cats }: { tokens: { id: 
       if (scene) {
         const st = scene.state();
         if (st.length) saved = st;
-        const url = scene.snapshot();
-        if (url) {
+        void scene.snapshot().then((url) => {
+          if (!url) return;
+          if (snap.src.startsWith("blob:")) URL.revokeObjectURL(snap.src);
           snap.src = url;
           section.dataset.snap = "";
-        }
+        });
       }
       scene?.destroy();
       scene = null;
@@ -364,7 +362,7 @@ export function StackStage({ tokens, mobile: mobileIds, cats }: { tokens: { id: 
     return () => {
       releaseGL();
       ioIn.disconnect();
-      ioPre.disconnect();
+      stopPrewarm();
       unmount();
       cleanup();
     };
@@ -373,7 +371,7 @@ export function StackStage({ tokens, mobile: mobileIds, cats }: { tokens: { id: 
   return (
     <div ref={ref} className="stack-stage">
       <div className="stack-ph" aria-hidden="true" />
-      {/* eslint-disable-next-line @next/next/no-img-element -- data: URL gerada no cliente */}
+      {/* eslint-disable-next-line @next/next/no-img-element -- blob: URL gerada no cliente */}
       <img className="stack-snap" alt="" aria-hidden="true" />
     </div>
   );
