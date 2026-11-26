@@ -32,7 +32,8 @@ export function getPortrait(cols = PRE_COLS) {
 async function build(cols: number): Promise<AsciiImageData> {
   const { default: sharp } = await import("sharp");
   const W = 256;
-  const file = path.join(process.cwd(), portrait.file);
+  /* só no build (SSG): o ignore evita que o Turbopack rastreie o projeto inteiro */
+  const file = path.join(/*turbopackIgnore: true*/ process.cwd(), portrait.file);
   /* luminância com o retrato composto sobre branco: pixel transparente vira
    * claro (célula vazia), nunca preto (glifo denso) */
   const { data, info } = await sharp(file)
