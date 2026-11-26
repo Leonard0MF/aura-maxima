@@ -178,7 +178,6 @@
     "next": [{ "title": "CompTIA Security+ certification" }],
     "quote": "I don't just want to know how things work. I want to understand why, how to make them better and what I can build next.",
     "photoAlt": "Photo of {name}",
-    "photoPending": "Photo pending",
     "photoHint": "hover or tap the photo",
     "journeyKicker": "git log --reverse",
     "journeyTitle": "Journey",

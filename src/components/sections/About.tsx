@@ -4,8 +4,8 @@ import { AboutPortrait } from "@/components/about/AboutPortrait";
 import { Journey, type Milestone } from "@/components/about/Journey";
 import { Decrypt } from "@/components/Decrypt";
 import { about, profile } from "@/content/profile";
-import { getAsciiImage } from "@/lib/ascii/image";
-import { cvFor, inPublic } from "@/lib/site";
+import { getPortrait } from "@/lib/ascii/image";
+import { cvFor } from "@/lib/site";
 
 const isTodo = (s: string) => s.trim().startsWith("TODO");
 type Item = { title: string; body: string };
@@ -21,7 +21,7 @@ export async function About() {
   const locale = await getLocale();
   const t = await getTranslations("about");
   const tn = await getTranslations("nav");
-  const portrait = inPublic(about.photo) ? await getAsciiImage(about.photo, 72) : null;
+  const portrait = await getPortrait(72);
   const cv = cvFor(locale);
   const facts = (t.raw("facts") as { label: string; value: string }[]).filter((f) => !isTodo(f.value));
   const meta = "font-mono text-[11px] tracking-wide uppercase sm:text-xs";
@@ -39,20 +39,10 @@ export async function About() {
 
       <div className="about-block about-intro px-4 sm:px-6">
         <figure className="about-figure">
-          {portrait ? (
-            <AboutPortrait portrait={portrait} alt={t("photoAlt", { name: profile.name })} />
-          ) : (
-            <div className="about-portrait grid place-items-center border border-ink/20 bg-ink/5 p-6 text-center" style={{ aspectRatio: "4 / 5" }}>
-              <p className={`${meta} text-ink-soft`}>
-                {t("photoPending")}
-                <br />
-                <span className="normal-case">public/portrait.png</span>
-              </p>
-            </div>
-          )}
+          <AboutPortrait portrait={portrait} alt={t("photoAlt", { name: profile.name })} />
           <figcaption className={`mt-2 ${meta} text-ink-soft`}>
             {profile.name}
-            {portrait && <span className="about-hint"> · {t("photoHint")}</span>}
+            <span className="about-hint"> · {t("photoHint")}</span>
           </figcaption>
         </figure>
 

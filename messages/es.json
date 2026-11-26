@@ -178,7 +178,6 @@
     "next": [{ "title": "Certificación CompTIA Security+" }],
     "quote": "No quiero solo saber cómo funcionan las cosas. Quiero entender por qué, cómo mejorarlas y qué puedo construir después.",
     "photoAlt": "Foto de {name}",
-    "photoPending": "Foto pendiente",
     "photoHint": "pasa el ratón o toca la foto",
     "journeyKicker": "git log --reverse",
     "journeyTitle": "Trayectoria",

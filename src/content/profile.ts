@@ -129,9 +129,8 @@ export const projects: Project[] = [
  * TODO no ano do primeiro código, no período e na descrição da Elyra Studio
  * (startup própria, encerrada) e nas frases desses dois marcos. */
 
-/* 04 · ABOUT. public/portrait.png: foto do Léo, de preferência sem fundo (vira ASCII no build).
- * Enquanto o arquivo não existir, a seção mostra uma moldura pendente. */
-export const about = { photo: "/portrait.png", author: "Leonardo Machmann" };
+/* 04 · ABOUT. A foto vem de src/content/portrait.ts (fonte única). */
+export const about = { author: "Leonardo Machmann" };
 
 /* TODO: números reais para uma futura seção de métricas (ainda não exibida):
  * pentests internos realizados, vulnerabilidades encontradas e corrigidas,

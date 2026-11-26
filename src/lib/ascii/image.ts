@@ -1,5 +1,6 @@
-import fs from "node:fs";
 import path from "node:path";
+
+import { portrait } from "@/content/portrait";
 
 import { PRE_COLS, RATIO, autoLevels, renderText, toneDensity, type Levels } from "./core";
 
@@ -19,29 +20,19 @@ export type AsciiImageData = {
   mask: string;
 };
 
-const PUBLIC = path.join(process.cwd(), "public");
-
-/* Retrato do hero: o primeiro que existir entre public/portrait.png (fundo
- * removido, o ideal: a foto da lente fica limpa sobre o escuro),
- * public/portrait.jpg e public/portrait-test.jpg (TODO: foto do Léo). */
-export function getPortrait() {
-  const name = ["portrait.png", "portrait.jpg"].find((f) => fs.existsSync(path.join(PUBLIC, f))) ?? "portrait-test.jpg";
-  return getAsciiImage(name);
-}
-
-const cache = new Map<string, Promise<AsciiImageData>>();
-/** `cols`: colunas do fallback em SVG (o hero usa PRE_COLS; o ABOUT, menor, usa menos) */
-export function getAsciiImage(name: string, cols = PRE_COLS) {
-  const key = `${name}@${cols}`;
-  let p = cache.get(key);
-  if (!p) cache.set(key, (p = build(name.replace(/^\//, ""), cols)));
+/* Retrato (src/content/portrait.ts, fonte única). `cols`: colunas do
+ * fallback em SVG (o hero usa PRE_COLS; o ABOUT, menor, usa menos). */
+const cache = new Map<number, Promise<AsciiImageData>>();
+export function getPortrait(cols = PRE_COLS) {
+  let p = cache.get(cols);
+  if (!p) cache.set(cols, (p = build(cols)));
   return p;
 }
 
-async function build(name: string, cols: number): Promise<AsciiImageData> {
+async function build(cols: number): Promise<AsciiImageData> {
   const { default: sharp } = await import("sharp");
   const W = 256;
-  const file = path.join(PUBLIC, name);
+  const file = path.join(process.cwd(), portrait.file);
   /* luminância com o retrato composto sobre branco: pixel transparente vira
    * claro (célula vazia), nunca preto (glifo denso) */
   const { data, info } = await sharp(file)
@@ -79,7 +70,9 @@ async function build(name: string, cols: number): Promise<AsciiImageData> {
 
   return {
     mask,
-    src: `/_next/image?url=${encodeURIComponent(`/${name}`)}&w=1080&q=75`,
+    /* a URL com hash do import estático, otimizada: a MESMA para a textura
+     * do shader, a foto da lente e o ABOUT (uma só requisição, em cache) */
+    src: `/_next/image?url=${encodeURIComponent(portrait.photo.src)}&w=1080&q=75`,
     aspect,
     svg: toSvg(text, cols, rows),
     levels,
