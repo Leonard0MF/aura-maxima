@@ -178,16 +178,19 @@
     "next": [{ "title": "CompTIA Security+ certification" }],
     "quote": "I don't just want to know how things work. I want to understand why, how to make them better and what I can build next.",
     "photoAlt": "Photo of {name}",
-    "photoHint": "hover or tap the photo",
     "journeyKicker": "git log --reverse",
     "journeyTitle": "Journey",
     "journey": [
-      { "date": "TODO: ano", "title": "First lines of code", "phrase": "TODO: frase sobre o começo" },
-      { "date": "TODO: período", "title": "Founded Elyra Studio", "phrase": "TODO: frase sobre a Elyra Studio" },
-      { "date": "2026", "title": "Aegis: domain security scanner", "phrase": "Checks a domain's TLS, headers, DNS, e-mail and known CVEs and sums it all up in one grade." },
-      { "date": "Oct 2026", "title": "Bump Amortecedores: IT and Development", "phrase": "Internal pentests every week, QA, code review and fixes via Pull Request." },
-      { "date": "2026", "title": "BumpHub: the IT team's internal workspace", "phrase": "I built it and maintain it on my own: the IT team's internal workspace." },
-      { "date": "Next", "title": "CompTIA Security+", "phrase": "The next step: validating my security foundations with a recognized certification." }
+      { "date": "2021", "title": "First lines of code", "phrase": "" },
+      { "date": "2024", "title": "Started studying cybersecurity and Linux", "phrase": "Studied Kali Linux and switched to Linux as my daily system. That's when security stopped being curiosity and became direction." },
+      { "date": "Dec 2025", "title": "Founded Elyra Studio", "phrase": "" },
+      { "date": "Oct 2026", "title": "Bump Amortecedores: IT & Development", "phrase": "Internal pentesting, QA, code review and building BumpHub, the IT team's internal workspace." },
+      { "date": "Next", "title": "CompTIA Security+", "phrase": "" }
+    ],
+    "experienceTitle": "Experience",
+    "experience": [
+      { "org": "Bump Amortecedores", "role": "IT & Development", "period": "Oct 2026 → present" },
+      { "org": "Elyra Studio", "role": "Founder", "period": "Dec 2025" }
     ],
     "facts": [
       { "label": "City", "value": "TODO: city" },

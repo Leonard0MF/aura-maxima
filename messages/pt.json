@@ -178,16 +178,19 @@
     "next": [{ "title": "Certificação CompTIA Security+" }],
     "quote": "Não quero só saber como as coisas funcionam. Quero entender por quê, como melhorá-las e o que posso construir em seguida.",
     "photoAlt": "Foto de {name}",
-    "photoHint": "passe o mouse ou toque na foto",
     "journeyKicker": "git log --reverse",
     "journeyTitle": "Trajetória",
     "journey": [
-      { "date": "TODO: ano", "title": "Primeiras linhas de código", "phrase": "TODO: frase sobre o começo" },
-      { "date": "TODO: período", "title": "Fundei a Elyra Studio", "phrase": "TODO: frase sobre a Elyra Studio" },
-      { "date": "2026", "title": "Aegis: scanner de segurança de domínios", "phrase": "Analisa TLS, headers, DNS, e-mail e CVEs conhecidas de um domínio e resume tudo numa nota." },
-      { "date": "out/2026", "title": "Bump Amortecedores: TI e Desenvolvimento", "phrase": "Pentest interno toda semana, QA, revisão de código e correções via Pull Request." },
-      { "date": "2026", "title": "BumpHub: workspace interno da TI", "phrase": "Criei e mantenho sozinho o workspace interno da equipe de TI." },
-      { "date": "Próximo", "title": "CompTIA Security+", "phrase": "O próximo passo: validar minha base em segurança com uma certificação reconhecida." }
+      { "date": "2021", "title": "Primeiras linhas de código", "phrase": "" },
+      { "date": "2024", "title": "Comecei a estudar cibersegurança e Linux", "phrase": "Estudei Kali Linux e passei a usar Linux no dia a dia. Foi aí que segurança deixou de ser curiosidade e virou direção." },
+      { "date": "dez/2025", "title": "Fundei a Elyra Studio", "phrase": "" },
+      { "date": "out/2026", "title": "Bump Amortecedores: TI e Desenvolvimento", "phrase": "Pentest interno, QA, code review e criação do BumpHub, o workspace interno da TI." },
+      { "date": "Próximo", "title": "CompTIA Security+", "phrase": "" }
+    ],
+    "experienceTitle": "Experiência",
+    "experience": [
+      { "org": "Bump Amortecedores", "role": "TI e Desenvolvimento", "period": "out/2026 → atual" },
+      { "org": "Elyra Studio", "role": "Fundador", "period": "dez/2025" }
     ],
     "facts": [
       { "label": "Cidade", "value": "TODO: cidade" },

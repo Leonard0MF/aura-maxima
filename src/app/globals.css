@@ -205,7 +205,7 @@ html[data-intro] .hero .hl-bot {
 /* foto SEMPRE em P&B (lente e ABOUT), sem inversão nem blend. O fundo
  * transparente do PNG deixa ver o escuro da lente. */
 .hero-photo img,
-.about-portrait__photo {
+.about-photo img {
   filter: grayscale(1) contrast(1.12);
 }
 .hero-photo img {
@@ -875,64 +875,45 @@ html:not([data-js]) .audit-list {
     padding-bottom: 2rem;
   }
 }
+/* foto editorial: só a foto (P&B, sem efeito), tamanho limitado pela altura
+ * do bloco; a legenda tem a largura da foto */
 .about-figure {
   min-width: 0;
-}
-.about-figure > figcaption {
-  text-align: center;
-}
-/* ~40% da largura no desktop, limitado pela altura do bloco */
-.about-portrait {
-  position: relative;
+  width: min(100%, 22rem, calc((100svh - 12rem) * var(--a, 0.67)));
   margin-inline: auto;
-  width: min(100%, 20rem, calc((100svh - 12rem) * var(--a, 0.8)));
-  touch-action: pan-y;
-  --x: 50%;
-  --y: 32%;
-  --r: 0px;
-  transition: --r 0.35s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 @media (min-width: 1024px) {
-  .about-portrait {
-    width: min(100%, calc((100svh - 9.5rem) * var(--a, 0.8)));
+  .about-figure {
+    width: min(100%, calc((100svh - 10rem) * var(--a, 0.67)));
   }
 }
-.about-portrait[data-open] {
-  --r: var(--R, 120px);
+/* grão sutil recortado pela própria silhueta (nada de retângulo) */
+.about-photo {
+  position: relative;
+  aspect-ratio: var(--a, 0.67);
 }
-.about-portrait > img {
-  position: absolute;
-  inset: 0;
+.about-photo img {
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: contain;
-  user-select: none;
-  -webkit-user-drag: none;
 }
-/* foto: cores naturais, recortada pelo alpha E pelo círculo */
-.about-portrait__photo {
-  mask-image: var(--m), radial-gradient(circle var(--r) at var(--x) var(--y), #000 72%, transparent 100%);
-  mask-composite: intersect;
+.about-photo::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.22;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 1.2 -.1'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  mask-image: var(--m);
   mask-size: 100% 100%;
-  -webkit-mask-image: var(--m), radial-gradient(circle var(--r) at var(--x) var(--y), #000 72%, transparent 100%);
-  -webkit-mask-composite: source-in;
+  -webkit-mask-image: var(--m);
   -webkit-mask-size: 100% 100%;
 }
-/* ASCII: some dentro do círculo */
-.about-portrait__ascii {
-  mask-image: radial-gradient(circle var(--r) at var(--x) var(--y), transparent 72%, #000 100%);
-  -webkit-mask-image: radial-gradient(circle var(--r) at var(--x) var(--y), transparent 72%, #000 100%);
-}
-@property --r {
-  syntax: "<length>";
-  inherits: true;
-  initial-value: 0px;
-}
-.about-hint {
-  text-transform: none;
-}
-html:not([data-js]) .about-hint {
-  display: none;
+.about-figure > figcaption {
+  padding-top: 0.5rem;
+  border-top: 1px solid color-mix(in srgb, var(--color-ink) 25%, transparent);
 }
 .about-text {
   display: flex;
@@ -962,9 +943,8 @@ html:not([data-js]) .about-hint {
   max-width: 60ch;
   padding-top: 1rem;
   border-top: 1px solid color-mix(in srgb, var(--color-ink) 20%, transparent);
-  font-family: var(--font-mono);
-  font-size: 13px;
-  line-height: 1.55;
+  font-size: 15px;
+  line-height: 1.5;
 }
 @media (min-width: 640px) {
   .about-now {
@@ -1006,9 +986,9 @@ html:not([data-js]) .about-hint {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 2.25rem;
+  gap: clamp(1.25rem, 3.4svh, 2.25rem);
   min-height: min(100svh, 56rem);
-  padding-top: 3rem;
+  padding-top: clamp(1.5rem, 5svh, 3rem);
   border-top: 1px solid color-mix(in srgb, var(--color-ink) 18%, transparent);
 }
 .about-journey__title {
@@ -1131,6 +1111,12 @@ html:not([data-js]) .about-hint {
 .journey__h {
   display: none;
 }
+/* a linha da máscara do tracejado é branca (senão herda a cor escura acima
+ * e o tracejado quase some) */
+.journey__seg mask line {
+  stroke: #fff;
+  stroke-width: 6;
+}
 .journey .journey__dash {
   stroke: var(--color-accent);
   stroke-dasharray: 5 5;
@@ -1198,13 +1184,17 @@ html:not([data-js]) .about-hint {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .about-portrait {
-    transition: none;
-  }
   .about-pulse::after,
   .journey__item[data-next] .journey__dot::after {
     animation: none;
   }
+}
+.about-exp {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem 2rem;
 }
 .about-sign blockquote {
   font-size: clamp(1rem, 1.25vw, 1.15rem);

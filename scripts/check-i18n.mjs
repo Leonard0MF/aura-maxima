@@ -26,7 +26,8 @@ function walk(a, b, path, locale) {
     for (const k of Object.keys(a)) walk(a[k], b[k], path ? `${path}.${k}` : k, locale);
     for (const k of Object.keys(b)) if (!(k in a)) errors.push(`${locale}: chave a mais ${path ? `${path}.${k}` : k}`);
   } else if (ka === "string") {
-    if (!b.trim()) errors.push(`${locale}: ${path} está vazio`);
+    /* vazio só vale onde o pt também é vazio (ex.: marco sem frase de hover) */
+    if (!b.trim() && a.trim()) errors.push(`${locale}: ${path} está vazio`);
     else if (params(a) !== params(b)) errors.push(`${locale}: ${path} usa {${params(b)}}, esperado {${params(a)}}`);
   }
 }
