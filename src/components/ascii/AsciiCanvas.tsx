@@ -4,6 +4,8 @@ import { useEffect, useRef } from "react";
 
 import { BG_SUB, ENIGMA_ALPHA, GLYPHS, RATIO, cellWidth, portraitRect, type Levels } from "@/lib/ascii/core";
 
+import { introSkipped } from "@/lib/intro";
+
 import { createIntroWords } from "./introWords";
 import { FRAG, GRID_FRAG, INTRO_FS, INTRO_VS, VERT } from "./shader";
 
@@ -94,12 +96,8 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
     const box = canvas?.parentElement;
     if (!canvas || !box) return;
     const html = document.documentElement;
-    /* por que a intro não rodou (data-intro-why; no dev, também no console) */
-    const skipped = (why: string) => {
-      if (!html.dataset.introWhy) html.dataset.introWhy = why;
-      if (html.dataset.intro === "1" || html.dataset.intro === "run") html.dataset.intro = "done";
-      if (process.env.NODE_ENV !== "production") console.info(`[intro] skipped: ${html.dataset.introWhy}`);
-    };
+    /* por que a intro não rodou (lib/intro: data-intro-why e console no dev) */
+    const skipped = introSkipped;
     const fail = (why: string) => {
       skipped(why);
       onFail();
@@ -139,6 +137,7 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
     let imgW = 1;
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
     let introStart = 0;
+    let started = false; // a intro chegou a rodar (data-intro="run")
     /* celular: a mesma sequência em 1,8 s (u = tempo na escala do desktop) */
     const ik = box.clientWidth < 640 ? 1.75 / INTRO_END : 1;
     let words: ReturnType<typeof createIntroWords> | null = null;
@@ -635,6 +634,7 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
       if (intro) {
         words?.draw(0);
         html.dataset.intro = "run";
+        started = true;
         try {
           sessionStorage.setItem("recon:intro", "1");
         } catch {}
@@ -643,7 +643,14 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
 
     return () => {
       alive = false;
-      finishIntro();
+      /* só encerra uma intro que começou: no dev o StrictMode monta, desmonta
+       * e monta de novo, e marcar "done" aqui matava a intro antes do início */
+      if (started) finishIntro();
+      else {
+        for (const ev of SKIP) removeEventListener(ev, skip);
+        words?.destroy();
+        words = null;
+      }
       cancelAnimationFrame(raf);
       ro.disconnect();
       io.disconnect();
