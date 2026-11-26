@@ -2,11 +2,12 @@
 
 import { useEffect, useRef } from "react";
 
-import { GLYPHS, RATIO, cellWidth, portraitRect, type Levels } from "@/lib/ascii/core";
+import { GLYPHS, RATIO, cellWidth, enigmaRect, portraitRect, type Levels } from "@/lib/ascii/core";
 
 import { FRAG, GRID_FRAG, VERT } from "./shader";
 
-type Props = { src: string; aspect: number; levels: Levels; onFail: () => void };
+export type BgImage = { src: string; aspect: number; levels: Levels };
+type Props = { src: string; aspect: number; levels: Levels; bg?: BgImage; onFail: () => void };
 
 /* Atlas: cada glifo pré-renderizado uma vez numa faixa (fillText só aqui). */
 const TILE_W = 40;
@@ -79,7 +80,7 @@ function texture(gl: WebGL2RenderingContext, unit: number, source: TexImageSourc
  * Também é dono da interação (ponteiro, lente, passeio sozinho): a lente em
  * si é HTML (HeroLayer under + aro); daqui saem só --lx/--ly/--lr/--ls.
  */
-export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
+export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -123,6 +124,10 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
     const fbo = gl.createFramebuffer();
     let dpr = 1, W = 0, H = 0, gridCols = 0, gridRows = 0;
     const rect = { x: 0, y: 0, w: 0, h: 0 }; // px CSS, origem no topo
+    /* Enigma (fundo): mesma grade, atrás do retrato; sem ela, uHas2 = 0 */
+    const rect2 = { x: 0, y: 0, w: 0, h: 0, alpha: 0 };
+    let has2 = false, img2W = 1;
+    let sil2: { a: Uint8ClampedArray; w: number; h: number } | null = null;
     let lensR = 100;
     let lastStep = -1;
     /* posição da página do bloco, medida no resize (sem getBoundingClientRect por evento) */
@@ -146,13 +151,18 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
         return [{ x0: r.left - br.left, y0: r.top - br.top, x1: r.right - br.left, y1: r.bottom - br.top }];
       });
     };
+    const inSil = (m: typeof sil, r: { x: number; y: number; w: number; h: number }, x: number, y: number) => {
+      if (!m) return false;
+      const u = (x - r.x) / r.w;
+      const v = (y - r.y) / r.h;
+      if (u < 0 || u >= 1 || v < 0 || v >= 1) return false;
+      return m.a[Math.floor(v * m.h) * m.w + Math.floor(u * m.w)] >= 128;
+    };
+    /* lente sobre a Enigma (e não sobre o retrato, que fica por cima) */
+    const overEnigma = (x: number, y: number) => has2 && !inSil(sil, rect, x, y) && inSil(sil2, rect2, x, y);
     const overTarget = (x: number, y: number) => {
       if (words.some((w) => x >= w.x0 && x <= w.x1 && y >= w.y0 && y <= w.y1)) return true;
-      if (!sil) return false;
-      const u = (x - rect.x) / rect.w;
-      const v = (y - rect.y) / rect.h;
-      if (u < 0 || u >= 1 || v < 0 || v >= 1) return false;
-      return sil.a[Math.floor(v * sil.h) * sil.w + Math.floor(u * sil.w)] >= 128;
+      return inSil(sil, rect, x, y) || overEnigma(x, y);
     };
     const fitLetters = () => {
       const src = box.querySelector(".hero-layer--surface .hl-bot")?.firstChild;
@@ -181,6 +191,7 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
       gridCols = Math.ceil(W / cw);
       gridRows = Math.ceil(H / (cw * RATIO));
       Object.assign(rect, portraitRect(W, H, aspect));
+      if (bg) Object.assign(rect2, enigmaRect(W, H, bg.aspect));
       lensR = W < 640 ? 66 : 100;
 
       gl.activeTexture(gl.TEXTURE2);
@@ -206,6 +217,12 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
         gl.uniform1f(loc(p, "uKnock"), W >= 640 ? 1 : 0);
         gl.uniform1f(loc(p, "uAccent"), 1);
         gl.uniform2f(loc(p, "uRes"), canvas.width, canvas.height);
+        gl.uniform1f(loc(p, "uHas2"), has2 ? 1 : 0);
+        if (has2 && bg) {
+          gl.uniform4f(loc(p, "uRect2"), rect2.x * dpr, (H - rect2.y - rect2.h) * dpr, rect2.w * dpr, rect2.h * dpr);
+          gl.uniform2f(loc(p, "uLevels2"), bg.levels.black, bg.levels.white);
+          gl.uniform1f(loc(p, "uImg2Lod"), Math.max(0, Math.log2(img2W / (rect2.w / cw))));
+        }
       }
       gl.viewport(0, 0, canvas.width, canvas.height);
       fitLetters();
@@ -287,7 +304,7 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
     let visible = true;
     let shownX = NaN, shownY = NaN, shownR = NaN, shownV = NaN, shownB = NaN, lensOn = false;
     let lastDraw = 0;
-    let U: Record<"time" | "ptr", WebGLUniformLocation | null>;
+    let U: Record<"time" | "ptr" | "alpha2", WebGLUniformLocation | null>;
 
     /* ~30 fps; se o frame custa caro na main thread (aparelho fraco, GL por
      * software), cai para ~16 fps sozinho em vez de travar a página */
@@ -339,6 +356,8 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
       const full = DOT_R + (lensR - DOT_R) * big;
       const r = full * (1 - Math.pow(1 - open, 3)) * (0.6 + 0.4 * lv) * (lv > 0 ? 1 : 0);
       gl.uniform1f(U.time, t);
+      /* a Enigma aparece depois que o retrato trava */
+      gl.uniform1f(U.alpha2, rect2.alpha * Math.min(1, Math.max(0, (it - 1.2) / 0.8)));
       gl.uniform3f(U.ptr, px * dpr, (H - py) * dpr, pa);
       /* lente: só variáveis CSS (a camada under e o aro leem daqui) */
       const lr = Math.round(r * 10) / 10;
@@ -355,15 +374,18 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
         st.setProperty("--ls", (lr / 100).toFixed(3));
         st.setProperty("--lo", lv.toFixed(3));
         st.setProperty("--ld", (1 - big).toFixed(3));
+        /* legenda da Enigma: só com a lente (mouse) sobre ela */
+        const onE = hoverable && lv > 0.5 && big > 0.5 && overEnigma(lx, ly);
+        if (onE !== ("enigma" in box.dataset)) box.toggleAttribute("data-enigma", onE);
         if (lr > 0 && !lensOn) {
           lensOn = true;
           box.dataset.lens = "";
         }
       }
       gl.clear(gl.COLOR_BUFFER_BIT);
-      /* só sombreia o retângulo do retrato (nada é desenhado fora da silhueta) */
-      const x0 = Math.max(0, rect.x), y0 = Math.max(0, rect.y);
-      const x1 = Math.min(W, rect.x + rect.w), y1 = Math.min(H, rect.y + rect.h);
+      /* só sombreia os retângulos do retrato e da Enigma (nada fora das silhuetas) */
+      const x0 = Math.max(0, Math.min(rect.x, has2 ? rect2.x : rect.x)), y0 = Math.max(0, Math.min(rect.y, has2 ? rect2.y : rect.y));
+      const x1 = Math.min(W, Math.max(rect.x + rect.w, has2 ? rect2.x + rect2.w : 0)), y1 = Math.min(H, Math.max(rect.y + rect.h, has2 ? rect2.y + rect2.h : 0));
       gl.enable(gl.SCISSOR_TEST);
       gl.scissor(Math.floor(x0 * dpr), Math.floor((H - y1) * dpr), Math.ceil((x1 - x0) * dpr), Math.ceil((y1 - y0) * dpr));
       gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -423,12 +445,16 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
       const family = getComputedStyle(canvas).fontFamily;
       const img = new Image();
       img.src = src;
-      const [, ok] = await Promise.all([
+      /* Enigma: opcional (se falhar, o retrato segue sozinho) */
+      const img2 = bg ? new Image() : null;
+      if (img2 && bg) img2.src = bg.src;
+      const [, ok, ok2] = await Promise.all([
         document.fonts.load(`500 64px ${family}`).catch(() => {}),
         img.decode().then(
           () => true,
           () => false,
         ),
+        img2 ? img2.decode().then(() => true, () => false) : false,
       ]);
       if (!alive) return;
       if (!ok) return onFail();
@@ -437,14 +463,21 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
       sil = silhouette(img);
       texture(gl, 1, img, true, true);
       imgW = img.naturalWidth;
+      if (img2 && ok2) {
+        texture(gl, 3, img2, true, true);
+        sil2 = silhouette(img2);
+        img2W = img2.naturalWidth;
+        has2 = true;
+      }
       for (const p of [gridProg, prog]) {
         gl.useProgram(p);
         gl.uniform1i(loc(p, "uImg"), 1);
+        gl.uniform1i(loc(p, "uImg2"), 3);
       }
       gl.useProgram(prog);
       gl.uniform1i(loc(prog, "uAtlas"), 0);
       gl.uniform1i(loc(prog, "uGrid"), 2);
-      U = { time: loc(prog, "uTime"), ptr: loc(prog, "uPtr") };
+      U = { time: loc(prog, "uTime"), ptr: loc(prog, "uPtr"), alpha2: loc(prog, "uAlpha2") };
 
       ro.observe(box);
       io.observe(box);
@@ -482,12 +515,13 @@ export default function AsciiCanvas({ src, aspect, levels, onFail }: Props) {
       document.removeEventListener("visibilitychange", onVis);
       delete box.dataset.live;
       delete box.dataset.lens;
+      delete box.dataset.enigma;
       /* desmontado de vez (bloco saiu de cena): libera o contexto já, sem esperar o GC */
       setTimeout(() => {
         if (!canvas.isConnected) gl.getExtension("WEBGL_lose_context")?.loseContext();
       }, 0);
     };
-  }, [src, aspect, levels.black, levels.white, onFail]);
+  }, [src, aspect, levels.black, levels.white, bg, onFail]);
 
   return <canvas ref={ref} aria-hidden="true" className="ascii-canvas font-mono" />;
 }

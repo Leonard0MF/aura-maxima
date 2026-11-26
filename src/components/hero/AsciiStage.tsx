@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import type { BgImage } from "@/components/ascii/AsciiCanvas";
 import type { Levels } from "@/lib/ascii/core";
 import { claimGL } from "@/lib/gl-slot";
 
@@ -17,7 +18,7 @@ const AsciiCanvas = dynamic(() => import("@/components/ascii/AsciiCanvas"), { ss
  * enquanto é a seção 3D mais perto do centro da tela; longe, o canvas é
  * desmontado (contexto liberado) e volta ao chegar perto.
  */
-export function AsciiStage({ src, aspect, levels }: { src: string; aspect: number; levels: Levels }) {
+export function AsciiStage({ src, aspect, levels, bg }: { src: string; aspect: number; levels: Levels; bg?: BgImage }) {
   const [ready, setReady] = useState(false);
   const anchor = useRef<HTMLSpanElement>(null);
   const fail = useCallback(() => {
@@ -69,7 +70,7 @@ export function AsciiStage({ src, aspect, levels }: { src: string; aspect: numbe
   return (
     <>
       <span ref={anchor} hidden />
-      {ready && <AsciiCanvas src={src} aspect={aspect} levels={levels} onFail={fail} />}
+      {ready && <AsciiCanvas src={src} aspect={aspect} levels={levels} bg={bg} onFail={fail} />}
     </>
   );
 }

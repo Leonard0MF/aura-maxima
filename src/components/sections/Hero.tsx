@@ -8,7 +8,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 
 import { LangSwitch } from "@/components/LangSwitch";
 import { profile } from "@/content/profile";
-import { getPortrait } from "@/lib/ascii/image";
+import { getEnigma, getPortrait } from "@/lib/ascii/image";
 
 const nav = [
   { n: "01", key: "work", href: "#findings" },
@@ -23,6 +23,7 @@ const nav = [
  *
  * Camadas (de baixo para cima):
  *   0–1  HeroLayer surface: FULL-STACK / DEVELOPER + fallback estático
+ *        (retrato e, atrás dele, a Enigma em glifos finos)
  *   2    canvas WebGL: o retrato em ASCII ao vivo
  *   3    HeroLayer under: mesmo layout, fundo escuro, FULL-STACK / PENTESTER
  *        em âmbar e a foto; recortada por clip-path: circle() nas variáveis
@@ -31,6 +32,7 @@ const nav = [
  */
 export async function Hero() {
   const portrait = await getPortrait();
+  const enigma = await getEnigma();
   const locale = await getLocale();
   const t = await getTranslations("hero");
   const tn = await getTranslations("nav");
@@ -48,14 +50,18 @@ export async function Hero() {
       </h1>
 
       {/* 0–1 · superfície: tipografia + fallback estático do retrato */}
-      <HeroLayer variant="surface" portrait={portrait} alt={t("asciiAlt", { name: profile.name })} />
+      <HeroLayer variant="surface" portrait={portrait} bg={enigma} alt={t("asciiAlt", { name: profile.name })} />
 
       {/* 2 · retrato ASCII ao vivo (WebGL) */}
-      <AsciiStage src={portrait.src} aspect={portrait.aspect} levels={portrait.levels} />
+      <AsciiStage src={portrait.src} aspect={portrait.aspect} levels={portrait.levels} bg={{ src: enigma.src, aspect: enigma.aspect, levels: enigma.levels }} />
 
       {/* 3 · por baixo da superfície, recortada pela lente (clip-path + vars CSS) */}
-      <HeroLayer variant="under" portrait={portrait} alt="" />
+      <HeroLayer variant="under" portrait={portrait} bg={enigma} alt="" />
       <div className="lens-ring" aria-hidden="true" />
+      {/* legenda da Enigma: só quando a lente passa sobre ela (data-enigma) */}
+      <p className="hero-enigma-cap font-mono" aria-hidden="true">
+        {t("enigmaCaption")}
+      </p>
 
       {/* 4 · metadados */}
       <div className="hero-meta relative z-10 flex h-full flex-col justify-between p-4 font-mono text-[11px] tracking-wide uppercase sm:p-6 sm:text-xs">

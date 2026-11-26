@@ -148,7 +148,7 @@ export const DISK_RS = 9;
 
 /*
  * Onde fica o buraco negro num campo de w × h px. Fonte única para a cena e
- * para o círculo da transição (AuditPin).
+ * para o círculo da transição (AuditReveal).
  *  - largo: terço esquerdo, na altura do meio
  *  - estreito (aspecto < 0,9 ou < 640 px): no topo, centralizado,
  *    com o disco ocupando ~35% da largura

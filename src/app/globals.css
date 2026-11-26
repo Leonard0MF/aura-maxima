@@ -250,6 +250,60 @@ html[data-intro] .hero .hl-bot {
   -webkit-mask-size: 100% 100%;
   -webkit-mask-repeat: no-repeat;
 }
+/* ---------- Enigma (fundo do hero) ----------
+ * Caixa = enigmaRect() em core.ts (mesmas constantes, em unidades do .hero):
+ * altura min(42cqh, 36cqw / proporção), centro em (27cqw, 62cqh); abaixo de
+ * 640px: min(20cqh, 55cqw / proporção), centro em (30cqw, 40cqh). */
+.hero-enigma-box {
+  position: absolute;
+  left: 27cqw;
+  top: 62cqh;
+  height: min(42cqh, 36cqw / var(--ea));
+  aspect-ratio: var(--ea);
+  translate: -50% -50%;
+}
+@container (width < 640px) {
+  .hero-enigma-box {
+    left: 30cqw;
+    top: 40cqh;
+    height: min(20cqh, 55cqw / var(--ea));
+  }
+  .ascii-fallback--bg img {
+    opacity: 0.2;
+  }
+}
+/* fallback estático: glifos finos, apagados (nunca competem com o rosto) */
+.ascii-fallback--bg img {
+  opacity: 0.3;
+}
+/* legenda: canto inferior direito, só com a lente sobre a Enigma */
+.hero-enigma-cap {
+  position: absolute;
+  right: 1.5rem;
+  bottom: 1.5rem;
+  z-index: 11;
+  max-width: min(60ch, 42cqw);
+  font-size: 11px;
+  line-height: 1.5;
+  letter-spacing: 0.04em;
+  text-align: right;
+  color: var(--color-ink);
+  opacity: 0;
+  translate: 0 4px;
+  transition:
+    opacity 0.25s,
+    translate 0.25s;
+  pointer-events: none;
+}
+.hero[data-enigma] .hero-enigma-cap {
+  opacity: 1;
+  translate: 0 0;
+}
+@container (width < 640px) {
+  .hero-enigma-cap {
+    display: none;
+  }
+}
 .lens-ring {
   display: none;
   position: absolute;
@@ -513,37 +567,44 @@ html[data-js] .hero[data-live] .ascii-fallback {
   }
 }
 
-/* índice: texto compacto por categoria, com hairlines */
+/* índice em acordeão: 7 linhas fechadas (nº, nome, guia pontilhada,
+ * quantidade) com hairlines e respiro; abrir uma mostra os itens em lista
+ * vertical (2 colunas quando couber) e fecha as outras. Sem JS: tudo aberto. */
 .stack-index {
   display: flex;
   flex-direction: column;
-  padding: 1rem var(--gx, 1rem) 1.25rem;
-  font-size: 14px;
-  line-height: 1.45;
+  padding: 1.75rem var(--gx, 1rem) 2rem;
 }
 @media (min-width: 640px) {
   .stack-index {
-    padding-inline: 1.5rem;
+    padding-inline: 2rem;
   }
 }
 @media (min-width: 1024px) {
   .stack-index {
-    justify-content: center;
+    justify-content: safe center; /* alinhado ao centro do canvas; se não couber, começa do topo */
     min-height: 0;
     overflow-y: auto; /* só se a altura não der (telas muito baixas) */
-    padding-block: 0.5rem;
-    font-size: clamp(12.5px, 1.6svh, 14px);
-    line-height: 1.38;
+    padding: 1.25rem clamp(1.5rem, 3.2vw, 3.5rem);
   }
 }
+/* legenda dos níveis: uma linha discreta no topo */
 .stack-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.25rem 1rem;
-  padding-bottom: 0.45rem;
+  gap: 0.25rem 1.25rem;
+  padding-bottom: 1rem;
   color: var(--color-ink-soft);
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
+.stack-legend > span {
+  display: inline-flex;
+  align-items: center;
+}
+/* etiqueta de nível do popup da moeda (inalterada) */
 .stack-lvl {
   display: inline-block;
   margin-left: 0.4em;
@@ -558,75 +619,107 @@ html[data-js] .hero[data-live] .ascii-fallback {
   vertical-align: 0.12em;
   color: var(--color-ink-soft);
 }
-.stack-legend .stack-lvl {
-  margin: 0 0.25em 0 0;
+/* nível: ponto pequeno antes do nome (âmbar = prática, cinza escuro =
+ * familiaridade, cinza claro vazado = contato; sem nível = só o espaço) */
+.stack-dot {
+  display: inline-block;
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-right: 0.6em;
+  border-radius: 50%;
+}
+.stack-dot--practice {
+  background: var(--color-accent);
+}
+.stack-dot--familiar {
+  background: #57534c;
+}
+.stack-dot--contact {
+  box-shadow: inset 0 0 0 1.5px #a9a59c;
 }
 .stack-cat {
   border-top: 1px solid rgb(20 20 20 / 0.16);
-  padding: clamp(0.25rem, 0.6svh, 0.45rem) 0 clamp(0.3rem, 0.7svh, 0.55rem);
   transition: opacity 0.25s;
 }
 .stack-cat:last-child {
   border-bottom: 1px solid rgb(20 20 20 / 0.16);
 }
-/* com uma categoria destacada, as outras recuam no índice também */
-[data-stack][data-cat] .stack-cat {
-  opacity: 0.45;
-}
-[data-stack][data-cat="languages"] .stack-cat[data-cat="languages"],
-[data-stack][data-cat="frontend"] .stack-cat[data-cat="frontend"],
-[data-stack][data-cat="visual"] .stack-cat[data-cat="visual"],
-[data-stack][data-cat="backend"] .stack-cat[data-cat="backend"],
-[data-stack][data-cat="secTools"] .stack-cat[data-cat="secTools"],
-[data-stack][data-cat="secConcepts"] .stack-cat[data-cat="secConcepts"],
-[data-stack][data-cat="systems"] .stack-cat[data-cat="systems"] {
-  opacity: 1;
+/* com uma categoria aberta, as fechadas recuam um pouco */
+.stack-index:has(.stack-cat[data-open]) .stack-cat:not([data-open]) {
+  opacity: 0.55;
 }
 .stack-cat__btn {
   display: flex;
   width: 100%;
-  align-items: baseline;
-  gap: 0.6rem;
-  padding: 0.1rem 0;
+  min-height: clamp(44px, 6.2svh, 56px);
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0;
   font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.06em;
+  font-size: 12px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   text-align: left;
   cursor: pointer;
-}
-.stack-cat__btn:disabled {
-  cursor: default;
-  color: inherit;
 }
 .stack-cat__n,
 .stack-cat__count {
   color: var(--color-ink-soft);
 }
-.stack-cat__count {
-  margin-left: auto;
+.stack-cat__lead {
+  flex: 1;
+  min-width: 1.5rem;
+  height: 1px;
+  align-self: center;
+  translate: 0 0.25em;
+  background: radial-gradient(circle, rgb(20 20 20 / 0.3) 0.75px, transparent 1px) 0 50% / 6px 2px repeat-x;
 }
-.stack-cat__btn:not(:disabled):hover .stack-cat__name,
-.stack-cat__btn[aria-pressed="true"] .stack-cat__name {
+.stack-cat__btn:hover .stack-cat__name,
+.stack-cat__btn[aria-expanded="true"] .stack-cat__name {
   color: var(--color-accent-ink);
 }
-.stack-cat__btn[aria-pressed="true"] .stack-cat__name::after {
-  content: " ●";
-  font-size: 0.8em;
+.stack-cat__btn::after {
+  content: "+";
+  width: 1ch;
+  color: var(--color-ink-soft);
+  transition: rotate 0.25s;
+}
+.stack-cat__btn[aria-expanded="true"]::after {
+  rotate: 45deg;
 }
 .stack-cat__items {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0 0.2rem;
-  margin-top: 0.15rem;
+  columns: 2 9.5rem;
+  column-gap: 1.5rem;
+  padding: 0.15rem 0 0.9rem 2.15rem; /* alinhado ao nome, depois do número */
+  font-size: 15px;
+  line-height: 1.6;
 }
-.stack-cat__items li:not(:last-child)::after {
-  content: "·";
-  margin-left: 0.2rem;
-  color: rgb(20 20 20 / 0.35);
+@media (min-width: 1280px) {
+  .stack-cat__items {
+    font-size: 16px;
+  }
+}
+html[data-js] .stack-cat:not([data-open]) .stack-cat__items {
+  display: none;
+}
+.stack-cat[data-open] .stack-cat__items {
+  animation: stack-cat-in 0.28s ease-out;
+}
+@keyframes stack-cat-in {
+  from {
+    opacity: 0;
+    translate: 0 -4px;
+  }
+}
+.stack-cat__items li {
+  break-inside: avoid;
 }
 .stack-item {
-  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0;
+  text-align: left;
 }
 .stack-item--coin {
   cursor: pointer;
@@ -639,35 +732,27 @@ html[data-js] .hero[data-live] .ascii-fallback {
   color: var(--color-accent-ink);
   text-decoration-color: currentColor;
 }
-/* toque: itens clicáveis e categorias com alvo de 44 px */
+/* toque: categorias e itens do acordeão com alvo de 44 px */
 @media (pointer: coarse) {
-  .stack-cat__btn {
-    min-height: 44px;
-    align-items: center;
-  }
   .stack-cat__items li {
-    display: inline-flex;
+    display: flex;
+    min-height: 44px;
     align-items: center;
   }
   .stack-item--coin {
-    display: inline-flex;
     min-width: 44px;
     min-height: 44px;
-    align-items: center;
-    justify-content: center;
-  }
-  .stack-cat {
-    padding-block: 0;
-  }
-  .stack-index,
-  .stack-legend {
-    font-size: 14px;
   }
   /* "(Scroll) ↓" do hero nos tablets (no celular ele some) */
   .hero-scroll {
     min-width: 44px;
     min-height: 44px;
     align-items: center;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stack-cat[data-open] .stack-cat__items {
+    animation: none;
   }
 }
 /* celular: ~70svh (a seção não precisa caber inteira: rola normalmente) */
@@ -1011,81 +1096,90 @@ html:not([data-js]) .audit-list {
   z-index: 2;
   pointer-events: none;
 }
-.audit-grade {
+/* ---- entrada do AUDIT (AuditReveal): animação de tempo, sem pin ----
+ * Quando o topo da seção cruza ~60% da viewport (data-in), um círculo
+ * escuro nasce no centro do buraco negro e cobre a seção em ~900 ms
+ * (ease-out). Nada fica preso na tela. Tudo restrito ao .audit-wrap
+ * (relative + isolation + overflow: clip): nem o círculo nem o anel vazam
+ * para outras seções. Sem JS: a seção aparece pronta. */
+@property --k {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 1;
+}
+.audit-wrap {
+  position: relative;
+  isolation: isolate;
+  overflow: clip;
+  --bhx: 25%;
+  --bhy: 50%;
+  --rmax: 150vmax;
+}
+.audit-ring {
+  display: none;
+}
+html[data-reveal] .audit-wrap {
+  --k: 0;
+  --r: calc(var(--k) * var(--rmax));
+  transition: --k 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+}
+html[data-reveal] .audit-wrap:has(.audit[data-in]) {
+  --k: 1;
+}
+html[data-reveal] .audit-wrap:has(.audit[data-reset]) {
+  transition: none;
+}
+html[data-reveal] .audit {
+  background: #0b0d10;
+  clip-path: circle(var(--r) at var(--bhx) var(--bhy));
+}
+/* anel âmbar fino girando no limite do círculo, só enquanto ele cresce */
+html[data-reveal] .audit-ring {
+  display: block;
   position: absolute;
-  right: 6%;
-  top: 50%;
+  left: var(--bhx);
+  top: var(--bhy);
   z-index: 2;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  translate: 0 -50%;
-  color: var(--color-accent);
+  width: calc(2 * var(--r));
+  height: calc(2 * var(--r));
+  translate: -50% -50%;
+  border-radius: 50%;
   pointer-events: none;
-  text-shadow: 0 0 40px rgb(245 165 36 / 0.35);
-  animation: grade-in 0.6s cubic-bezier(0.2, 1.3, 0.4, 1) both;
+  opacity: calc(min(1, var(--k) * 25) * min(1, (1 - var(--k)) * 6));
+  box-shadow:
+    0 0 70px 28px rgb(11 13 16 / 0.42),
+    inset 0 0 50px 14px rgb(11 13 16 / 0.75);
 }
-.audit-grade > span:first-child {
-  font-size: clamp(7rem, 16vw, 15rem);
+html[data-reveal] .audit-ring::before,
+html[data-reveal] .audit-ring::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0 8%,
+    rgb(245 165 36 / 0.95) 18%,
+    transparent 30% 46%,
+    rgb(255 214 140 / 0.8) 58%,
+    transparent 70% 84%,
+    rgb(245 165 36 / 0.7) 92%,
+    transparent
+  );
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
+  animation: ring-spin 7s linear infinite;
 }
-/* sem nota (exemplo/pendente): um traço contido, não uma barra gigante */
-.audit-grade--none > span:first-child {
-  font-family: var(--font-mono);
-  font-size: clamp(2.5rem, 4vw, 3.5rem);
+html[data-reveal] .audit-ring::after {
+  inset: -7px;
+  opacity: 0.45;
+  mask: radial-gradient(farthest-side, transparent calc(100% - 14px), #000 calc(100% - 7px), transparent);
 }
-@keyframes grade-in {
-  from {
-    opacity: 0;
-    scale: 1.6;
+@keyframes ring-spin {
+  to {
+    rotate: 1turn;
   }
 }
-@media (max-width: 767px) {
-  .audit-grade {
-    right: 50%;
-    translate: 50% -50%;
-  }
-}
-/* fade antigo preso à seção: só quando a transição do círculo está desligada
- * (sem data-pin = reduced-motion, ou tela baixa em paisagem) */
-@supports (animation-timeline: view()) {
-  @media (prefers-reduced-motion: no-preference) {
-    html:not([data-pin]) .audit-bg,
-    html:not([data-pin]) .audit-field {
-      animation:
-        audit-dark-in linear both,
-        audit-dark-out linear both;
-      animation-timeline: --audit, --audit;
-      animation-range:
-        entry 10% entry 60%,
-        exit 30% exit 80%;
-    }
-    /* o texto é claro: só aparece com o fundo já escuro e some antes de ele
-     * clarear (nunca texto claro sobre o papel) */
-    html:not([data-pin]) .audit-body {
-      animation:
-        audit-dark-in linear both,
-        audit-dark-out linear both;
-      animation-timeline: --audit, --audit;
-      animation-range:
-        entry 60% entry 100%,
-        exit 0% exit 30%;
-    }
-  }
-  @media (prefers-reduced-motion: no-preference) and (max-height: 520px) {
-    html[data-pin] .audit-bg,
-    html[data-pin] .audit-field {
-      animation:
-        audit-dark-in linear both,
-        audit-dark-out linear both;
-      animation-timeline: --audit, --audit;
-      animation-range:
-        entry 10% entry 60%,
-        exit 30% exit 80%;
-    }
-  }
-}
-/* reduced-motion: fade simples de 300 ms ao entrar (data-in via IO) */
+/* reduced-motion: fade simples de 300 ms ao entrar */
 @media (prefers-reduced-motion: reduce) {
   html[data-js] .audit {
     opacity: 0;
@@ -1095,163 +1189,18 @@ html:not([data-js]) .audit-list {
     opacity: 1;
   }
 }
-
-/* ---- transição "cair no buraco negro" (AuditPin) ----
- * .audit-pin é o trecho de rolagem: 1 tela + abrir (70svh) + ler (80svh) +
- * fechar (70svh). Sobe meia tela por cima do fim da STACK e desce meia tela
- * por cima do começo do ABOUT; a camada sticky mostra a seção recortada por
- * um círculo centrado no buraco negro. Tudo fica preso ao .audit-pin:
- * relative + isolation + overflow: clip (clip, não hidden: hidden viraria
- * contêiner de rolagem e quebraria o sticky). Ele próprio não recebe
- * ponteiro; só a seção recebe, e o clip-path limita o acerto ao círculo. */
-@property --ko {
-  syntax: "<number>";
-  inherits: true;
-  initial-value: 1;
-}
-@property --kc {
-  syntax: "<number>";
-  inherits: true;
-  initial-value: 1;
-}
-.audit-pin {
-  position: relative; /* referência da âncora, com ou sem a transição */
-}
-.audit-anchor {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 1px;
-  height: 1px;
-  pointer-events: none;
-}
-.audit-ring {
-  display: none;
-}
-@media (min-height: 521px) {
-  html[data-pin] .audit-pin {
-    /* centro do buraco negro na tela (o mesmo da cena: 25% / 50%; em tela
-     * estreita, aspecto < 0,9, ele vai para o topo, no centro) */
-    --bhx: 25%;
-    --bhy: 50%;
-    --rmax: hypot(75vw, 50svh);
-    --k: calc(var(--ko) * var(--kc));
-    --r: calc(var(--k) * var(--rmax));
-    position: relative;
-    z-index: 2;
-    isolation: isolate;
-    overflow: clip;
-    height: calc(100svh * (1 + 0.7 + 0.8 + 0.7));
-    margin-block: -50svh;
-    pointer-events: none;
-    view-timeline: --apin block;
-  }
-  html[data-pin] .audit-anchor {
-    top: 70svh;
-  }
-  html[data-pin] .audit-stick {
-    position: sticky;
-    top: 0;
-    height: 100svh;
-    overflow: clip;
-  }
-  html[data-pin] .audit {
-    height: 100svh;
-    min-height: 0;
-    background: #0b0d10;
-    clip-path: circle(var(--r) at var(--bhx) var(--bhy));
-    pointer-events: auto;
-  }
-  /* anel âmbar fino girando no limite do círculo, com uma sombra que
-   * escurece a borda dos dois lados; some com o círculo fechado ou aberto */
-  html[data-pin] .audit-ring {
-    display: block;
-    position: absolute;
-    left: var(--bhx);
-    top: var(--bhy);
-    width: calc(2 * var(--r));
-    height: calc(2 * var(--r));
-    translate: -50% -50%;
-    border-radius: 50%;
-    pointer-events: none;
-    opacity: calc(min(1, var(--k) * 25) * min(1, (1 - var(--k)) * 6));
-    box-shadow:
-      0 0 70px 28px rgb(11 13 16 / 0.42),
-      inset 0 0 50px 14px rgb(11 13 16 / 0.75);
-  }
-  html[data-pin] .audit-ring::before,
-  html[data-pin] .audit-ring::after {
-    content: "";
-    position: absolute;
-    inset: -1px;
-    border-radius: 50%;
-    background: conic-gradient(
-      from 0deg,
-      transparent 0 8%,
-      rgb(245 165 36 / 0.95) 18%,
-      transparent 30% 46%,
-      rgb(255 214 140 / 0.8) 58%,
-      transparent 70% 84%,
-      rgb(245 165 36 / 0.7) 92%,
-      transparent
-    );
-    mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
-    animation: ring-spin 7s linear infinite;
-  }
-  /* brilho: o mesmo arco, mais largo e esmaecido nas duas bordas */
-  html[data-pin] .audit-ring::after {
-    inset: -7px;
-    opacity: 0.45;
-    mask: radial-gradient(farthest-side, transparent calc(100% - 14px), #000 calc(100% - 7px), transparent);
-  }
-  @media (max-aspect-ratio: 9/10) {
-    html[data-pin] .audit-pin {
-      --bhx: 50%;
-      --bhy: 29%;
-      --rmax: hypot(50vw, 71svh);
+/* saída para o ABOUT: o ABOUT entra rolando, com um fade curto no limite */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .about-sh {
+      animation: about-in linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 40%;
     }
   }
-  /* com suporte: o raio segue a rolagem do .audit-pin (faixa "contain" = o
-   * trecho em que a camada está presa); sem suporte, o AuditPin escreve
-   * --ko/--kc num rAF */
-  html[data-pin="css"] .audit-pin {
-    animation:
-      audit-open linear both,
-      audit-close linear both;
-    animation-timeline: --apin, --apin;
-    animation-range:
-      contain 0% contain 31.82%,
-      contain 68.18% contain 100%;
-  }
 }
-@keyframes audit-open {
+@keyframes about-in {
   from {
-    --ko: 0;
-  }
-  to {
-    --ko: 1;
-  }
-}
-@keyframes audit-close {
-  from {
-    --kc: 1;
-  }
-  to {
-    --kc: 0;
-  }
-}
-@keyframes ring-spin {
-  to {
-    rotate: 1turn;
-  }
-}
-@keyframes audit-dark-in {
-  from {
-    opacity: 0;
-  }
-}
-@keyframes audit-dark-out {
-  to {
     opacity: 0;
   }
 }
@@ -1804,8 +1753,9 @@ html:not([data-js]) .menu-btn {
     display: grid;
     grid-template-areas: "head" "field" "foot";
     grid-template-rows: auto minmax(0, 1fr) auto;
-    height: auto;
-    min-height: 100svh;
+    /* a seção é exatamente a tela: o campo fica com o que sobra (≥ ~55svh) */
+    height: 100svh;
+    min-height: 560px;
   }
   .audit-body {
     display: contents;
@@ -1825,7 +1775,7 @@ html:not([data-js]) .menu-btn {
     position: relative;
     inset: auto;
     z-index: auto; /* sem contexto de empilhamento: o bottom sheet fica acima do texto */
-    height: 55svh;
+    height: auto;
     min-height: 0;
   }
   .audit-foot {
@@ -1843,17 +1793,7 @@ html:not([data-js]) .menu-btn {
     font-size: 10.5px;
     letter-spacing: 0.01em;
   }
-  /* pin (transição): a seção é exatamente a tela; o campo fica com o resto */
-  html[data-pin] .audit {
-    min-height: 0;
-  }
-  html[data-pin] .audit-field {
-    height: auto;
-  }
-  /* nada de texto dentro do canvas: a nota já está no bloco de baixo */
-  .audit-grade {
-    display: none;
-  }
+  /* nada de texto dentro do canvas: o progresso vira só leitura de tela */
   .audit-progress {
     position: absolute;
     width: 1px;

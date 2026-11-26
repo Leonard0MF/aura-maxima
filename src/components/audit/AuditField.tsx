@@ -15,7 +15,7 @@ const STATUS: Record<CheckStatus, string> = {
 };
 
 /* textos do servidor (messages: audit.*); progress/done usam {lit} e {total} */
-export type AuditLabels = { status: Record<string, string>; progress: string; done: string; gradeExample: string; gradePending: string; close: string };
+export type AuditLabels = { status: Record<string, string>; progress: string; done: string; close: string };
 const fill = (s: string, v: Record<string, number>) => s.replace(/\{(\w+)\}/g, (_, k: string) => String(v[k] ?? ""));
 
 /*
@@ -35,7 +35,7 @@ const fill = (s: string, v: Record<string, number>) => s.replace(/\{(\w+)\}/g, (
  * mesma cena + a lista dos dados em texto (que sempre existe para leitores
  * de tela).
  */
-export function AuditField({ nodes, grade, score, example, labels }: { nodes: AuditNode[]; grade: string | null; score: number | null; example: boolean; labels: AuditLabels }) {
+export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: AuditLabels }) {
   const ref = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const [card, setCard] = useState(-1);
@@ -315,14 +315,6 @@ export function AuditField({ nodes, grade, score, example, labels }: { nodes: Au
         </p>
       )}
 
-      {reveal && (
-        <div className={`audit-grade ${grade ? "" : "audit-grade--none"}`} role="status">
-          <span className="font-display leading-none">{grade ?? "—"}</span>
-          <span className="font-mono text-[11px] tracking-wide uppercase">
-            {grade ? `${score ?? "—"}/100 · Aegis` : example ? labels.gradeExample : labels.gradePending}
-          </span>
-        </div>
-      )}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import path from "node:path";
 
+import { enigma } from "@/content/enigma";
 import { portrait } from "@/content/portrait";
 
 import { PRE_COLS, RATIO, autoLevels, renderText, toneDensity, type Levels } from "./core";
@@ -29,11 +30,21 @@ export function getPortrait(cols = PRE_COLS) {
   return p;
 }
 
-async function build(cols: number): Promise<AsciiImageData> {
+/* Enigma do fundo do hero: mesmo pipeline, glifos finos (.:-=+) no SVG */
+let enigmaP: Promise<AsciiImageData> | null = null;
+export function getEnigma() {
+  return (enigmaP ??= buildImage(enigma.file, enigma.photo.src, 90, true, 828));
+}
+
+function build(cols: number) {
+  return buildImage(portrait.file, portrait.photo.src, cols, false, 1080);
+}
+
+async function buildImage(rel: string, photoSrc: string, cols: number, thin: boolean, srcW: number): Promise<AsciiImageData> {
   const { default: sharp } = await import("sharp");
   const W = 256;
   /* só no build (SSG): o ignore evita que o Turbopack rastreie o projeto inteiro */
-  const file = path.join(/*turbopackIgnore: true*/ process.cwd(), portrait.file);
+  const file = path.join(/*turbopackIgnore: true*/ process.cwd(), rel);
   /* luminância com o retrato composto sobre branco: pixel transparente vira
    * claro (célula vazia), nunca preto (glifo denso) */
   const { data, info } = await sharp(file)
@@ -65,7 +76,7 @@ async function build(cols: number): Promise<AsciiImageData> {
     const k = cellPx * 2;
     const blur = (at(x - k, y) + at(x + k, y) + at(x, y - k) + at(x, y + k)) / 4;
     return toneDensity(l, blur, u, v, levels);
-  });
+  }, thin);
 
   const mask = await figureMask(sharp, data, alpha, hasAlpha, info.width, info.height);
 
@@ -73,7 +84,7 @@ async function build(cols: number): Promise<AsciiImageData> {
     mask,
     /* a URL com hash do import estático, otimizada: a MESMA para a textura
      * do shader, a foto da lente e o ABOUT (uma só requisição, em cache) */
-    src: `/_next/image?url=${encodeURIComponent(portrait.photo.src)}&w=1080&q=75`,
+    src: `/_next/image?url=${encodeURIComponent(photoSrc)}&w=${srcW}&q=75`,
     aspect,
     svg: toSvg(text, cols, rows),
     levels,
