@@ -2,9 +2,10 @@
 
 import { useEffect, useRef } from "react";
 
-import { GLYPHS, RATIO, cellWidth, enigmaRect, portraitRect, type Levels } from "@/lib/ascii/core";
+import { BG_SUB, GLYPHS, RATIO, cellWidth, enigmaRect, portraitRect, type Levels } from "@/lib/ascii/core";
 
-import { FRAG, GRID_FRAG, VERT } from "./shader";
+import { createIntroWords } from "./introWords";
+import { FRAG, GRID_FRAG, INTRO_FS, INTRO_VS, VERT } from "./shader";
 
 export type BgImage = { src: string; aspect: number; levels: Levels };
 type Props = { src: string; aspect: number; levels: Levels; bg?: BgImage; onFail: () => void };
@@ -12,7 +13,12 @@ type Props = { src: string; aspect: number; levels: Levels; bg?: BgImage; onFail
 /* Atlas: cada glifo pré-renderizado uma vez numa faixa (fillText só aqui). */
 const TILE_W = 40;
 const TILE_H = Math.round(TILE_W * RATIO);
-const INTRO_END = 2;
+/* intro "descriptografia" (escala do desktop, ≤ 2,2 s; o celular comprime
+ * para ≤ 1,8 s): voo dos glifos até FLY_END, metadados e lente a partir de
+ * META_AT; termina em INTRO_END (um frame de folga antes do limite) */
+const INTRO_END = 2.15;
+const FLY_END = 1.45;
+const META_AT = 1.6;
 /* raio do ponto âmbar da lente no espaço vazio (≈10px de diâmetro) */
 const DOT_R = 5;
 
@@ -97,15 +103,20 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
 
     /* Compila sem consultar o status: com KHR_parallel_shader_compile o
      * driver trabalha em paralelo e a main thread não trava (ver init). */
-    const link = (fs: string) => {
+    const link = (fs: string, vs = VERT) => {
       const p = gl.createProgram()!;
-      gl.attachShader(p, compile(gl, gl.VERTEX_SHADER, VERT));
+      gl.attachShader(p, compile(gl, gl.VERTEX_SHADER, vs));
       gl.attachShader(p, compile(gl, gl.FRAGMENT_SHADER, fs));
       gl.linkProgram(p);
       return p;
     };
     const prog = link(FRAG);
     const gridProg = link(GRID_FRAG);
+    const html0 = document.documentElement;
+    /* intro: só na 1ª carga da sessão (o boot marca data-intro="1"; um
+     * clique/tecla/rolagem antes daqui já a cancelou) */
+    let intro = html0.dataset.intro === "1";
+    const introProg = intro ? link(INTRO_FS, INTRO_VS) : null;
     const parallel = gl.getExtension("KHR_parallel_shader_compile");
     gl.bindVertexArray(gl.createVertexArray());
     gl.clearColor(0, 0, 0, 0);
@@ -116,8 +127,40 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
     let imgW = 1;
     const html = document.documentElement;
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const intro = html.dataset.intro === "1";
     let introStart = 0;
+    /* celular: a mesma sequência em 1,8 s (u = tempo na escala do desktop) */
+    const ik = box.clientWidth < 640 ? 1.75 / INTRO_END : 1;
+    let words: ReturnType<typeof createIntroWords> | null = null;
+    let metaOn = false;
+    let introCounts = { p: 0, e: 0, ex: 0, ey: 0 };
+    const finishIntro = () => {
+      if (!intro) return;
+      intro = false;
+      words?.destroy();
+      words = null;
+      html.dataset.introMeta = "";
+      html.dataset.intro = "done";
+      for (const ev of SKIP) removeEventListener(ev, skip);
+    };
+    /* qualquer clique, tecla ou rolagem completa a animação na hora */
+    const skip = () => {
+      if (!intro) return;
+      html.dataset.introSkip = "";
+      introStart = performance.now() - INTRO_END * ik * 1000 - 1;
+      finishIntro();
+      schedule();
+    };
+    const SKIP = ["pointerdown", "keydown", "wheel", "touchstart", "scroll"] as const;
+    /* testes (?introdebug): congela a intro num instante u */
+    let seekU = -1;
+    if (location.search.includes("introdebug"))
+      (window as unknown as { __intro: unknown }).__intro = {
+        seek: (v: number) => {
+          seekU = v;
+          schedule();
+        },
+      };
+    if (intro) for (const ev of SKIP) addEventListener(ev, skip, { passive: true });
 
     /* ---------- geometria + grade ---------- */
     const gridTex = gl.createTexture();
@@ -139,11 +182,11 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
      * em baixa resolução, lido 1× no cliente) ou sobre o TEXTO de FULL-STACK /
      * DEVELOPER (retângulos medidos por Range no resize). No resto, ponto. */
     let sil: { a: Uint8ClampedArray; w: number; h: number } | null = null;
-    let words: { x0: number; y0: number; x1: number; y1: number }[] = [];
+    let wordRects: { x0: number; y0: number; x1: number; y1: number }[] = [];
     const measureWords = () => {
       const br = box.getBoundingClientRect();
       const rg = document.createRange();
-      words = [...box.querySelectorAll(".hero-layer--surface .hl")].flatMap((el) => {
+      wordRects = [...box.querySelectorAll(".hero-layer--surface .hl")].flatMap((el) => {
         const tn = el.firstChild;
         if (!tn) return [];
         rg.selectNodeContents(tn);
@@ -161,7 +204,7 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
     /* lente sobre a Enigma (e não sobre o retrato, que fica por cima) */
     const overEnigma = (x: number, y: number) => has2 && !inSil(sil, rect, x, y) && inSil(sil2, rect2, x, y);
     const overTarget = (x: number, y: number) => {
-      if (words.some((w) => x >= w.x0 && x <= w.x1 && y >= w.y0 && y <= w.y1)) return true;
+      if (wordRects.some((w) => x >= w.x0 && x <= w.x1 && y >= w.y0 && y <= w.y1)) return true;
       return inSil(sil, rect, x, y) || overEnigma(x, y);
     };
     const fitLetters = () => {
@@ -205,7 +248,7 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
 
       /* texels da foto por célula → nível de mipmap da amostragem */
       const lod = Math.max(0, Math.log2(imgW / (rect.w / cw)));
-      for (const p of [gridProg, prog]) {
+      for (const p of introProg ? [gridProg, prog, introProg] : [gridProg, prog]) {
         gl.useProgram(p);
         gl.uniform1f(loc(p, "uCell"), cw * dpr);
         gl.uniform4f(loc(p, "uRect"), rect.x * dpr, (H - rect.y - rect.h) * dpr, rect.w * dpr, rect.h * dpr);
@@ -224,6 +267,23 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
           gl.uniform1f(loc(p, "uImg2Lod"), Math.max(0, Math.log2(img2W / (rect2.w / cw))));
         }
       }
+      if (introProg) {
+        /* instâncias do voo: a grade inteira do retrato e a grade fina da Enigma */
+        const ce = cw * dpr * BG_SUB, he = ce * RATIO;
+        const ex = Math.floor((rect2.x * dpr) / ce), ey = Math.floor(((H - rect2.y - rect2.h) * dpr) / he);
+        introCounts = { p: gridCols * gridRows, e: 0, ex: 0, ey: 0 };
+        if (has2) {
+          introCounts.ex = Math.ceil((rect2.w * dpr) / ce) + 2;
+          introCounts.ey = Math.ceil((rect2.h * dpr) / he) + 2;
+          introCounts.e = introCounts.ex * introCounts.ey;
+        }
+        gl.useProgram(introProg);
+        gl.uniform2f(loc(introProg, "uE0"), ex, ey);
+        gl.uniform1f(loc(introProg, "uAlpha2"), rect2.alpha);
+        const f = face();
+        gl.uniform2f(loc(introProg, "uFace"), f.x * dpr, (H - f.y) * dpr);
+        words?.setup();
+      }
       gl.viewport(0, 0, canvas.width, canvas.height);
       fitLetters();
       measureWords();
@@ -231,10 +291,9 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
       schedule();
     };
 
-    const drawGrid = (t: number, it: number) => {
+    const drawGrid = (t: number) => {
       gl.useProgram(gridProg);
       gl.uniform1f(loc(gridProg, "uTime"), t);
-      gl.uniform1f(loc(gridProg, "uIntro"), it);
       gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
       gl.viewport(0, 0, gridCols, gridRows);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -313,7 +372,8 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
     const frame = (now: number) => {
       raf = 0;
       if (!alive) return;
-      if (now - lastDraw < (cost > 12 ? 80 : 30)) return schedule();
+      /* ~30 fps; na intro, todo frame */
+      if (!intro && now - lastDraw < (cost > 12 ? 80 : 30)) return schedule();
       lastDraw = now;
       const t = (now - t0) / 1000;
       const sinceInput = now - lastInput;
@@ -344,20 +404,33 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
       py += (ty - py) * 0.5;
       pa += ((sinceInput < 1200 ? 1 : 0) - pa) * 0.1;
 
-      const it = intro ? (now - introStart) / 1000 : 99;
+      /* u: segundos da intro na escala do desktop (99 = sem intro) */
+      const u = seekU >= 0 ? seekU : introStart && (intro || now - introStart < INTRO_END * ik * 1000) ? Math.max(0, now - introStart) / (1000 * ik) : 99;
       /* tremulação a 4 Hz (a grade só é refeita nesses passos) */
       const step = Math.floor(t * 4);
-      if (it < INTRO_END || step !== lastStep) {
+      if (step !== lastStep) {
         lastStep = step;
-        drawGrid(t, it);
+        drawGrid(t);
       }
-      /* a lente só abre depois que o retrato trava */
-      const open = Math.min(1, Math.max(0, (it - 1.5) / 0.6));
+      if (intro) {
+        if (words && !words.draw(u)) {
+          words.destroy();
+          words = null;
+        }
+        /* metadados, navegação e idiomas entram em sequência; a lente acorda */
+        if (u >= META_AT && !metaOn) {
+          metaOn = true;
+          html.dataset.introMeta = "";
+          box.querySelector<HTMLElement>(".lens-ring")?.setAttribute("data-wake", "");
+        }
+        if (u >= INTRO_END) finishIntro();
+      }
+      /* a lente abre junto com os metadados (sem intro: já aberta) */
+      const open = u >= 99 ? 1 : Math.min(1, Math.max(0, (u - META_AT) / (INTRO_END - META_AT)));
       const full = DOT_R + (lensR - DOT_R) * big;
       const r = full * (1 - Math.pow(1 - open, 3)) * (0.6 + 0.4 * lv) * (lv > 0 ? 1 : 0);
       gl.uniform1f(U.time, t);
-      /* a Enigma aparece depois que o retrato trava */
-      gl.uniform1f(U.alpha2, rect2.alpha * Math.min(1, Math.max(0, (it - 1.2) / 0.8)));
+      gl.uniform1f(U.alpha2, rect2.alpha);
       gl.uniform3f(U.ptr, px * dpr, (H - py) * dpr, pa);
       /* lente: só variáveis CSS (a camada under e o aro leem daqui) */
       const lr = Math.round(r * 10) / 10;
@@ -386,10 +459,28 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
       /* só sombreia os retângulos do retrato e da Enigma (nada fora das silhuetas) */
       const x0 = Math.max(0, Math.min(rect.x, has2 ? rect2.x : rect.x)), y0 = Math.max(0, Math.min(rect.y, has2 ? rect2.y : rect.y));
       const x1 = Math.min(W, Math.max(rect.x + rect.w, has2 ? rect2.x + rect2.w : 0)), y1 = Math.min(H, Math.max(rect.y + rect.h, has2 ? rect2.y + rect2.h : 0));
-      gl.enable(gl.SCISSOR_TEST);
-      gl.scissor(Math.floor(x0 * dpr), Math.floor((H - y1) * dpr), Math.ceil((x1 - x0) * dpr), Math.ceil((y1 - y0) * dpr));
-      gl.drawArrays(gl.TRIANGLES, 0, 3);
-      gl.disable(gl.SCISSOR_TEST);
+      if (introProg && u < FLY_END) {
+        /* voo: cada glifo é um quad instanciado, da origem aleatória à célula */
+        gl.useProgram(introProg);
+        gl.uniform1f(loc(introProg, "uFly"), u);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        gl.uniform1i(loc(introProg, "uMode"), 0);
+        gl.uniform1i(loc(introProg, "uCols"), gridCols);
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, introCounts.p);
+        if (introCounts.e) {
+          gl.uniform1i(loc(introProg, "uMode"), 1);
+          gl.uniform1i(loc(introProg, "uCols"), introCounts.ex);
+          gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, introCounts.e);
+        }
+        gl.disable(gl.BLEND);
+        gl.useProgram(prog);
+      } else {
+        gl.enable(gl.SCISSOR_TEST);
+        gl.scissor(Math.floor(x0 * dpr), Math.floor((H - y1) * dpr), Math.ceil((x1 - x0) * dpr), Math.ceil((y1 - y0) * dpr));
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.disable(gl.SCISSOR_TEST);
+      }
       cost = cost * 0.8 + (performance.now() - now) * 0.2;
 
       /* trava real (GPU lenta, GL por software mascarado pelo navegador):
@@ -429,11 +520,12 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
     canvas.addEventListener("webglcontextlost", onLost);
     document.addEventListener("visibilitychange", onVis);
 
+    const progs = introProg ? [prog, gridProg, introProg] : [prog, gridProg];
     (async () => {
       if (parallel) {
         await new Promise<void>((done) => {
           const poll = () =>
-            !alive || [prog, gridProg].every((p) => gl.getProgramParameter(p, parallel.COMPLETION_STATUS_KHR))
+            !alive || progs.every((p) => gl.getProgramParameter(p, parallel.COMPLETION_STATUS_KHR))
               ? done()
               : setTimeout(poll, 32);
           poll();
@@ -441,6 +533,8 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
       }
       if (!alive) return;
       if (![prog, gridProg].every((p) => gl.getProgramParameter(p, gl.LINK_STATUS))) return onFail();
+      /* intro que não compilou: segue sem ela */
+      if (introProg && !gl.getProgramParameter(introProg, gl.LINK_STATUS)) intro = false;
 
       const family = getComputedStyle(canvas).fontFamily;
       const img = new Image();
@@ -469,16 +563,27 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
         img2W = img2.naturalWidth;
         has2 = true;
       }
-      for (const p of [gridProg, prog]) {
+      for (const p of introProg ? [gridProg, prog, introProg] : [gridProg, prog]) {
         gl.useProgram(p);
         gl.uniform1i(loc(p, "uImg"), 1);
         gl.uniform1i(loc(p, "uImg2"), 3);
+      }
+      if (introProg) {
+        gl.useProgram(introProg);
+        gl.uniform1i(loc(introProg, "uAtlas"), 0);
+        gl.uniform1i(loc(introProg, "uGrid"), 2);
       }
       gl.useProgram(prog);
       gl.uniform1i(loc(prog, "uAtlas"), 0);
       gl.uniform1i(loc(prog, "uGrid"), 2);
       U = { time: loc(prog, "uTime"), ptr: loc(prog, "uPtr"), alpha2: loc(prog, "uAlpha2") };
 
+      /* intro: palavras num canvas 2D por cima do texto real; a capa de papel
+       * do servidor (data-intro="1") sai quando ele já cobre as palavras */
+      if (intro) {
+        words = createIntroWords(box, family, box.clientWidth < 640);
+        html.style.setProperty("--ik", String(ik));
+      }
       ro.observe(box);
       io.observe(box);
       resize();
@@ -487,23 +592,30 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
         if (!alive) return;
         fitLetters();
         measureWords();
+        words?.setup();
       });
       const f = face();
       lx = tx = f.x;
       ly = ty = f.y;
+      /* chegou tarde (a capa de segurança do CSS já mostrou o texto em 2,5 s):
+       * não cobre de novo o que já apareceu */
+      if (intro && performance.now() > 2300) finishIntro();
       introStart = performance.now();
       ready = true;
       schedule();
       box.dataset.live = "";
       if (intro) {
+        words?.draw(0);
+        html.dataset.intro = "run";
         try {
           sessionStorage.setItem("recon:intro", "1");
         } catch {}
-      }
+      } else if (html.dataset.intro === "1" || html.dataset.intro === "run") html.dataset.intro = "done";
     })();
 
     return () => {
       alive = false;
+      finishIntro();
       cancelAnimationFrame(raf);
       ro.disconnect();
       io.disconnect();
