@@ -482,37 +482,44 @@ html[data-js] .hero[data-live] .ascii-fallback {
   }
 }
 
-/* índice: texto compacto por categoria, com hairlines */
+/* índice em acordeão: 7 linhas fechadas (nº, nome, guia pontilhada,
+ * quantidade) com hairlines e respiro; abrir uma mostra os itens em lista
+ * vertical (2 colunas quando couber) e fecha as outras. Sem JS: tudo aberto. */
 .stack-index {
   display: flex;
   flex-direction: column;
-  padding: 1rem var(--gx, 1rem) 1.25rem;
-  font-size: 14px;
-  line-height: 1.45;
+  padding: 1.75rem var(--gx, 1rem) 2rem;
 }
 @media (min-width: 640px) {
   .stack-index {
-    padding-inline: 1.5rem;
+    padding-inline: 2rem;
   }
 }
 @media (min-width: 1024px) {
   .stack-index {
-    justify-content: center;
+    justify-content: safe center; /* alinhado ao centro do canvas; se não couber, começa do topo */
     min-height: 0;
     overflow-y: auto; /* só se a altura não der (telas muito baixas) */
-    padding-block: 0.5rem;
-    font-size: clamp(12.5px, 1.6svh, 14px);
-    line-height: 1.38;
+    padding: 1.25rem clamp(1.5rem, 3.2vw, 3.5rem);
   }
 }
+/* legenda dos níveis: uma linha discreta no topo */
 .stack-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.25rem 1rem;
-  padding-bottom: 0.45rem;
+  gap: 0.25rem 1.25rem;
+  padding-bottom: 1rem;
   color: var(--color-ink-soft);
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
+.stack-legend > span {
+  display: inline-flex;
+  align-items: center;
+}
+/* etiqueta de nível do popup da moeda (inalterada) */
 .stack-lvl {
   display: inline-block;
   margin-left: 0.4em;
@@ -527,75 +534,107 @@ html[data-js] .hero[data-live] .ascii-fallback {
   vertical-align: 0.12em;
   color: var(--color-ink-soft);
 }
-.stack-legend .stack-lvl {
-  margin: 0 0.25em 0 0;
+/* nível: ponto pequeno antes do nome (âmbar = prática, cinza escuro =
+ * familiaridade, cinza claro vazado = contato; sem nível = só o espaço) */
+.stack-dot {
+  display: inline-block;
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-right: 0.6em;
+  border-radius: 50%;
+}
+.stack-dot--practice {
+  background: var(--color-accent);
+}
+.stack-dot--familiar {
+  background: #57534c;
+}
+.stack-dot--contact {
+  box-shadow: inset 0 0 0 1.5px #a9a59c;
 }
 .stack-cat {
   border-top: 1px solid rgb(20 20 20 / 0.16);
-  padding: clamp(0.25rem, 0.6svh, 0.45rem) 0 clamp(0.3rem, 0.7svh, 0.55rem);
   transition: opacity 0.25s;
 }
 .stack-cat:last-child {
   border-bottom: 1px solid rgb(20 20 20 / 0.16);
 }
-/* com uma categoria destacada, as outras recuam no índice também */
-[data-stack][data-cat] .stack-cat {
-  opacity: 0.45;
-}
-[data-stack][data-cat="languages"] .stack-cat[data-cat="languages"],
-[data-stack][data-cat="frontend"] .stack-cat[data-cat="frontend"],
-[data-stack][data-cat="visual"] .stack-cat[data-cat="visual"],
-[data-stack][data-cat="backend"] .stack-cat[data-cat="backend"],
-[data-stack][data-cat="secTools"] .stack-cat[data-cat="secTools"],
-[data-stack][data-cat="secConcepts"] .stack-cat[data-cat="secConcepts"],
-[data-stack][data-cat="systems"] .stack-cat[data-cat="systems"] {
-  opacity: 1;
+/* com uma categoria aberta, as fechadas recuam um pouco */
+.stack-index:has(.stack-cat[data-open]) .stack-cat:not([data-open]) {
+  opacity: 0.55;
 }
 .stack-cat__btn {
   display: flex;
   width: 100%;
-  align-items: baseline;
-  gap: 0.6rem;
-  padding: 0.1rem 0;
+  min-height: clamp(44px, 6.2svh, 56px);
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0;
   font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.06em;
+  font-size: 12px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   text-align: left;
   cursor: pointer;
-}
-.stack-cat__btn:disabled {
-  cursor: default;
-  color: inherit;
 }
 .stack-cat__n,
 .stack-cat__count {
   color: var(--color-ink-soft);
 }
-.stack-cat__count {
-  margin-left: auto;
+.stack-cat__lead {
+  flex: 1;
+  min-width: 1.5rem;
+  height: 1px;
+  align-self: center;
+  translate: 0 0.25em;
+  background: radial-gradient(circle, rgb(20 20 20 / 0.3) 0.75px, transparent 1px) 0 50% / 6px 2px repeat-x;
 }
-.stack-cat__btn:not(:disabled):hover .stack-cat__name,
-.stack-cat__btn[aria-pressed="true"] .stack-cat__name {
+.stack-cat__btn:hover .stack-cat__name,
+.stack-cat__btn[aria-expanded="true"] .stack-cat__name {
   color: var(--color-accent-ink);
 }
-.stack-cat__btn[aria-pressed="true"] .stack-cat__name::after {
-  content: " ●";
-  font-size: 0.8em;
+.stack-cat__btn::after {
+  content: "+";
+  width: 1ch;
+  color: var(--color-ink-soft);
+  transition: rotate 0.25s;
+}
+.stack-cat__btn[aria-expanded="true"]::after {
+  rotate: 45deg;
 }
 .stack-cat__items {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0 0.2rem;
-  margin-top: 0.15rem;
+  columns: 2 9.5rem;
+  column-gap: 1.5rem;
+  padding: 0.15rem 0 0.9rem 2.15rem; /* alinhado ao nome, depois do número */
+  font-size: 15px;
+  line-height: 1.6;
 }
-.stack-cat__items li:not(:last-child)::after {
-  content: "·";
-  margin-left: 0.2rem;
-  color: rgb(20 20 20 / 0.35);
+@media (min-width: 1280px) {
+  .stack-cat__items {
+    font-size: 16px;
+  }
+}
+html[data-js] .stack-cat:not([data-open]) .stack-cat__items {
+  display: none;
+}
+.stack-cat[data-open] .stack-cat__items {
+  animation: stack-cat-in 0.28s ease-out;
+}
+@keyframes stack-cat-in {
+  from {
+    opacity: 0;
+    translate: 0 -4px;
+  }
+}
+.stack-cat__items li {
+  break-inside: avoid;
 }
 .stack-item {
-  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0;
+  text-align: left;
 }
 .stack-item--coin {
   cursor: pointer;
@@ -607,6 +646,11 @@ html[data-js] .hero[data-live] .ascii-fallback {
 .stack-item--coin:focus-visible {
   color: var(--color-accent-ink);
   text-decoration-color: currentColor;
+}
+@media (prefers-reduced-motion: reduce) {
+  .stack-cat[data-open] .stack-cat__items {
+    animation: none;
+  }
 }
 @media (max-width: 639px) {
   .stack-box {

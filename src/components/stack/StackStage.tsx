@@ -98,7 +98,8 @@ export function StackStage({ tokens, mobile: mobileIds, cats }: { tokens: { id: 
     const cells = [...section.querySelectorAll<HTMLElement>("[data-cell]")];
     let picked: string | null = null; // categoria fixada por clique
     const show = (cat: string | null) => {
-      const ids = cat ? cats[cat] ?? [] : null;
+      /* categoria sem moedas (ex.: conceitos): abre o texto, sem filtro no 3D */
+      const ids = cat && cats[cat]?.length ? cats[cat] : null;
       scene?.highlight(ids);
       for (const c of cells) c.toggleAttribute("data-dim", !!ids && !ids.includes(c.dataset.tech!));
       if (cat) section.dataset.cat = cat;
@@ -106,19 +107,32 @@ export function StackStage({ tokens, mobile: mobileIds, cats }: { tokens: { id: 
     };
     const pick = (cat: string | null) => {
       picked = cat;
-      for (const b of catBtns) b.setAttribute("aria-pressed", String(b.dataset.catBtn === cat));
+      /* acordeão: só a categoria escolhida fica aberta */
+      for (const b of catBtns) {
+        const on = b.dataset.catBtn === cat;
+        b.setAttribute("aria-expanded", String(on));
+        b.closest(".stack-cat")?.toggleAttribute("data-open", on);
+      }
       show(cat);
+      /* telas baixas: o índice rola por dentro até a categoria aberta caber
+       * (só o índice; a página não se mexe) */
+      const ix = section.querySelector<HTMLElement>(".stack-index");
+      const el = cat ? section.querySelector<HTMLElement>(`.stack-cat[data-cat="${cat}"]`) : null;
+      if (ix && el && ix.scrollHeight > ix.clientHeight) {
+        const r = el.getBoundingClientRect(), q = ix.getBoundingClientRect();
+        if (r.bottom > q.bottom) ix.scrollBy({ top: Math.min(r.bottom - q.bottom + 12, r.top - q.top), behavior: "smooth" });
+      }
     };
     const fine = matchMedia("(hover: hover) and (pointer: fine)");
     const onOver = (e: PointerEvent) => {
       if (!fine.matches || e.pointerType !== "mouse") return;
       const b = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-cat-btn]");
-      if (b && !b.disabled) show(b.dataset.catBtn!);
+      if (b && !picked) show(b.dataset.catBtn!);
     };
     const onOut = (e: PointerEvent) => {
       if (!fine.matches || e.pointerType !== "mouse") return;
       const b = (e.target as HTMLElement).closest("[data-cat-btn]");
-      if (b && !b.contains(e.relatedTarget as Node)) show(picked);
+      if (b && !picked && !b.contains(e.relatedTarget as Node)) show(null);
     };
 
     let bumpT = 0;

@@ -6,8 +6,8 @@ import { stackCoins, stackCoinsMobile, stackCount, stackIndex, stackLevel, type 
 import { STACK_ICONS } from "@/lib/stack-icons";
 
 /*
- * 02 · STACK. Canvas 3D à esquerda (~60%) com as moedas e o índice compacto
- * à direita (~40%), por categoria; no celular, canvas em cima e índice
+ * 02 · STACK. Canvas 3D à esquerda (~60%) com as moedas e o índice em
+ * acordeão à direita (~40%), por categoria; no celular, canvas em cima e índice
  * embaixo. Tudo que é conteúdo vem daqui (servidor): o índice (que é também
  * a lista acessível), o grid de logos do modo estático e o dialog de cada
  * moeda. A interação índice ↔ 3D fica no StackStage.
@@ -83,37 +83,44 @@ export async function Stack() {
         </div>
 
         <nav className="stack-index" aria-label={tr("index")}>
+          {/* legenda dos níveis: uma vez só, discreta */}
           <p className="stack-legend">
             {(["practice", "familiar", "contact"] as const).map((l) => (
               <span key={l}>
-                <span className="stack-lvl">{tr(`levels.${l}`)}</span> {tr(`levelsHelp.${l}`)}
+                <span className={`stack-dot stack-dot--${l}`} aria-hidden="true" />
+                {tr(`levels.${l}`)}
+                <span className="sr-only">: {tr(`levelsHelp.${l}`)}.</span>
               </span>
             ))}
           </p>
           <p className="sr-only">{tr("filterHint")}</p>
+          {/* acordeão: todas fechadas; abrir uma fecha as outras e destaca as moedas dela */}
           {stackIndex.map((c, i) => (
             <div key={c.id} className="stack-cat" data-cat={c.id}>
               <h3 className="stack-cat__head">
-                <button type="button" className="stack-cat__btn" data-cat-btn={c.id} aria-pressed="false" disabled={!catCoins[c.id].length || undefined}>
+                <button type="button" className="stack-cat__btn" data-cat-btn={c.id} aria-expanded="false" aria-controls={`stack-cat-${c.id}`}>
                   <span className="stack-cat__n" aria-hidden="true">
                     {String(i + 1).padStart(2, "0")}
                   </span>
                   <span className="stack-cat__name">{tr(`cats.${c.id}`)}</span>
-                  <span className="stack-cat__count" aria-hidden="true">
+                  <span className="stack-cat__lead" aria-hidden="true" />
+                  <span className="stack-cat__count">
+                    <span className="sr-only">(</span>
                     {c.items.length}
+                    <span className="sr-only">)</span>
                   </span>
                 </button>
               </h3>
-              <ul className="stack-cat__items">
+              <ul id={`stack-cat-${c.id}`} className="stack-cat__items">
                 {c.items.map((it) => {
-                  const lvl = it.level ? tr(`levels.${it.level}`) : null;
                   const label = (
                     <>
+                      <span className={`stack-dot${it.level ? ` stack-dot--${it.level}` : ""}`} aria-hidden="true" />
                       {itemName(it)}
-                      {lvl && (
-                        <span className="stack-lvl">
-                          <span className="sr-only"> · {tr("levelLabel")}: </span>
-                          {lvl}
+                      {it.level && (
+                        <span className="sr-only">
+                          {" "}
+                          · {tr("levelLabel")}: {tr(`levels.${it.level}`)}
                         </span>
                       )}
                     </>
