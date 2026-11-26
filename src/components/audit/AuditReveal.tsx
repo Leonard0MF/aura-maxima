@@ -41,22 +41,27 @@ export function AuditReveal({ children }: { children: React.ReactNode }) {
     if (field) ro.observe(field);
     center();
 
-    /* entra: topo cruza 60% da viewport (a margem de baixo corta 40%) */
-    const ioIn = new IntersectionObserver(
-      ([e]) => {
-        if (e.isIntersecting) section.dataset.in = "";
-      },
-      { rootMargin: "0px 0px -40% 0px" },
-    );
-    /* saiu inteira: reseta sem animar, para a próxima entrada */
-    const ioOut = new IntersectionObserver(([e]) => {
-      if (e.isIntersecting) return;
-      section.dataset.reset = "";
-      delete section.dataset.in;
-      requestAnimationFrame(() => requestAnimationFrame(() => delete section.dataset.reset));
-    });
-    ioIn.observe(section);
-    ioOut.observe(section);
+    /* Os observers olham o .audit-wrap, NUNCA a seção: o Chromium aplica o
+     * clip-path do próprio alvo no cálculo, e com o círculo em raio 0 a
+     * seção conta como invisível mesmo no meio da tela. Eles só avisam; a
+     * decisão lê a geometria de agora (callbacks dos dois observers podem
+     * chegar no mesmo lote, em qualquer ordem).
+     *  - entra: o topo cruzou 60% da viewport e a seção ainda está na tela
+     *  - saiu inteira: volta ao início sem animar, para a próxima entrada */
+    const sync = () => {
+      const r = wrap.getBoundingClientRect(), vh = innerHeight;
+      if (r.top <= vh * 0.6 && r.bottom > 0) {
+        if (!("in" in section.dataset)) section.dataset.in = "";
+      } else if ((r.bottom <= 0 || r.top >= vh) && "in" in section.dataset) {
+        section.dataset.reset = "";
+        delete section.dataset.in;
+        requestAnimationFrame(() => requestAnimationFrame(() => delete section.dataset.reset));
+      }
+    };
+    const ioIn = new IntersectionObserver(sync, { rootMargin: "0px 0px -40% 0px" });
+    const ioOut = new IntersectionObserver(sync);
+    ioIn.observe(wrap);
+    ioOut.observe(wrap);
     return () => {
       ro.disconnect();
       ioIn.disconnect();
