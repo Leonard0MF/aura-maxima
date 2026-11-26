@@ -1350,6 +1350,60 @@ html:not([data-js]) .audit-list {
   z-index: 2;
   pointer-events: none;
 }
+/* modo estático (sem WebGL2, erro de shader, reduced-motion): no celular,
+ * os nós viram cartões tocáveis sobre a imagem; no desktop, fica a lista em
+ * texto do rodapé */
+.audit-taps {
+  display: none;
+}
+@media (max-width: 639px) {
+  .audit[data-static] .audit-taps {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 42%;
+    bottom: 0;
+    z-index: 1;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0 1rem 0.75rem;
+    pointer-events: auto;
+  }
+  .audit[data-static] .audit-list {
+    display: none;
+  }
+}
+.audit-tap {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 0.75rem;
+  border: 1px solid var(--color-line);
+  background: rgb(11 13 16 / 0.82);
+  color: var(--color-paper);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-align: left;
+  text-transform: uppercase;
+}
+.audit-tap[aria-expanded="true"] {
+  border-color: var(--color-accent);
+}
+.audit-tap__value {
+  margin: 0;
+  padding: 0.5rem 0.75rem 0.65rem;
+  border: 1px solid var(--color-accent);
+  border-top: 0;
+  background: rgb(11 13 16 / 0.92);
+  color: var(--color-paper);
+  font-size: 12px;
+  line-height: 1.4;
+}
 /* ---- entrada do AUDIT (AuditReveal): animação de tempo, sem pin ----
  * Quando o topo da seção cruza ~60% da viewport (data-in), um círculo
  * escuro nasce no centro do buraco negro e cobre a seção em ~900 ms
