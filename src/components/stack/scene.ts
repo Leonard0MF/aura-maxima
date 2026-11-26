@@ -1,28 +1,31 @@
 /*
  * STACK: logos da stack como fichas 3D "de geleia".
  *
- * three.js puro (sem React Three Fiber) + cannon-es. Este módulo inteiro só é
- * baixado quando a seção se aproxima (import dinâmico em StackStage).
+ * three.js puro, sem lib de física. Este módulo inteiro só é baixado quando a
+ * seção se aproxima (import dinâmico em StackStage).
  *
  *   ficha  = moeda low-poly (lathe, borda arredondada) + logo extrudado (SVG
  *            do simple-icons com bevel pequeno) por cima
- *   física = cilindros de 12 lados num chão com 4 paredes nas bordas visíveis
- *            (recalculadas no resize); velocidade limitada e "reset" suave de
- *            quem escapar. O cursor é uma esfera cinemática pequena que só
- *            empurra com o mouse rápido ou durante o arraste, nunca sobre uma
- *            peça. Clique = soltar sem mover (< 5 px); arrastar usa uma
- *            restrição ponto-a-ponto (soltar = arremessar)
- *   geleia = mola amortecida por ficha: no impacto, achata no eixo da batida
- *            e estica no plano perpendicular (~400 ms para assentar)
+ *   física = 2D no plano da mesa, implementação própria: cada peça é um
+ *            círculo (x, z), colisão círculo-círculo e paredes invisíveis nas
+ *            bordas visíveis do canvas (recalculadas no resize). Passo fixo de
+ *            1/60 s, damping forte, restituição 0.3, velocidade limitada e
+ *            peças que dormem paradas. Rotação só no eixo vertical (moedas
+ *            deslizando): nada tomba, nada gira sozinho, nada sai da mesa
+ *   queda  = animação (tween com bounce), uma peça depois da outra; não é física
+ *   geleia = mola amortecida por ficha: no impacto (colisão, parede, fim da
+ *            queda) achata no eixo da batida e estica no perpendicular
+ *   mouse  = arrastar move a peça (que empurra as outras); soltar com
+ *            velocidade = arremesso; clique sem mover (< 5 px) abre o popup.
+ *            O cursor sem arrastar não empurra nada
  *   luz    = RoomEnvironment (PMREM, gerado uma vez) + 1 direcional com
- *            shadow map (1024, PCF com radius: o PCFSoft foi removido do three). Só as fichas projetam sombra e só o
- *            chão (ShadowMaterial transparente) recebe: a sombra existe
- *            apenas onde há peça, nunca solta na cena
- *   foco   = clicar numa peça: ela sai da física, voa (~500 ms) até a frente
- *            da câmera, cresce e flutua; um véu cor de papel apaga as outras.
- *            Ao fechar, volta para o mundo e cai de novo com a física.
- * Renderiza sob demanda: com tudo parado (corpos dormindo, molas assentadas,
- * sem ponteiro), o loop para até o próximo evento.
+ *            shadow map (1024). Só as fichas projetam sombra e só o chão
+ *            (ShadowMaterial transparente) recebe: a sombra existe apenas onde
+ *            há peça
+ *   foco   = clicar numa peça: ela voa (~500 ms) até a frente da câmera,
+ *            cresce, flutua e gira devagar; um véu cor de papel apaga as
+ *            outras. Ao fechar, volta para o lugar dela na mesa.
+ * Renderiza sob demanda: com tudo parado, o loop para até o próximo evento.
  */
 import {
   ACESFilmicToneMapping,
@@ -52,17 +55,6 @@ import {
 } from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js";
-import {
-  Body,
-  Cylinder,
-  Plane as CPlane,
-  PointToPointConstraint,
-  SAPBroadphase,
-  Sphere,
-  Vec3,
-  World,
-  type ContactEquation,
-} from "cannon-es";
 
 export type Token = { id: string; name: string; path: string; hex: string };
 export type SceneEvents = {
@@ -78,16 +70,23 @@ const LOGO = 1.15; // largura do logo (unidades do mundo)
 const PAPER = new Color("#efe9dc");
 const INK = new Color("#1b1916");
 const WARM = new Color("#e9a640");
-/* empurrão do cursor */
-const PUSH_RADIUS = 0.7;
-const PUSH_MIN_SPEED = 900; // px/s: abaixo disso o cursor não empurra nada
-const PUSH_MAX = 9; // velocidade máxima da esfera do cursor (unidades/s)
-const MAX_SPEED = 14; // velocidade máxima de qualquer peça
+/* física 2D no plano da mesa (x, z) */
+const STEP = 1 / 60; // passo fixo
+const DAMP = 2.6; // damping linear forte (1/s): uma peça solta para em ~1 s
+const SPIN_DAMP = 3.2; // damping da rotação em torno do eixo vertical
+const RESTITUTION = 0.3;
+const MAX_SPEED = 12; // velocidade máxima de qualquer peça (unidades/s)
+const MAX_SPIN = 6; // rad/s
+const SLEEP_SPEED = 0.06;
+const SLEEP_TIME = 0.4; // s quase parada → dorme
 const CLICK_PX = 5; // até isso de movimento entre down e up = clique
-/* grupos de colisão: o cursor nunca toca a peça que está sendo arrastada */
-const G_PIECE = 1;
-const G_DRAGGED = 2;
-const G_CURSOR = 4;
+const LIFT = 0.35; // altura da peça na mão (só visual: a sombra se afasta)
+/* queda inicial: tween com bounce, uma peça depois da outra */
+const DROP_H = 4.5;
+/* acima disso a peça não projeta sombra (nada de sombra sem peça à vista) */
+const SHADOW_Y = 2;
+const DROP_MS = 750;
+const DROP_GAP = 85;
 
 /* moeda com borda arredondada (perfil girado em torno de Y) */
 function coinGeometry() {
@@ -137,14 +136,29 @@ function tone(hex: string) {
 }
 const lum = (c: Color) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
 
+type State = "hidden" | "falling" | "table" | "drag" | "focus" | "returning";
 type Piece = {
   token: Token;
-  body: Body;
   group: Group;
   hit: Mesh;
-  /* mola da geleia */
+  state: State;
+  /* física 2D */
   x: number;
-  v: number;
+  z: number;
+  vx: number;
+  vz: number;
+  yaw: number;
+  w: number;
+  rest: number; // tempo quase parada (s)
+  asleep: boolean;
+  y: number; // só visual (queda, peça na mão)
+  /* queda */
+  t0: number;
+  yaw0: number;
+  landed: boolean;
+  /* mola da geleia: x = achatamento no eixo n (frame local da peça) */
+  sx: number;
+  sv: number;
   n: Vector3;
 };
 
@@ -156,6 +170,16 @@ const yieldMain = () =>
     else setTimeout(r, 0);
   });
 
+const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+/* bounce clássico (easeOutBounce) */
+function bounce(t: number) {
+  const n = 7.5625, d = 2.75;
+  if (t < 1 / d) return n * t * t;
+  if (t < 2 / d) return n * (t -= 1.5 / d) * t + 0.75;
+  if (t < 2.5 / d) return n * (t -= 2.25 / d) * t + 0.9375;
+  return n * (t -= 2.625 / d) * t + 0.984375;
+}
+
 export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[], on: SceneEvents) {
   const box = canvas.parentElement!;
   const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
@@ -164,6 +188,8 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = ACESFilmicToneMapping;
   renderer.toneMappingExposure = 0.95;
+  /* sombra real: PCF com radius (o PCFSoftShadowMap foi removido do three
+   * r18x; ele avisa e cai para PCF). Só as peças projetam, só o chão recebe. */
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = PCFShadowMap;
 
@@ -185,7 +211,7 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
   sun.target.position.set(0, 0, 0);
   scene.add(sun, sun.target);
 
-  /* chão visual: invisível, só recebe sombra; mesmo plano y = 0 do chão da física */
+  /* chão: invisível, só recebe sombra (a sombra existe apenas onde há peça) */
   const floorMat = new ShadowMaterial({ color: new Color("#2a2015"), opacity: 0.3, depthWrite: false });
   const floorMesh = new Mesh(new PlaneGeometry(60, 60), floorMat);
   floorMesh.rotation.x = -Math.PI / 2;
@@ -196,52 +222,8 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
   camera.position.set(0, 19, 11);
   camera.lookAt(0, 0, 0.4);
 
-  /* ---------- física ---------- */
-  const world = new World({ gravity: new Vec3(0, -32, 0), allowSleep: true });
-  world.broadphase = new SAPBroadphase(world);
-  world.defaultContactMaterial.friction = 0.32;
-  world.defaultContactMaterial.restitution = 0.22;
-  (world.solver as unknown as { iterations: number }).iterations = 8;
-
-  const floor = new Body({ mass: 0, shape: new CPlane() });
-  floor.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
-  world.addBody(floor);
-  const walls = [0, 1, 2, 3].map(() => {
-    const b = new Body({ mass: 0, shape: new CPlane() });
-    world.addBody(b);
-    return b;
-  });
+  /* paredes invisíveis nas bordas visíveis do canvas (recalculadas no resize) */
   const bounds = { x: 6, z0: -4, z1: 4 };
-
-  const cursor = new Body({ mass: 0, type: Body.KINEMATIC, shape: new Sphere(PUSH_RADIUS) });
-  cursor.position.set(0, -40, 0);
-  cursor.collisionFilterGroup = G_CURSOR;
-  cursor.collisionFilterMask = G_PIECE;
-  world.addBody(cursor);
-  /* limite de velocidade + "reset" suave de quem escapar das paredes */
-  world.addEventListener("postStep", () => {
-    for (const p of pieces) {
-      const b = p.body;
-      if (!inWorld.has(b)) continue;
-      const v = b.velocity;
-      const sp = Math.hypot(v.x, v.y, v.z);
-      if (sp > MAX_SPEED) v.scale(MAX_SPEED / sp, v);
-      const w = b.angularVelocity;
-      const ws = Math.hypot(w.x, w.y, w.z);
-      if (ws > 18) w.scale(18 / ws, w);
-      const out =
-        b.position.y < -2 ||
-        b.position.y > 14 ||
-        Math.abs(b.position.x) > bounds.x + 0.5 ||
-        b.position.z < bounds.z0 - 0.5 ||
-        b.position.z > bounds.z1 + 0.5;
-      if (out) respawn(p);
-    }
-  });
-  const joint = new Body({ mass: 0, type: Body.KINEMATIC });
-  joint.collisionFilterGroup = 0;
-  joint.collisionFilterMask = 0;
-  world.addBody(joint);
 
   /* ---------- fichas ---------- */
   const coin = coinGeometry();
@@ -272,40 +254,20 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
     group.add(hit);
     const lg = logoGeometry(token.path);
     if (lg) {
-      /* logo nas duas faces: a ficha pode cair (ou ser jogada) de cabeça para baixo */
-      const under = lg.clone().rotateX(Math.PI);
-      const top = new Mesh(lg, logoMat), bottom = new Mesh(under, logoMat);
-      top.castShadow = bottom.castShadow = true;
-      group.add(top, bottom);
-      disposables.push(lg, under);
+      const top = new Mesh(lg, logoMat);
+      top.castShadow = true;
+      group.add(top);
+      disposables.push(lg);
     }
     scene.add(group);
-
     disposables.push(bodyMat, logoMat);
-
-    const body = new Body({
-      mass: 1,
-      shape: new Cylinder(R, R, T, 12),
-      linearDamping: 0.06,
-      angularDamping: 0.12,
-      sleepSpeedLimit: 0.18,
-      sleepTimeLimit: 0.5,
-      collisionFilterGroup: G_PIECE,
-      collisionFilterMask: G_PIECE | G_DRAGGED | G_CURSOR,
-    });
-    const piece: Piece = { token, body, group, hit, x: 0, v: 0, n: new Vector3(0, 1, 0) };
+    const piece: Piece = {
+      token, group, hit, state: "hidden",
+      x: 0, z: 0, vx: 0, vz: 0, yaw: 0, w: 0, rest: 0, asleep: true, y: 0,
+      t0: 0, yaw0: 0, landed: false,
+      sx: 0, sv: 0, n: new Vector3(0, 1, 0),
+    };
     hit.userData.piece = piece;
-
-    const q = new Quaternion();
-    body.addEventListener("collide", (e: { contact: ContactEquation }) => {
-      const iv = Math.abs(e.contact.getImpactVelocityAlongNormal());
-      if (iv < 1.4) return;
-      const ni = e.contact.ni;
-      q.set(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w).invert();
-      piece.n.set(ni.x, ni.y, ni.z).applyQuaternion(q).normalize();
-      piece.v += Math.min(iv * 0.55, 7);
-      wake();
-    });
     return piece;
   };
   /* extrusão dos logos: 3 por vez, devolvendo a thread entre os blocos */
@@ -315,14 +277,127 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
     if (i % 3 === 2) await yieldMain();
   }
 
-  /* véu: plano de papel entre a pilha e a peça em foco (sem 2º contexto) */
+  /* véu: plano de papel entre a mesa e a peça em foco (sem 2º contexto) */
   const veilMat = new MeshBasicMaterial({ color: new Color("#e9e7e2"), transparent: true, opacity: 0, depthWrite: false, toneMapped: false });
   const veil = new Mesh(new PlaneGeometry(400, 400), veilMat);
   veil.visible = false;
   veil.renderOrder = 5;
   scene.add(veil);
   disposables.push(veilMat, veil.geometry);
-  const inWorld = new Set<Body>();
+
+  /* geleia: chute na mola com a normal do impacto (mundo → frame da peça) */
+  const squash = (p: Piece, nx: number, ny: number, nz: number, amount: number) => {
+    const c = Math.cos(p.yaw), s = Math.sin(p.yaw);
+    p.n.set(nx * c - nz * s, ny, nx * s + nz * c).normalize();
+    p.sv += Math.min(amount, 6);
+  };
+  const wakeP = (p: Piece) => {
+    p.asleep = false;
+    p.rest = 0;
+  };
+
+  /* ---------- física 2D ---------- */
+  const onTable = (p: Piece) => p.state === "table" || p.state === "drag";
+  function step(dt: number) {
+    const live = pieces.filter(onTable);
+    const kd = Math.exp(-DAMP * dt), ks = Math.exp(-SPIN_DAMP * dt);
+    for (const p of live) {
+      if (p.state === "drag" || p.asleep) continue;
+      p.vx *= kd;
+      p.vz *= kd;
+      const sp = Math.hypot(p.vx, p.vz);
+      if (sp > MAX_SPEED) {
+        p.vx *= MAX_SPEED / sp;
+        p.vz *= MAX_SPEED / sp;
+      }
+      p.w = clamp(p.w * ks, -MAX_SPIN, MAX_SPIN);
+      p.x += p.vx * dt;
+      p.z += p.vz * dt;
+      p.yaw += p.w * dt;
+    }
+    /* colisão círculo-círculo: itera até a maior sobreposição ficar abaixo de
+     * 0.02 (no máximo 24 vezes). A peça na mão é ~7× mais pesada: empurra as
+     * outras, mas cede quando uma delas está presa na parede */
+    for (let it = 0, worst = 1; it < 24 && worst > 0.02; it++) {
+      worst = 0;
+      for (let i = 0; i < live.length; i++) {
+        for (let j = i + 1; j < live.length; j++) {
+          const a = live[i], b = live[j];
+          const dx = b.x - a.x, dz = b.z - a.z;
+          const d2 = dx * dx + dz * dz;
+          if (d2 >= 4 * R * R) continue;
+          const d = Math.sqrt(d2);
+          /* centros coincidentes: separa no eixo x */
+          const nx = d > 1e-6 ? dx / d : 1, nz = d > 1e-6 ? dz / d : 0;
+          const ia = a.state === "drag" ? 0.15 : 1, ib = b.state === "drag" ? 0.15 : 1;
+          const pen = 2 * R - d;
+          /* duas dormindo só acordam se de fato se sobrepõem */
+          if (a.asleep && b.asleep && pen < 0.02) continue;
+          worst = Math.max(worst, pen);
+          a.x -= nx * pen * (ia / (ia + ib));
+          a.z -= nz * pen * (ia / (ia + ib));
+          b.x += nx * pen * (ib / (ia + ib));
+          b.z += nz * pen * (ib / (ia + ib));
+          const rvx = b.vx - a.vx, rvz = b.vz - a.vz;
+          const vn = rvx * nx + rvz * nz;
+          if (vn < 0 && it === 0) {
+            const jn = (-(1 + RESTITUTION) * vn) / (ia + ib);
+            a.vx -= jn * nx * ia;
+            a.vz -= jn * nz * ia;
+            b.vx += jn * nx * ib;
+            b.vz += jn * nz * ib;
+            /* atrito na borda: gira um pouco (só no eixo vertical) */
+            const vt = rvx * -nz + rvz * nx;
+            a.w += vt * 0.25 * ia;
+            b.w -= vt * 0.25 * ib;
+            if (-vn > 1.2) {
+              squash(a, nx, 0, nz, -vn * 0.5 * ia);
+              squash(b, nx, 0, nz, -vn * 0.5 * ib);
+            }
+          }
+          wakeP(a);
+          wakeP(b);
+        }
+      }
+      /* paredes: rebate com a mesma restituição */
+      for (const p of live) {
+        const hitWall = (axis: "x" | "z", lim: number, sign: number) => {
+          const v = axis === "x" ? p.vx : p.vz;
+          if (axis === "x") p.x = lim;
+          else p.z = lim;
+          if (v * sign > 0) {
+            if (axis === "x") p.vx = -v * RESTITUTION;
+            else p.vz = -v * RESTITUTION;
+            if (Math.abs(v) > 1.2) squash(p, axis === "x" ? sign : 0, 0, axis === "z" ? sign : 0, Math.abs(v) * 0.5);
+          }
+        };
+        if (p.x < -bounds.x + R) hitWall("x", -bounds.x + R, -1);
+        if (p.x > bounds.x - R) hitWall("x", bounds.x - R, 1);
+        if (p.z < bounds.z0 + R) hitWall("z", bounds.z0 + R, -1);
+        if (p.z > bounds.z1 - R) hitWall("z", bounds.z1 - R, 1);
+      }
+    }
+    /* limites depois dos impulsos: nenhuma peça passa da velocidade nem do giro máximos */
+    for (const p of live) {
+      const sp = Math.hypot(p.vx, p.vz);
+      if (sp > MAX_SPEED) {
+        p.vx *= MAX_SPEED / sp;
+        p.vz *= MAX_SPEED / sp;
+      }
+      p.w = clamp(p.w, -MAX_SPIN, MAX_SPIN);
+    }
+    /* dormir quando quase parada */
+    for (const p of live) {
+      if (p.state === "drag" || p.asleep) continue;
+      if (Math.hypot(p.vx, p.vz) < SLEEP_SPEED && Math.abs(p.w) < 0.08) {
+        p.rest += dt;
+        if (p.rest > SLEEP_TIME) {
+          p.asleep = true;
+          p.vx = p.vz = p.w = 0;
+        }
+      } else p.rest = 0;
+    }
+  }
 
   /* ---------- tamanho / paredes ---------- */
   const ray = new Raycaster();
@@ -340,143 +415,147 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
     H = box.clientHeight;
     renderer.setSize(W, H, false);
     camera.aspect = W / H;
-    /* telas estreitas: afasta a câmera para caber a largura mínima do chão */
+    /* telas estreitas: afasta a câmera para caber a largura mínima da mesa */
     const dist = W / H < 0.9 ? 1.55 : W / H < 1.3 ? 1.2 : 1;
     camera.position.set(0, 19 * dist, 11 * dist);
     camera.lookAt(0, 0, 0.4);
     camera.updateProjectionMatrix();
-    /* paredes nas bordas VISÍVEIS: mede o frustum no chão e a 1,2 de altura
-     * (uma peça empinada perto da borda de baixo sairia de vista) e usa o mais
-     * apertado de cada lado */
+    /* paredes nas bordas VISÍVEIS da mesa (frustum medido no chão e na
+     * altura da peça na mão; usa o mais apertado de cada lado) */
     const at = (y: number) => {
       const bl = onPlane(-1, -1, y), tl = onPlane(-1, 1, y);
       return bl && tl ? { x: Math.abs(bl.x), z1: bl.z, z0: tl.z } : null;
     };
-    const a0 = at(0), a1 = at(1.2);
+    const a0 = at(0), a1 = at(T + LIFT);
     if (a0 && a1) {
-      bounds.x = Math.min(a0.x, a1.x) - 0.15;
-      bounds.z1 = Math.min(a0.z1, a1.z1) - 0.25;
-      bounds.z0 = Math.max(a0.z0, a1.z0) + 0.6;
+      bounds.x = Math.min(a0.x, a1.x) - 0.1;
+      bounds.z1 = Math.min(a0.z1, a1.z1) - 0.15;
+      bounds.z0 = Math.max(a0.z0, a1.z0) + 0.15;
     }
-    const set = (b: Body, x: number, z: number, ry: number) => {
-      b.position.set(x, 0, z);
-      b.quaternion.setFromEuler(0, ry, 0);
-    };
-    /* frustum da sombra cobrindo o palco (+ folga para peças empinadas) */
+    /* frustum da sombra cobrindo a mesa */
     const sc = sun.shadow.camera;
-    const span = Math.max(bounds.x, Math.abs(bounds.z0), Math.abs(bounds.z1)) + 2.5;
+    const span = Math.max(bounds.x, Math.abs(bounds.z0), Math.abs(bounds.z1)) + 2;
     sc.left = -span;
     sc.right = span;
     sc.top = span;
     sc.bottom = -span;
     sc.updateProjectionMatrix();
-    set(walls[0], -bounds.x, 0, Math.PI / 2);
-    set(walls[1], bounds.x, 0, -Math.PI / 2);
-    set(walls[2], 0, bounds.z0, 0);
-    set(walls[3], 0, bounds.z1, Math.PI);
     for (const p of pieces) {
-      const b = p.body;
-      b.position.x = Math.max(-bounds.x + R, Math.min(bounds.x - R, b.position.x));
-      b.position.z = Math.max(bounds.z0 + R, Math.min(bounds.z1 - R, b.position.z));
-      b.wakeUp();
+      if (!onTable(p)) continue;
+      p.x = clamp(p.x, -bounds.x + R, bounds.x - R);
+      p.z = clamp(p.z, bounds.z0 + R, bounds.z1 - R);
+      wakeP(p);
     }
     wake();
   };
 
-  function castShadow(p: Piece, on: boolean) {
-    p.group.traverse((o) => {
-      if ((o as Mesh).isMesh) o.castShadow = on;
-    });
-  }
-
-  /* ---------- queda ---------- */
+  /* ---------- queda (animação, não física) ---------- */
+  /* posições finais sem sobreposição (amostragem com rejeição; se faltar
+   * espaço, a física separa na chegada) */
+  const spots = () => {
+    const out: { x: number; z: number }[] = [];
+    const ok = (x: number, z: number, m: number) => out.every((o) => Math.hypot(o.x - x, o.z - z) >= m);
+    for (let i = 0; i < pieces.length; i++) {
+      let best = { x: 0, z: 0 };
+      for (let k = 0; k < 120; k++) {
+        const x = (Math.random() * 2 - 1) * (bounds.x - R);
+        const z = bounds.z0 + R + Math.random() * (bounds.z1 - bounds.z0 - 2 * R);
+        best = { x, z };
+        if (ok(x, z, 2 * R + 0.25)) break;
+      }
+      out.push(best);
+    }
+    return out;
+  };
   let dropped = false;
-  const timers: number[] = [];
+  let dropEnd = 0;
   const drop = () => {
     if (dropped) return;
     dropped = true;
+    const now = performance.now();
+    const pts = spots();
     pieces.forEach((p, i) => {
-      timers.push(
-        window.setTimeout(() => {
-          const b = p.body;
-          if (inWorld.has(b) || focus?.piece === p) return;
-          b.position.set((Math.random() * 2 - 1) * (bounds.x - R) * 0.9, 7 + Math.random() * 2, bounds.z0 + R + Math.random() * (bounds.z1 - bounds.z0 - 2 * R));
-          /* logos quase de pé para quem olha: giro pequeno no eixo vertical */
-          b.quaternion.setFromEuler((Math.random() - 0.5) * 0.9, (Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 0.9);
-          b.angularVelocity.set((Math.random() - 0.5) * 3, 0, (Math.random() - 0.5) * 3);
-          b.velocity.set(0, 0, 0);
-          world.addBody(b);
-          inWorld.add(b);
-          p.group.visible = true;
-          wake();
-        }, i * 85),
-      );
+      if (p.state !== "hidden") return;
+      p.state = "falling";
+      p.x = pts[i].x;
+      p.z = pts[i].z;
+      p.vx = p.vz = p.w = 0;
+      p.yaw = (Math.random() - 0.5) * 0.9;
+      p.yaw0 = p.yaw + (Math.random() - 0.5) * 2.4;
+      p.t0 = now + i * DROP_GAP;
+      p.landed = false;
+      p.y = DROP_H;
+      castShadow(p, false);
+      p.group.visible = true;
     });
-  };
-
-  /* "reset" suave: quem escapou volta caindo de cima, num ponto livre do palco */
-  function respawn(p: Piece) {
-    const b = p.body;
-    b.position.set((Math.random() * 2 - 1) * (bounds.x - R) * 0.6, 5, (bounds.z0 + bounds.z1) / 2 + (Math.random() - 0.5) * (bounds.z1 - bounds.z0 - 2 * R) * 0.5);
-    b.velocity.set(0, -1, 0);
-    b.angularVelocity.set(0, 0, 0);
-    b.quaternion.setFromEuler(0, Math.random() * 0.6 - 0.3, 0);
-    b.wakeUp();
+    dropEnd = now + pieces.length * DROP_GAP + DROP_MS + 600;
     wake();
+  };
+  function fall(p: Piece, now: number) {
+    const k = clamp((now - p.t0) / DROP_MS, 0, 1);
+    const e = bounce(k);
+    p.y = DROP_H * (1 - e);
+    const sh = p.y < SHADOW_Y;
+    if (sh !== p.hit.castShadow) castShadow(p, sh);
+    /* gira um pouco no eixo vertical enquanto cai, assentando no ângulo final */
+    const yawNow = p.yaw0 + (p.yaw - p.yaw0) * Math.min(1, k * 1.6);
+    /* geleia em cada toque no chão (primeiro impacto em k ≈ 0.36) */
+    if (!p.landed && k >= 0.364) {
+      p.landed = true;
+      p.n.set(0, 1, 0);
+      p.sv += 5.5;
+    }
+    if (k >= 1) {
+      p.y = 0;
+      p.state = "table";
+      wakeP(p);
+    }
+    return yawNow;
   }
 
   /* ---------- ponteiro ---------- */
   let ptr: { nx: number; ny: number; x: number; y: number } | null = null;
   let ptrMoved = false;
   let lastInput = 0;
-  /* velocidade do ponteiro (px/s, suavizada): o cursor só empurra acima do limiar */
-  let speed = 0;
-  let lastMove = { x: 0, y: 0, t: 0 };
   /* down numa peça: vira arrasto só depois de CLICK_PX de movimento */
-  let press: { piece: Piece; point: Vector3; sx: number; sy: number; id: number } | null = null;
-  let drag: { piece: Piece; c: PointToPointConstraint } | null = null;
+  let press: { piece: Piece; sx: number; sy: number; ox: number; oz: number } | null = null;
+  let drag: { piece: Piece; tx: number; tz: number; ox: number; oz: number } | null = null;
   let hovered: Piece | null = null;
   const toNdc = (e: PointerEvent) => {
     const r = canvas.getBoundingClientRect(); // só em eventos, nunca por frame
     const x = e.clientX - r.left, y = e.clientY - r.top;
     return { nx: (x / r.width) * 2 - 1, ny: -(y / r.height) * 2 + 1, x, y };
   };
-  /* raycast com a pose ATUAL da física (matrizes sincronizadas antes) */
+  /* raycast com a pose ATUAL de cada peça (matrizes do último frame) */
   const pick = (nx: number, ny: number) => {
-    const live = pieces.filter((p) => p.group.visible);
+    const live = pieces.filter((p) => p.group.visible && (onTable(p) || p.state === "falling"));
     for (const p of live) p.group.updateMatrixWorld(true);
     ndc.set(nx, ny);
     ray.setFromCamera(ndc, camera);
-    const h = ray.intersectObjects(live.map((p) => p.hit), false)[0];
-    return h ? { piece: h.object.userData.piece as Piece, point: h.point } : null;
+    const h = ray.intersectObjects(live.map((p) => p.hit), true)[0];
+    return h ? (h.object.userData.piece as Piece) : null;
   };
-  const startDrag = (pr: NonNullable<typeof press>) => {
-    const b = pr.piece.body;
-    const local = b.pointToLocalFrame(new Vec3(pr.point.x, pr.point.y, pr.point.z));
-    const p = ptr ? onPlane(ptr.nx, ptr.ny, 2.2) : null;
-    joint.position.set(p?.x ?? pr.point.x, p?.y ?? pr.point.y, p?.z ?? pr.point.z);
-    const c = new PointToPointConstraint(b, local, joint, new Vec3(0, 0, 0), 90);
-    world.addConstraint(c);
-    b.collisionFilterGroup = G_DRAGGED; // o cursor não colide com a peça na mão
-    b.wakeUp();
-    drag = { piece: pr.piece, c };
-    canvas.style.cursor = "grabbing";
-    on.hover(null, 0, 0);
-  };
+  const tableAt = (nx: number, ny: number) => onPlane(nx, ny, T / 2);
 
   const onMove = (e: PointerEvent) => {
     ptr = toNdc(e);
     ptrMoved = true;
-    const now = performance.now();
-    lastInput = now;
-    const dtm = Math.max(1, now - lastMove.t);
-    const inst = (Math.hypot(e.clientX - lastMove.x, e.clientY - lastMove.y) / dtm) * 1000;
-    speed = lastMove.t ? speed * 0.6 + inst * 0.4 : 0;
-    lastMove = { x: e.clientX, y: e.clientY, t: now };
-    if (press && !drag && Math.hypot(e.clientX - press.sx, e.clientY - press.sy) >= CLICK_PX) startDrag(press);
+    lastInput = performance.now();
+    if (press && !drag && Math.hypot(e.clientX - press.sx, e.clientY - press.sy) >= CLICK_PX && press.piece.state === "table") {
+      const p = press.piece;
+      p.state = "drag";
+      p.vx = p.vz = 0;
+      wakeP(p);
+      drag = { piece: p, tx: p.x, tz: p.z, ox: press.ox, oz: press.oz };
+      canvas.style.cursor = "grabbing";
+      on.hover(null, 0, 0);
+    }
     if (drag) {
-      const p = onPlane(ptr.nx, ptr.ny, 2.2);
-      if (p) joint.position.set(p.x, p.y, p.z);
+      const q = tableAt(ptr.nx, ptr.ny);
+      if (q) {
+        drag.tx = q.x + drag.ox;
+        drag.tz = q.z + drag.oz;
+      }
     }
     wake();
   };
@@ -486,18 +565,30 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
       return;
     }
     ptr = toNdc(e);
-    const h = pick(ptr.nx, ptr.ny);
-    if (!h) return;
-    press = { piece: h.piece, point: h.point.clone(), sx: e.clientX, sy: e.clientY, id: e.pointerId };
+    const p = pick(ptr.nx, ptr.ny);
+    if (!p) return;
+    const q = tableAt(ptr.nx, ptr.ny);
+    press = { piece: p, sx: e.clientX, sy: e.clientY, ox: q ? p.x - q.x : 0, oz: q ? p.z - q.z : 0 };
     canvas.setPointerCapture(e.pointerId);
+    e.preventDefault();
     wake();
   };
   const endDrag = (throwIt: boolean) => {
     if (!drag) return;
-    world.removeConstraint(drag.c);
-    const b = drag.piece.body;
-    b.collisionFilterGroup = G_PIECE;
-    if (throwIt) b.velocity.scale(1.25, b.velocity); // arremesso (limitado em MAX_SPEED)
+    const p = drag.piece;
+    p.state = "table";
+    p.y = 0;
+    if (throwIt) {
+      /* arremesso: a velocidade de arraste já suavizada, limitada */
+      const sp = Math.hypot(p.vx, p.vz);
+      if (sp > MAX_SPEED) {
+        p.vx *= MAX_SPEED / sp;
+        p.vz *= MAX_SPEED / sp;
+      }
+    } else p.vx = p.vz = 0;
+    p.n.set(0, 1, 0);
+    p.sv += 3; // assenta na mesa com um "plop"
+    wakeP(p);
     drag = null;
   };
   const onUp = (e: PointerEvent) => {
@@ -513,9 +604,8 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
   const onLeave = () => {
     ptr = null;
     hovered = null;
-    speed = 0;
     on.hover(null, 0, 0);
-    canvas.style.cursor = "";
+    if (!drag) canvas.style.cursor = "";
   };
   canvas.addEventListener("pointermove", onMove);
   canvas.addEventListener("pointerdown", onDown);
@@ -529,98 +619,113 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
   const pos = new Vector3();
   const quat = new Quaternion();
   const one = new Vector3(1, 1, 1);
+  const up = new Vector3(0, 1, 0);
   let raf = 0;
   let quiet = 0;
   let last = performance.now();
   let acc = 0;
+
+  /* pose → matriz, com a deformação da geleia no eixo n */
+  const pose = (p: Piece, yaw: number) => {
+    pos.set(p.x, p.y, p.z);
+    quat.setFromAxisAngle(up, yaw);
+    M.compose(pos, quat, one);
+    if (p.sx !== 0) {
+      const a = 1 - p.sx, s = 1 + p.sx * 0.5, n = p.n, k = a - s;
+      D.set(
+        s + k * n.x * n.x, k * n.x * n.y, k * n.x * n.z, 0,
+        k * n.y * n.x, s + k * n.y * n.y, k * n.y * n.z, 0,
+        k * n.z * n.x, k * n.z * n.y, s + k * n.z * n.z, 0,
+        0, 0, 0, 1,
+      );
+      M.multiply(D);
+    }
+    p.group.matrix.copy(M);
+    p.group.matrixWorldNeedsUpdate = true;
+  };
 
   const frame = (now: number) => {
     raf = 0;
     const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));
     last = now;
 
-    /* cursor empurra só com o mouse rápido ou durante o arraste, e nunca com
-     * o ponteiro sobre uma peça (aí ele quer clicar). A velocidade decai
-     * sozinha quando o mouse para. */
-    speed *= Math.pow(0.02, dt);
-    const pushing = !!ptr && !focus && (drag !== null || (speed > PUSH_MIN_SPEED && !hovered));
-    const target = pushing && ptr ? onPlane(ptr.nx, ptr.ny, 0.55) : null;
-    if (target) {
-      if (cursor.position.y < -10) cursor.position.set(target.x, target.y, target.z);
-      let vx = (target.x - cursor.position.x) * 30, vz = (target.z - cursor.position.z) * 30;
-      const vs = Math.hypot(vx, vz);
-      if (vs > PUSH_MAX) {
-        vx *= PUSH_MAX / vs;
-        vz *= PUSH_MAX / vs;
+    /* peça na mão: segue o alvo (cinemática); a velocidade medida vira o arremesso */
+    if (drag) {
+      const p = drag.piece;
+      const tx = clamp(drag.tx, -bounds.x + R, bounds.x - R);
+      const tz = clamp(drag.tz, bounds.z0 + R, bounds.z1 - R);
+      const k = 1 - Math.exp(-28 * dt);
+      let mx = (tx - p.x) * k, mz = (tz - p.z) * k;
+      /* a peça na mão também respeita a velocidade máxima (não teleporta para dentro da pilha) */
+      const ml = Math.hypot(mx, mz), lim = MAX_SPEED * dt;
+      if (ml > lim) {
+        mx *= lim / ml;
+        mz *= lim / ml;
       }
-      cursor.velocity.set(vx, 0, vz);
-    } else {
-      cursor.position.set(0, -40, 0);
-      cursor.velocity.set(0, 0, 0);
+      const nx = p.x + mx, nz = p.z + mz;
+      if (dt > 0) {
+        p.vx = p.vx * 0.6 + ((nx - p.x) / dt) * 0.4;
+        p.vz = p.vz * 0.6 + ((nz - p.z) / dt) * 0.4;
+      }
+      p.x = nx;
+      p.z = nz;
+      p.y += (LIFT - p.y) * (1 - Math.exp(-14 * dt));
     }
     /* passo fixo de 1/60 s, no máximo 3 por frame */
-    acc = Math.min(acc + dt, 3 / 60);
-    while (acc >= 1 / 60) {
-      world.step(1 / 60);
-      acc -= 1 / 60;
+    acc = Math.min(acc + dt, 3 * STEP);
+    while (acc >= STEP) {
+      step(STEP);
+      acc -= STEP;
     }
 
     let active = false;
     if (focus) active = focusFrame(now) || active;
+    if (back) active = backFrame(now) || active;
     for (const p of pieces) {
-      if (!p.group.visible || focus?.piece === p) continue;
-      const b = p.body;
-      /* mola da geleia: x = achatamento no eixo n */
-      if (p.x !== 0 || p.v !== 0) {
-        p.v += (-260 * p.x - 9 * p.v) * dt;
-        p.x = Math.max(-0.3, Math.min(0.34, p.x + p.v * dt));
-        if (Math.abs(p.x) < 0.002 && Math.abs(p.v) < 0.02) p.x = p.v = 0;
+      if (!p.group.visible || p.state === "focus" || p.state === "returning") continue;
+      let yaw = p.yaw;
+      if (p.state === "falling") {
+        yaw = fall(p, now);
+        active = true;
+      }
+      /* mola da geleia (~400 ms para assentar) */
+      if (p.sx !== 0 || p.sv !== 0) {
+        p.sv += (-260 * p.sx - 9 * p.sv) * dt;
+        p.sx = clamp(p.sx + p.sv * dt, -0.3, 0.34);
+        if (Math.abs(p.sx) < 0.002 && Math.abs(p.sv) < 0.02) p.sx = p.sv = 0;
         else active = true;
       }
-      pos.set(b.position.x, b.position.y, b.position.z);
-      quat.set(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w);
-      M.compose(pos, quat, one);
-      if (p.x !== 0) {
-        const a = 1 - p.x, s = 1 + p.x * 0.5, n = p.n, k = a - s;
-        D.set(
-          s + k * n.x * n.x, k * n.x * n.y, k * n.x * n.z, 0,
-          k * n.y * n.x, s + k * n.y * n.y, k * n.y * n.z, 0,
-          k * n.z * n.x, k * n.z * n.y, s + k * n.z * n.z, 0,
-          0, 0, 0, 1,
-        );
-        M.multiply(D);
-      }
-      p.group.matrix.copy(M);
-      p.group.matrixWorldNeedsUpdate = true;
-      if (b.sleepState !== Body.SLEEPING) active = true;
+      if (p.state === "drag" || (p.state === "table" && !p.asleep)) active = true;
+      pose(p, yaw);
     }
 
-    /* hover: raycast só quando o ponteiro mexeu */
+    /* hover: raycast só quando o ponteiro mexeu; o cursor sem arrastar não empurra nada */
     if (ptr && ptrMoved && !drag && !focus) {
       ptrMoved = false;
-      const h = pick(ptr.nx, ptr.ny);
-      hovered = h?.piece ?? null;
+      hovered = pick(ptr.nx, ptr.ny);
       canvas.style.cursor = hovered ? "pointer" : "";
     }
-    if (ptr && hovered && !focus) on.hover(hovered.token.name, ptr.x, ptr.y);
-    else if (!drag) on.hover(null, 0, 0);
+    if (ptr && hovered && !focus && !drag) on.hover(hovered.token.name, ptr.x, ptr.y);
+    else on.hover(null, 0, 0);
 
     if (veilOut(now)) active = true;
     renderer.render(scene, camera);
 
-    const busy = active || drag || press || now - lastInput < 600 || timers.length > 0 && now - startAt < tokens.length * 85 + 2500;
+    const busy = active || drag || press || now - lastInput < 400 || now < dropEnd;
     quiet = busy ? 0 : quiet + 1;
-    if (quiet < 30) schedule();
+    if (quiet < 20) schedule();
   };
 
-  /* ---------- foco ---------- */
-  type Focus = { piece: Piece; t0: number; home: { x: number; z: number } | null; from: Vector3; fromQ: Quaternion; fromS: number; to: Vector3; toQ: Quaternion; toS: number; out: boolean };
+  /* ---------- foco (popup) ---------- */
+  type Focus = { piece: Piece; t0: number; from: Vector3; fromQ: Quaternion; to: Vector3; toQ: Quaternion; toS: number };
   let focus: Focus | null = null;
+  /* volta para a mesa depois do foco (tween até o lugar de onde saiu) */
+  let back: { piece: Piece; t0: number; from: Matrix4 } | null = null;
   let veilFrom = 0;
-  const up = new Vector3(0, 1, 0);
+  let veilT0 = 0;
   const ease = (t: number) => 1 - Math.pow(1 - t, 3);
   const fq = new Quaternion();
-  const wob = new Quaternion();
+  const spin = new Quaternion();
   const fs = new Vector3();
   /* pose de destino: perto da câmera, à esquerda do painel (desktop) ou acima
    * dele (celular), virada de frente para quem olha */
@@ -635,77 +740,64 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
     const s = (vh * (narrow ? 0.26 : 0.34)) / (2 * R);
     return { p, q, s };
   };
+  function castShadow(p: Piece, on: boolean) {
+    p.group.traverse((o) => {
+      if ((o as Mesh).isMesh) o.castShadow = on;
+    });
+  }
   const focusOn = (id: string) => {
     const piece = pieces.find((p) => p.token.id === id);
     if (!piece) return;
-    if (focus && focus.piece !== piece) release(focus);
-    const b = piece.body;
-    const from = new Vector3(), fromQ = new Quaternion();
-    const t = focusPose();
-    const home = inWorld.has(b) ? { x: b.position.x, z: b.position.z } : null;
-    if (piece.group.visible) {
-      from.set(b.position.x, b.position.y, b.position.z);
-      fromQ.set(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w);
-    } else {
-      /* ainda não caiu (ex.: aberto pelo teclado): entra de cima */
-      from.copy(t.p).add(new Vector3(0, 6, 0));
-      fromQ.copy(t.q);
-      piece.group.visible = true;
-    }
-    if (inWorld.has(b)) {
-      world.removeBody(b);
-      inWorld.delete(b);
+    if (focus && focus.piece !== piece) focusOff();
+    if (back?.piece === piece) {
+      back = null;
     }
     if (drag?.piece === piece) endDrag(false);
     press = null;
-    piece.x = piece.v = 0;
+    const t = focusPose();
+    const from = new Vector3(), fromQ = new Quaternion();
+    if (piece.group.visible) {
+      piece.group.matrix.decompose(from, fromQ, fs);
+    } else {
+      /* ainda não caiu (ex.: aberto pelo teclado): entra de cima e fica no lugar sorteado */
+      from.copy(t.p).add(new Vector3(0, 6, 0));
+      fromQ.copy(t.q);
+      piece.group.visible = true;
+      piece.x = clamp(piece.x, -bounds.x + R, bounds.x - R);
+      piece.z = clamp(piece.z, bounds.z0 + R, bounds.z1 - R);
+    }
+    piece.state = "focus";
+    piece.vx = piece.vz = piece.w = 0;
+    piece.sx = piece.sv = 0;
+    piece.y = 0;
     veilFrom = veilMat.opacity;
     castShadow(piece, false); // voando até a câmera: a sombra gigante no chão confundiria
-    focus = { piece, t0: performance.now(), home, from, fromQ, fromS: 1, to: t.p, toQ: t.q, toS: t.s, out: false };
+    focus = { piece, t0: performance.now(), from, fromQ, to: t.p, toQ: t.q, toS: t.s };
     veil.visible = true;
     hovered = null;
     canvas.style.cursor = "";
     wake();
   };
-  /* devolve a peça à física a partir da pose atual */
-  const release = (f: Focus) => {
-    const b = f.piece.body;
-    const m = f.piece.group.matrix;
-    m.decompose(pos, quat, fs);
-    /* cai de volta no lugar de onde saiu (sem empilhar tudo no centro) */
-    const hx = f.home?.x ?? pos.x, hz = f.home?.z ?? pos.z;
-    b.position.set(
-      Math.max(-bounds.x + R, Math.min(bounds.x - R, hx)),
-      3.5,
-      Math.max(bounds.z0 + R, Math.min(bounds.z1 - R, hz)),
-    );
-    b.quaternion.set(quat.x, quat.y, quat.z, quat.w);
-    b.velocity.set(0, -2, 0);
-    b.angularVelocity.set((Math.random() - 0.5) * 4, 0, (Math.random() - 0.5) * 4);
-    world.addBody(b);
-    inWorld.add(b);
-    b.wakeUp();
-    castShadow(f.piece, true);
-  };
   const focusOff = () => {
     if (!focus) return;
-    release(focus);
+    const p = focus.piece;
+    p.state = "returning";
+    back = { piece: p, t0: performance.now(), from: p.group.matrix.clone() };
     focus = null;
     veilFrom = veilMat.opacity;
     veilT0 = performance.now();
     wake();
   };
-  let veilT0 = 0;
   function focusFrame(now: number) {
     const f = focus!;
     const k = ease(Math.min(1, (now - f.t0) / 500));
     const tt = now / 1000;
-    /* flutua e oscila devagar (sem girar o logo no próprio plano) */
+    /* flutua e gira devagar em torno do próprio eixo (de frente para a câmera) */
     pos.lerpVectors(f.from, f.to, k);
     pos.y += Math.sin(tt * 1.6) * 0.12 * k;
-    wob.setFromAxisAngle(up, Math.sin(tt * 0.7) * 0.45 * k);
-    fq.slerpQuaternions(f.fromQ, f.toQ, k).premultiply(wob);
-    const sc = f.fromS + (f.toS - f.fromS) * k;
+    spin.setFromAxisAngle(up, Math.sin(tt * 0.6) * 0.5 * k);
+    fq.slerpQuaternions(f.fromQ, f.toQ, k).multiply(spin);
+    const sc = 1 + (f.toS - 1) * k;
     fs.set(sc, sc, sc);
     f.piece.group.matrix.compose(pos, fq, fs);
     f.piece.group.matrixWorldNeedsUpdate = true;
@@ -714,6 +806,31 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
     veil.position.copy(f.to).addScaledVector(dir, R * f.toS * 1.6);
     veil.quaternion.copy(camera.quaternion);
     veilMat.opacity = veilFrom + (0.78 - veilFrom) * k;
+    return true;
+  }
+  const bFrom = new Vector3(), bFromQ = new Quaternion(), bFromS = new Vector3();
+  function backFrame(now: number) {
+    const b = back!;
+    const p = b.piece;
+    const k = ease(Math.min(1, (now - b.t0) / 450));
+    b.from.decompose(bFrom, bFromQ, bFromS);
+    pos.set(p.x, 0, p.z);
+    pos.lerpVectors(bFrom, pos.clone(), k);
+    quat.setFromAxisAngle(up, p.yaw);
+    fq.slerpQuaternions(bFromQ, quat, k);
+    const sc = bFromS.x + (1 - bFromS.x) * k;
+    fs.set(sc, sc, sc);
+    p.group.matrix.compose(pos, fq, fs);
+    p.group.matrixWorldNeedsUpdate = true;
+    if (k >= 1) {
+      p.state = "table";
+      p.y = 0;
+      p.n.set(0, 1, 0);
+      p.sv += 4;
+      wakeP(p);
+      castShadow(p, true);
+      back = null;
+    }
     return true;
   }
   /* véu saindo depois do fechamento */
@@ -725,10 +842,9 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
     return k < 1;
   };
 
-  let startAt = 0;
   function schedule() {
-    /* sem IntersectionObserver próprio: o StackStage desmonta a cena longe da
-     * tela, e perto dela o loop dorme sozinho quando tudo para (render sob demanda) */
+    /* o StackStage desmonta a cena longe da tela; perto dela o loop dorme
+     * sozinho quando tudo para (render sob demanda) */
     if (!raf && !document.hidden) raf = requestAnimationFrame(frame);
   }
   function wake() {
@@ -750,21 +866,20 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
   try {
     await renderer.compileAsync(scene, camera);
   } catch {
-    /* sem suporte: compila no primeiro render, como antes */
+    /* sem suporte: compila no primeiro render */
   }
   for (const p of pieces) p.group.visible = false;
   veil.visible = false;
 
   return {
-    drop() {
-      startAt = performance.now();
-      drop();
-    },
+    drop,
     focus: focusOn,
     unfocus: focusOff,
+    /* testes: estado da mesa (posições, velocidades, rotação) */
+    debug: () =>
+      pieces.map((p) => ({ id: p.token.id, state: p.state, x: p.x, z: p.z, v: Math.hypot(p.vx, p.vz), w: p.w, yaw: p.yaw, asleep: p.asleep, bounds: { ...bounds } })),
     destroy() {
       cancelAnimationFrame(raf);
-      timers.forEach(clearTimeout);
       ro.disconnect();
       document.removeEventListener("visibilitychange", onVis);
       canvas.removeEventListener("pointermove", onMove);

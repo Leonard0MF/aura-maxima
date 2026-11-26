@@ -3,11 +3,11 @@
 import { useEffect, useRef } from "react";
 import { claimGL } from "@/lib/gl-slot";
 
-type Scene = { drop(): void; focus(id: string): void; unfocus(): void; destroy(): void };
+type Scene = { drop(): void; focus(id: string): void; unfocus(): void; destroy(): void; debug(): unknown };
 
 /*
  * Controla a seção STACK sem estado React por evento:
- * - monta a cena 3D (import dinâmico de three + cannon-es) quando a seção
+ * - monta a cena 3D (import dinâmico de three) quando a seção
  *   está a ~1 viewport de distância e desmonta (libera o WebGL) ao se afastar;
  *   as peças caem quando ~25% da seção aparece
  * - tooltip e dialog: escrita direta no DOM renderizado no servidor
@@ -162,6 +162,8 @@ export function StackStage({ tokens }: { tokens: { id: string; name: string }[] 
         return;
       }
       scene = made;
+      /* testes automatizados (?stackdebug): expõe o estado da mesa */
+      if (location.search.includes("stackdebug")) (window as unknown as { __stack?: Scene }).__stack = made;
       section.dataset.live = "";
       if (wantDrop) scene.drop();
     };
