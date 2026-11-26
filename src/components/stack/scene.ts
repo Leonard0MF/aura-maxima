@@ -871,8 +871,45 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
   for (const p of pieces) p.group.visible = false;
   veil.visible = false;
 
+  /* volta à seção: as peças reaparecem onde estavam, sem nova queda */
+  const restore = (saved: { id: string; x: number; z: number; yaw: number }[]) => {
+    dropped = true;
+    for (const p of pieces) {
+      const q = saved.find((s) => s.id === p.token.id);
+      if (!q) continue;
+      p.state = "table";
+      p.x = clamp(q.x, -bounds.x, bounds.x);
+      p.z = clamp(q.z, bounds.z0, bounds.z1);
+      p.yaw = q.yaw;
+      p.vx = p.vz = p.w = 0;
+      p.y = 0;
+      p.landed = true;
+      castShadow(p, true);
+      p.group.visible = true;
+      wakeP(p);
+    }
+    wake();
+  };
+
   return {
     drop,
+    restore,
+    /* posições das peças na mesa (para restore); as que ainda caem já têm
+     * x/z/yaw finais */
+    state: () => pieces.filter((p) => p.state !== "hidden").map((p) => ({ id: p.token.id, x: p.x, z: p.z, yaw: p.yaw })),
+    /* último frame, sem o véu do popup (para o snapshot estático ao desmontar) */
+    snapshot() {
+      if (!dropped) return null;
+      const v = veil.visible;
+      veil.visible = false;
+      renderer.render(scene, camera);
+      veil.visible = v;
+      try {
+        return canvas.toDataURL("image/webp", 0.82);
+      } catch {
+        return null;
+      }
+    },
     focus: focusOn,
     unfocus: focusOff,
     /* testes: estado da mesa (posições, velocidades, rotação) */

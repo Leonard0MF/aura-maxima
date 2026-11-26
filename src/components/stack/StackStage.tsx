@@ -3,13 +3,27 @@
 import { useEffect, useRef } from "react";
 import { claimGL } from "@/lib/gl-slot";
 
-type Scene = { drop(): void; focus(id: string): void; unfocus(): void; destroy(): void; debug(): unknown };
+type Saved = { id: string; x: number; z: number; yaw: number }[];
+type Scene = {
+  drop(): void;
+  restore(s: Saved): void;
+  state(): Saved;
+  snapshot(): string | null;
+  focus(id: string): void;
+  unfocus(): void;
+  destroy(): void;
+  debug(): unknown;
+};
 
 /*
  * Controla a seção STACK sem estado React por evento:
- * - monta a cena 3D (import dinâmico de three) quando a seção
- *   está a ~1 viewport de distância e desmonta (libera o WebGL) ao se afastar;
- *   as peças caem quando ~25% da seção aparece
+ * - baixa o código da cena a ~1,5 viewport de distância e monta a cena 3D
+ *   quando a seção é a dona do WebGL (lib/gl-slot); ao se afastar, desmonta
+ *   (libera o contexto) e deixa no lugar um snapshot do último frame; ao
+ *   voltar, as peças reaparecem onde estavam (sem nova queda)
+ * - enquanto nada está pronto, a área mostra só um placeholder do mesmo
+ *   tamanho; a lista em texto fica sr-only (visível só no modo estático)
+ * - as peças caem quando ~25% da seção aparece
  * - tooltip e dialog: escrita direta no DOM renderizado no servidor
  * - dialog: foco preso, Esc / X / clique fora fecham, foco volta para quem abriu
  * - modo estático (reduced-motion, aparelho fraco, sem WebGL2): grid de SVG;
@@ -119,7 +133,13 @@ export function StackStage({ tokens }: { tokens: { id: string; name: string }[] 
         return false;
       }
     })();
-    if (html.dataset.fx === "static" || !gl2) return cleanup;
+    if (html.dataset.fx === "static" || !gl2) {
+      section.dataset.static = "";
+      return () => {
+        delete section.dataset.static;
+        cleanup();
+      };
+    }
 
     /* ---------- 3D ---------- */
     const mobile = matchMedia("(max-width: 639px)").matches;
@@ -128,12 +148,26 @@ export function StackStage({ tokens }: { tokens: { id: string; name: string }[] 
     let wantDrop = false;
     let near = false;
     let canvas: HTMLCanvasElement | null = null;
+    let saved: Saved | null = null;
+    const snap = stage.querySelector<HTMLImageElement>(".stack-snap")!;
+
+    /* pré-carga do código (three + física + ícones) bem antes de chegar */
+    const load = () => Promise.all([import("./scene"), import("@/lib/stack-icons")]);
+    const ioPre = new IntersectionObserver(
+      ([e]) => {
+        if (!e.isIntersecting) return;
+        ioPre.disconnect();
+        void load();
+      },
+      { rootMargin: "150% 0px" },
+    );
+    ioPre.observe(stage);
 
     let pending: Promise<void> | null = null; // montagem em andamento
     const mount = async () => {
       if (scene || loading) return;
       loading = true;
-      const [{ createStackScene }, { STACK_ICONS }] = await Promise.all([import("./scene"), import("@/lib/stack-icons")]);
+      const [{ createStackScene }, { STACK_ICONS }] = await load();
       if (!near) {
         loading = false;
         return;
@@ -164,11 +198,24 @@ export function StackStage({ tokens }: { tokens: { id: string; name: string }[] 
       scene = made;
       /* testes automatizados (?stackdebug): expõe o estado da mesa */
       if (location.search.includes("stackdebug")) (window as unknown as { __stack?: Scene }).__stack = made;
-      section.dataset.live = "";
-      if (wantDrop) scene.drop();
+      if (saved?.length) scene.restore(saved);
+      else if (wantDrop) scene.drop();
+      /* o canvas só aparece depois do primeiro frame (sem piscar vazio) */
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (scene === made) section.dataset.live = "";
+      }));
     };
     const unmount = () => {
       close();
+      if (scene) {
+        const st = scene.state();
+        if (st.length) saved = st;
+        const url = scene.snapshot();
+        if (url) {
+          snap.src = url;
+          section.dataset.snap = "";
+        }
+      }
       scene?.destroy();
       scene = null;
       canvas?.remove();
@@ -205,10 +252,17 @@ export function StackStage({ tokens }: { tokens: { id: string; name: string }[] 
     return () => {
       releaseGL();
       ioIn.disconnect();
+      ioPre.disconnect();
       unmount();
       cleanup();
     };
   }, [tokens]);
 
-  return <div ref={ref} className="stack-stage" />;
+  return (
+    <div ref={ref} className="stack-stage">
+      <div className="stack-ph" aria-hidden="true" />
+      {/* eslint-disable-next-line @next/next/no-img-element -- data: URL gerada no cliente */}
+      <img className="stack-snap" alt="" aria-hidden="true" />
+    </div>
+  );
 }
