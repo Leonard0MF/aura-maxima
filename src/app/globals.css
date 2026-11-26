@@ -1291,7 +1291,8 @@ footer {
 }
 /* alvos de toque ≥ 44px em telas de toque, sem mudar o desenho no desktop */
 @media (pointer: coarse) {
-  .tap {
+  /* :not(.hidden): não reexibe o que o Tailwind esconde em telas pequenas */
+  .tap:not(.hidden) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1468,7 +1469,7 @@ html:not([data-js]) .menu-btn {
     display: block;
   }
 }
-@media (max-height: 520px) and (orientation: landscape) {
+@media (max-width: 639px), (max-height: 520px) and (orientation: landscape) {
   .hero-scroll {
     display: none !important;
   }
