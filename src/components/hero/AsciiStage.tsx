@@ -57,7 +57,7 @@ export function AsciiStage({ src, aspect, levels, bg }: { src: string; aspect: n
     };
     let cancel = () => {};
     /* com a montagem de entrada, carrega já (a tipografia anima junto) */
-    if (document.documentElement.dataset.intro === "1") {
+    if (document.documentElement.dataset.intro === "pending") {
       const id = setTimeout(first, 0);
       cancel = () => clearTimeout(id);
     } else if (typeof window.requestIdleCallback === "function") {

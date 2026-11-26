@@ -172,7 +172,9 @@ html[data-scan="instant"] .scan-line {
  * no modo estático: o boot nem marca data-intro). A tipografia real é pintada
  * desde o 1º frame (é o LCP) e NUNCA recebe opacity/visibility: a intro é uma
  * camada por cima.
- *   data-intro="1"   (boot) papel sobre o hero até o canvas assumir
+ *   data-intro="pending" (boot, antes do 1º paint) papel sobre a tipografia,
+ *                    esboço do retrato oculto e um campo de glifos estático
+ *                    no lugar, até o 1º quadro da intro estar na tela
  *   data-intro="run" o canvas 2D das palavras cobre só as palavras
  *   data-intro-meta  metadados, navegação e idiomas entram em sequência
  *   data-intro="done" fim (ou pulado por clique/tecla/rolagem)
@@ -204,22 +206,63 @@ html[data-scan="instant"] .scan-line {
     translate: 0 0;
   }
 }
-html[data-intro="1"]:not([data-fx="static"]) .hero-intro-cover {
+html[data-intro="pending"]:not([data-fx="static"]) .hero-intro-cover {
   display: block;
   animation: intro-safety 0s linear 2.5s forwards;
 }
-html[data-intro="1"]:not([data-fx="static"]) .hero [data-intro-item],
+html[data-intro="pending"]:not([data-fx="static"]) .hero [data-intro-item],
 html[data-intro="run"] .hero [data-intro-item] {
   opacity: 0;
   translate: 0 8px;
 }
-html[data-intro="1"]:not([data-fx="static"]) .hero [data-intro-item] {
+html[data-intro="pending"]:not([data-fx="static"]) .hero [data-intro-item] {
   animation: intro-safety-show 0s linear 2.5s forwards;
+}
+/* campo de glifos (servidor, IntroField): o mesmo "pó" do 1º quadro da
+ * intro, no lugar do esboço do retrato, enquanto o canvas não assume; sai
+ * em crossfade (300 ms) com os glifos de verdade */
+.hero-intro-field {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.3s ease-out,
+    visibility 0s linear 0.3s;
+}
+.hero-intro-field svg {
+  width: 100%;
+  height: 100%;
+}
+html[data-intro="pending"]:not([data-fx="static"]) .hero-intro-field {
+  opacity: 1;
+  visibility: visible;
+  transition: none;
+  animation: intro-safety 0s linear 2.5s forwards;
+}
+/* o esboço estático do retrato não aparece antes da intro (ele "piscava"
+ * inteiro e sumia quando os glifos começavam) */
+html[data-intro="pending"]:not([data-fx="static"]) .hero .ascii-fallback {
+  opacity: 0;
+  transition: none;
+  /* segurança: sem o JS do site em 2,5 s (8 s com ?intro=1), o esboço volta */
+  animation: intro-fallback-back 0s linear 2.5s forwards;
+}
+html[data-intro="pending"][data-intro-force]:not([data-fx="static"]) .hero .ascii-fallback {
+  animation-delay: 8s;
+}
+@keyframes intro-fallback-back {
+  to {
+    opacity: 0.08;
+  }
 }
 /* ?intro=1 (forçada): o canvas pode chegar depois de 2,5 s (dev, máquina
  * lenta); a capa espera mais, mas nunca prende o texto se algo falhar */
-html[data-intro="1"][data-intro-force]:not([data-fx="static"]) .hero-intro-cover,
-html[data-intro="1"][data-intro-force]:not([data-fx="static"]) .hero [data-intro-item] {
+html[data-intro="pending"][data-intro-force]:not([data-fx="static"]) .hero-intro-cover,
+html[data-intro="pending"][data-intro-force]:not([data-fx="static"]) .hero-intro-field,
+html[data-intro="pending"][data-intro-force]:not([data-fx="static"]) .hero [data-intro-item] {
   animation-delay: 8s;
 }
 html[data-intro-meta] .hero [data-intro-item] {
