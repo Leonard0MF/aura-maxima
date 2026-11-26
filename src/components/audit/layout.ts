@@ -142,3 +142,11 @@ export function projectStatic(x: number, y: number, z: number, w: number, h: num
   const d = CAMERA_Z - z;
   return { x: w / 2 + ((x * f) / d) * (h / 2), y: h / 2 - ((y * f) / d) * (h / 2), s: CAMERA_Z / d };
 }
+
+/* centro do buraco negro em px dentro do campo (w × h), a mesma regra da
+ * cena: terço esquerdo no meio da altura; em tela estreita (aspecto < 0,9),
+ * centralizado a 29% do topo. Usado pela entrada do AUDIT (AuditReveal). */
+export function holeCenter(w: number, h: number) {
+  const narrow = w / h < 0.9;
+  return narrow ? { narrow, x: w / 2, y: h * 0.29 } : { narrow, x: w * 0.25, y: h * 0.5 };
+}

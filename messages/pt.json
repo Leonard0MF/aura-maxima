@@ -178,8 +178,6 @@
     "status": { "pass": "ok", "warn": "atenção", "fail": "falha", "info": "info" },
     "progress": "scan · {lit}/{total} nós",
     "done": "scan completo · {total}/{total} nós",
-    "gradeExample": "sem nota · dados de exemplo",
-    "gradePending": "nota pendente",
     "overall": "Nota geral",
     "overallExample": "— · dados de exemplo, sem nota",
     "overallPending": "— · pendente",

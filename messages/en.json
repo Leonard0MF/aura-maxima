@@ -178,8 +178,6 @@
     "status": { "pass": "ok", "warn": "warning", "fail": "fail", "info": "info" },
     "progress": "scan · {lit}/{total} nodes",
     "done": "scan complete · {total}/{total} nodes",
-    "gradeExample": "no score · example data",
-    "gradePending": "score pending",
     "overall": "Overall score",
     "overallExample": "— · example data, no score",
     "overallPending": "— · pending",

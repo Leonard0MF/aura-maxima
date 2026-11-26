@@ -1,5 +1,5 @@
 import { AuditField } from "@/components/audit/AuditField";
-import { AuditPin } from "@/components/audit/AuditPin";
+import { AuditReveal } from "@/components/audit/AuditReveal";
 import { SectionHead } from "@/components/SectionHead";
 import { getLocale, getTranslations } from "next-intl/server";
 
@@ -9,7 +9,7 @@ import { auditView } from "@/lib/site";
 
 /*
  * 03 · AUDIT: "este site, visto por dentro". Entra por um círculo que nasce
- * no buraco negro e cresce com a rolagem (AuditPin), com um buraco negro no terço esquerdo e uma constelação interativa
+ * no buraco negro e se expande em ~900 ms (AuditReveal), com um buraco negro no terço esquerdo e uma constelação interativa
  * em órbita (AuditField) cujos nós principais são os dados de segurança do
  * site, vindos de content/audit.json. Por cima, em DOM: cabeçalho, frase,
  * nota, trade-off do CSP e o CTA do Aegis (à direita no desktop, para não
@@ -25,15 +25,13 @@ export async function Audit() {
     status: t.raw("status") as Record<string, string>,
     progress: t.raw("progress") as string,
     done: t.raw("done") as string,
-    gradeExample: t("gradeExample"),
-    gradePending: t("gradePending"),
   };
   const meta = "font-mono text-[11px] tracking-wide uppercase sm:text-xs";
   return (
-    <AuditPin>
-      <section aria-labelledby="audit-title" className="audit theme-dark">
+    <AuditReveal>
+      <section id="auditoria" aria-labelledby="audit-title" className="audit theme-dark">
         <div className="audit-bg" aria-hidden="true" />
-        <AuditField nodes={nodes} grade={auditGrade} score={auditScore} example={audit.example} labels={labels} />
+        <AuditField nodes={nodes} labels={labels} />
 
         <div className="audit-body text-fg">
           <SectionHead n="03" label={tn("audit")} title={t("title")} id="audit-title" meta={`aegis · ${audit.target}`}>
@@ -75,6 +73,6 @@ export async function Audit() {
           </div>
         </div>
       </section>
-    </AuditPin>
+    </AuditReveal>
   );
 }
