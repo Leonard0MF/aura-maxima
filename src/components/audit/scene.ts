@@ -21,10 +21,11 @@
  * chegam prontas (layout.worker, uma vez só).
  *
  * Qualidade: decidida ANTES de a seção aparecer. bench() renderiza ~36
- * quadros no nível alto, fora da tela (a ~1 viewport, com os outros loops
+ * quadros (menos, se a GPU for claramente lenta: para em 4 quadros com
+ * média > 30 ms ou em ~700 ms) no nível alto, fora da tela (a ~1 viewport, com os outros loops
  * parados) e mede o tempo médio por quadro com a GPU sincronizada:
  * ≤ 12 ms → alto (lente 1,0), ≤ 20 ms → médio (0,75), acima → baixo (0,5,
- * 65% das partículas). O 1º quadro visível já sai no nível escolhido, que
+ * 65% das partículas; > 60 ms → simple). O 1º quadro visível já sai no nível escolhido, que
  * vale para a sessão inteira. Depois de visível só desce: fps < 40 por mais
  * de 2 s → um degrau abaixo (até "simple"), com crossfade de 300 ms.
  * "simple" (sem lente) é fixo no celular/toque.
@@ -899,7 +900,7 @@ export function createConstellation(
       updateLines();
       const gl = renderer.getContext();
       const px = new Uint8Array(4);
-      let warmup = 4;
+      let warmup = 2;
       let total = 0;
       let count = 0;
       await new Promise<void>((done) => {
@@ -921,13 +922,17 @@ export function createConstellation(
               count++;
             }
           }
-          if (count >= BENCH_FRAMES) done();
+          /* GPU lenta: o resultado já é "baixo" — não insiste (cada quadro
+           * dela é uma tarefa longa); teto de ~700 ms no total */
+          const avg = count ? total / count : 0;
+          if (count >= BENCH_FRAMES || (count >= 4 && avg > 30) || total > 700) done();
           else requestAnimationFrame(step);
         };
         requestAnimationFrame(step);
       });
       const ms = count ? total / count : 99;
-      level = ms <= 12 ? 0 : ms <= 20 ? 1 : 2;
+      /* > 60 ms: nem a lente 0,5 roda (GPU de software, p.ex.) → simple direto */
+      level = ms <= 12 ? 0 : ms <= 20 ? 1 : ms <= 60 ? 2 : 3;
       benched = { level, ms };
       applyQuality();
       resize();

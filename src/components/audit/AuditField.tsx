@@ -141,7 +141,13 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
           })
           .catch(() => {})
           .finally(() => {
+            /* entra com fade (se a seção já estava na tela, não "estala") */
+            c.style.opacity = "0";
             c.style.visibility = "";
+            requestAnimationFrame(() => {
+              c.style.transition = "opacity 300ms ease-out";
+              c.style.opacity = "";
+            });
             if (scene !== s) return;
             ready = true;
             sync();
