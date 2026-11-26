@@ -41,11 +41,12 @@
   },
   "work": {
     "title": "Projects",
-    "lede": "Things I built end to end, ordered by severity.",
+    "lede": "Things I built end to end.",
     "meta": "{count} findings",
     "fig": "Fig. {n}",
     "pending": "{title}: screenshot pending",
     "internal": "internal",
+    "kinds": { "personal": "PERSONAL PROJECT", "internal": "INTERNAL SYSTEM" },
     "stackNone": "Stack: —",
     "position": "Project {n} of {total}"
   },

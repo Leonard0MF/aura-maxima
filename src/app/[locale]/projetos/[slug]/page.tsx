@@ -224,7 +224,7 @@ export default async function CaseStudyPage({ params }: Props) {
         <header className="grid gap-8 pb-12 lg:grid-cols-12 lg:gap-10">
           <div className="work-info lg:col-span-5">
             <p className="font-mono text-[11px] tracking-wide text-ink-soft uppercase sm:text-xs">
-              {project.id} · {project.severity.toUpperCase()} · {t("case.label")}
+              {project.id} · {t(`work.kinds.${project.kind}`)} · {t("case.label")}
             </p>
             <h1 className="case-title mt-4 font-display leading-[0.85] tracking-[-0.035em]">{project.display}</h1>
             <p className="mt-6 max-w-[48ch] text-lg leading-relaxed">{t(`${k}.summary`)}</p>
@@ -273,7 +273,7 @@ export default async function CaseStudyPage({ params }: Props) {
               </span>
               <Image
                 src={project.image.src}
-                alt={t(`${k}.alt`)}
+                alt={project.image.caption?.[locale] ?? t(`${k}.alt`)}
                 width={project.image.width}
                 height={project.image.height}
                 sizes="(min-width: 1024px) 58vw, 100vw"

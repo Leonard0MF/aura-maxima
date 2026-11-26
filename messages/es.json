@@ -41,11 +41,12 @@
   },
   "work": {
     "title": "Proyectos",
-    "lede": "Cosas que construí de punta a punta, ordenadas por severidad.",
+    "lede": "Cosas que construí de punta a punta.",
     "meta": "{count} findings",
     "fig": "Fig. {n}",
     "pending": "{title}: captura pendiente",
     "internal": "interno",
+    "kinds": { "personal": "PROYECTO PERSONAL", "internal": "SISTEMA INTERNO" },
     "stackNone": "Stack: —",
     "position": "Proyecto {n} de {total}"
   },

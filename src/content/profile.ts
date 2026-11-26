@@ -1,17 +1,20 @@
 /*
  * Dados do portfólio (o que NÃO é texto traduzível): ids, links, stacks,
- * severidades, caminhos. Todo texto exibido vive em messages/{pt,en,es}.json
+ * tipos de projeto, caminhos. Todo texto exibido vive em messages/{pt,en,es}.json
  * e é buscado pela mesma chave (ex.: projects.aegis.summary).
  *
  * Tudo marcado com `TODO:` é informação que ainda falta: não invente,
  * preencha com o dado real.
  */
-export type Severity = "critical" | "high" | "medium";
+/* tipo do projeto: rótulo neutro no WORK (work.kinds.<kind> em messages).
+ * Não é severidade: nada de CRITICAL/HIGH, que podem ser lidos como
+ * vulnerabilidades encontradas nos sistemas. */
+export type ProjectKind = "personal" | "internal";
 
 export type Project = {
   id: string; // FND-001
   slug: "aegis" | "bumphub"; // chave em messages: projects.<slug> e cases.<slug>
-  severity: Severity;
+  kind: ProjectKind;
   title: string;
   /** nome curto em caixa alta, usado gigante no bloco do WORK */
   display: string;
@@ -19,9 +22,11 @@ export type Project = {
   /** nomes de tecnologia; `{ key }` = item com texto traduzível em projects.<slug>.stack.<key> */
   stack: (string | { key: string })[];
   links: { demo?: string; repo?: string };
-  /* TODO: prints reais (BUMPHUB anonimizado). Coloque em public/ e preencha
-     src/width/height; o alt fica em messages (projects.<slug>.alt). */
-  image?: { src: string; width: number; height: number };
+  /* Print do projeto em public/. Para trocar: substitua o arquivo (mesmo
+     nome) e atualize width/height. A legenda (figcaption no WORK e alt no
+     estudo de caso) vem de `caption` quando existe; sem ela, de messages
+     (projects.<slug>.alt). */
+  image?: { src: string; width: number; height: number; caption?: { pt: string; en: string; es: string } };
   /** sistema interno: sem links externos, mostra a etiqueta "privado" */
   private?: boolean;
   /** tem projects.<slug>.usage em messages ("Em produção na equipe de TI...") */
@@ -206,7 +211,7 @@ export const projects: Project[] = [
   {
     id: "FND-001",
     slug: "aegis",
-    severity: "critical",
+    kind: "personal",
     title: "Aegis",
     display: "AEGIS",
     year: "2026",
@@ -220,7 +225,7 @@ export const projects: Project[] = [
   {
     id: "FND-002",
     slug: "bumphub",
-    severity: "high",
+    kind: "internal",
     title: "BUMPHUB",
     display: "BUMPHUB",
     year: undefined, // TODO: ano
@@ -238,7 +243,17 @@ export const projects: Project[] = [
     ],
     links: {},
     private: true,
-    image: { src: "/bumphub.png", width: 1922, height: 976 },
+    /* TODO: ao trocar o print, atualize width/height e a legenda abaixo */
+    image: {
+      src: "/bumphub.png",
+      width: 1922,
+      height: 976,
+      caption: {
+        pt: "Tela de login do BUMPHUB (entrar com GitHub)",
+        en: "BUMPHUB login screen (sign in with GitHub)",
+        es: "Pantalla de inicio de sesión de BUMPHUB (entrar con GitHub)",
+      },
+    },
   },
 ];
 

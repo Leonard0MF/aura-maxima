@@ -68,7 +68,7 @@ function WorkItem({ p, i, total, t, locale }: { p: Project; i: number; total: nu
             )}
           </Link>
           <figcaption className={`mt-2 ${meta} text-ink-soft`}>
-            {t("work.fig", { n: pad(i + 1) })} · {p.image ? t(`${k}.alt`) : t("work.pending", { title: p.title })}
+            {t("work.fig", { n: pad(i + 1) })} · {p.image ? (p.image.caption?.[locale] ?? t(`${k}.alt`)) : t("work.pending", { title: p.title })}
           </figcaption>
         </figure>
 
@@ -77,9 +77,9 @@ function WorkItem({ p, i, total, t, locale }: { p: Project; i: number; total: nu
             <p className="flex items-center gap-2">
               <span
                 aria-hidden="true"
-                className={`size-2 rounded-full ${p.severity === "critical" ? "bg-accent" : p.severity === "high" ? "bg-ink" : "border border-ink"}`}
+                className={`size-2 rounded-full ${p.kind === "personal" ? "bg-accent" : "bg-ink"}`}
               />
-              {p.id} · {p.severity.toUpperCase()}
+              {p.id} · {t(`work.kinds.${p.kind}`)}
             </p>
             <p aria-label={t("work.position", { n: i + 1, total })}>
               {pad(i + 1)}/{pad(total)}

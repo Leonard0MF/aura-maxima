@@ -51,7 +51,7 @@ export function run(raw: string, data: TerminalData, history: string[]): Result 
       const p = data.projects.find((x) => x.slug === arg || x.title.toLowerCase() === arg || x.id.toLowerCase() === arg);
       if (!p) return { out: [[s(fill(S.noSuchFinding, { arg }), "err")]] };
       const out: Line[] = [
-        [s(`${p.id} `, "dim"), s(`[${p.severity.toUpperCase()}] `, p.severity === "critical" ? "accent" : "muted"), s(p.title, "fg")],
+        [s(`${p.id} `, "dim"), s(`[${p.label}] `, p.kind === "personal" ? "accent" : "muted"), s(p.title, "fg")],
         [s(p.summary, "muted")],
         [s("stack: ", "dim"), s(p.stack.join(", "), "muted")],
         [s("→ ", "accent"), { t: S.caseStudy, tone: "accent", href: p.href, internal: true }],
@@ -119,7 +119,7 @@ function listProjects(data: TerminalData): Result {
     out: [
       ...data.projects.map((p) => [
         s(p.id + "  ", "dim"),
-        s(pad(p.severity.toUpperCase(), 10), p.severity === "critical" ? "accent" : "muted"),
+        s(pad(p.label, 18), p.kind === "personal" ? "accent" : "muted"),
         s(pad(p.slug, 18), "fg"),
         s(p.title, "muted"),
       ]),
