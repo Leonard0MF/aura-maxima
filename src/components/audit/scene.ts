@@ -15,8 +15,16 @@
  * Qualidade "simple" (celular, máquinas fracas): sem render target nem lente;
  * o mesmo disco/anel/horizonte desenhados analiticamente por cima da cena.
  *
- * Níveis automáticos: mede o fps em janelas de 2 s e desce
- *   lente 1,0 → 0,75 → 0,5 (+ 65% das partículas) → simple
+ * Preparação (lib/gl-slot): a cena nasce PARADA a ~1,5 viewport da seção;
+ * warm() compila os shaders em paralelo (compileAsync) e faz um render de
+ * aquecimento em baixa resolução, em pedaços (requestIdleCallback). As
+ * posições das partículas chegam prontas (layout.worker, uma vez só).
+ *
+ * Níveis automáticos, de baixo para cima: começa em lente 0,5 (65% das
+ * partículas) e sobe para 0,75 → 1,0 enquanto o fps medido sobra (janelas de
+ * 1,5 s); se um degrau não aguenta, volta e trava. "simple" é o piso
+ * (celular, máquina fraca, ou se nem a lente 0,5 aguenta).
+ * Durante a revelação em círculo (transition) a resolução cai para 0,5.
  *
  * Movimento: tudo no vertex shader (a CPU nunca reescreve partículas). Por
  * frame a CPU resolve Kepler para os ~10 nós, integra 2 molas e a rotação e
@@ -45,7 +53,7 @@ import {
   WebGLRenderTarget,
 } from "three";
 
-import { CAMERA_Z, DUST_TILT, FOV, HALF_H, makeLayout, orbitPos } from "./layout";
+import { CAMERA_Z, DUST_TILT, FOV, HALF_H, makeLayout, orbitPos, type Layout } from "./layout";
 
 const MAX_NODES = 12;
 /* raio da sombra em rs (≈ 2,6 rs: 3√3/2) */
@@ -319,6 +327,10 @@ export type Constellation = {
   hit(x: number, y: number): number;
   nodeAt(i: number): { x: number; y: number };
   hover(i: number): void;
+  /** compila os shaders e faz um render de aquecimento, em pedaços ociosos */
+  warm(): Promise<void>;
+  /** revelação em andamento: resolução 0,5 por `ms` */
+  transition(ms: number): void;
   /** onda de scan saindo do horizonte; acende os nós na ordem em que o anel os alcança */
   wave(onLit: (i: number) => void, onEnd: () => void): void;
   destroy(): void;
@@ -327,10 +339,10 @@ export type Constellation = {
 export function createConstellation(
   canvas: HTMLCanvasElement,
   nNodes: number,
-  opts: { count: number; simple: boolean; onLost(): void },
+  opts: { count: number; simple: boolean; layout?: Layout; onLost(): void },
 ): Constellation {
   const n = Math.min(nNodes, MAX_NODES);
-  const L = makeLayout(n, opts.count);
+  const L = opts.layout ?? makeLayout(n, opts.count);
   const dpr = Math.min(1.5, window.devicePixelRatio || 1);
 
   const renderer = new WebGLRenderer({ canvas, alpha: true, antialias: false, powerPreference: "high-performance" });
@@ -471,6 +483,7 @@ export function createConstellation(
   let W = 1;
   let H = 1;
   let running = false;
+  let destroyed = false;
   let raf = 0;
   let last = performance.now();
   let time = 0;
@@ -493,14 +506,21 @@ export function createConstellation(
   const buf = new Vector2();
 
   /* ---------- qualidade ---------- */
-  let level = opts.simple ? 3 : 0;
+  let level = opts.simple ? 3 : 2;
   let quality: Quality = LADDER[level];
-  const measure = { t0: -1, frames: 0, done: opts.simple };
+  const measure = { t0: -1, frames: 0, done: opts.simple, climbed: false };
+  /* revelação: até lowUntil (ms) a resolução fica em 0,5; 0 = sem prazo ainda */
+  let low = true;
+  let lowUntil = 0;
+  function res() {
+    const q = quality === "lens-0.75" ? 0.75 : quality === "lens-0.5" ? 0.5 : 1;
+    renderer.setPixelRatio(dpr * (low ? Math.min(q, 0.5) : q));
+    W = H = -1; // força o resize
+  }
   function applyQuality() {
     quality = LADDER[level];
     canvas.dataset.quality = quality;
-    const q = quality === "lens-0.75" ? 0.75 : quality === "lens-0.5" ? 0.5 : 1;
-    renderer.setPixelRatio(dpr * q);
+    res();
     dustGeo.setDrawRange(0, level >= 2 ? Math.floor(L.count * 0.65) : L.count);
     post.material = quality === "simple" ? simpleMat : lensMat;
     /* sem lente a cena vai direto para o canvas: fundo opaco (linhas aditivas não "furam" o fundo) */
@@ -509,7 +529,6 @@ export function createConstellation(
       rt?.dispose();
       rt = null;
     }
-    W = H = -1; // força o resize
   }
 
   function resize() {
@@ -563,20 +582,37 @@ export function createConstellation(
     last = now;
     time += dt;
 
-    /* nível de qualidade: janelas de 2 s (depois de 0,5 s de aquecimento) */
-    if (!measure.done) {
+    /* fim da revelação: volta à resolução do nível */
+    if (low && lowUntil && now >= lowUntil) {
+      low = false;
+      lowUntil = 0;
+      res();
+      measure.t0 = -1;
+      measure.frames = 0;
+    }
+    /* nível de qualidade, de baixo para cima: janelas de 1,5 s (depois de
+     * 0,4 s de folga), nunca durante a revelação */
+    if (!measure.done && !low) {
       const sec = now / 1000; // relógio real: o tempo da cena é limitado por quadro
-      if (measure.t0 < 0) measure.t0 = sec + 0.5;
+      if (measure.t0 < 0) measure.t0 = sec + 0.4;
       else if (sec >= measure.t0) {
         measure.frames++;
-        if (sec - measure.t0 >= 2) {
+        if (sec - measure.t0 >= 1.5) {
           const fps = measure.frames / (sec - measure.t0);
-          if (fps < 50 && level < LADDER.length - 1) {
-            level++;
-            applyQuality();
-            measure.t0 = sec + 0.5;
-            measure.frames = 0;
+          let next = level;
+          if (fps >= 55 && level > 0 && level <= 2) {
+            next = level - 1; // sobra: sobe um degrau
+            measure.climbed = true;
+          } else if (fps < 48 && level < LADDER.length - 1) {
+            next = level + 1; // não aguentou: volta (e trava, se tinha subido)
+            if (measure.climbed) measure.done = true;
           } else measure.done = true;
+          if (next !== level) {
+            level = next;
+            applyQuality();
+          }
+          measure.t0 = sec + 0.4;
+          measure.frames = 0;
         }
       }
     }
@@ -646,6 +682,12 @@ export function createConstellation(
     bhUniforms.uCursor.value.set(cx * pr, cy * pr);
     bhUniforms.uCM.value = cm.v;
 
+    draw();
+    project();
+    if (running) raf = requestAnimationFrame(frame);
+  }
+
+  function draw() {
     if (quality === "simple" || !rt) {
       renderer.setRenderTarget(null);
       renderer.autoClear = true;
@@ -660,8 +702,6 @@ export function createConstellation(
       renderer.setRenderTarget(null);
       renderer.render(postScene, postCam);
     }
-    project();
-    if (running) raf = requestAnimationFrame(frame);
   }
 
   const toNdc = (x: number, y: number) => ({ x: (x / W) * 2 - 1, y: 1 - (y / H) * 2 });
@@ -678,11 +718,48 @@ export function createConstellation(
   resize();
   project();
 
+  const idle = () =>
+    new Promise<void>((r) => ("requestIdleCallback" in window ? requestIdleCallback(() => r(), { timeout: 400 }) : setTimeout(r, 30)));
+
   return {
+    async warm() {
+      /* 1. shaders da cena (poeira, linhas, nós), fora da main thread quando
+       *    há KHR_parallel_shader_compile */
+      await idle();
+      resize();
+      try {
+        await renderer.compileAsync(scene, camera);
+      } catch {
+        /* sem suporte: compila no render de aquecimento */
+      }
+      /* 2. os dois passes finais (lente e simple): a escada de qualidade pode trocar */
+      for (const mat of opts.simple ? [simpleMat] : [lensMat, simpleMat]) {
+        await idle();
+        post.material = mat;
+        try {
+          await renderer.compileAsync(postScene, postCam);
+        } catch {
+          /* idem */
+        }
+      }
+      post.material = quality === "simple" ? simpleMat : lensMat;
+      /* 3. render de aquecimento em 0,5 (sobe buffers e render target para a GPU) */
+      await idle();
+      if (destroyed) return;
+      resize();
+      updateLines();
+      draw();
+    },
+    transition(ms) {
+      low = true;
+      lowUntil = performance.now() + ms;
+      res();
+    },
     run(on) {
       if (on === running) return;
       running = on;
       if (on) {
+        if (low && !lowUntil) lowUntil = performance.now() + 900; // sem revelação: sobe sozinho
         last = performance.now();
         if (!measure.done) measure.t0 = -1; // recomeça a medição depois de uma pausa
         measure.frames = 0;
@@ -747,6 +824,7 @@ export function createConstellation(
       waveT = time;
     },
     destroy() {
+      destroyed = true;
       running = false;
       cancelAnimationFrame(raf);
       clearTimeout(dragTimer);
