@@ -616,11 +616,114 @@ html[data-intro="run"] .hero[data-live] .ascii-fallback {
 }
 .work-media {
   display: block;
-  transition: transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition:
+    transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1),
+    filter 0.35s ease;
 }
-.work-item:hover .work-media,
+/* mira (WorkAim liga data-aim): print levemente mais nítido, escala ≤ 1.01 */
+.work-item[data-aim] .work-media,
 .work-item:focus-within .work-media {
-  transform: scale(1.02);
+  transform: scale(1.01);
+  filter: contrast(1.07) saturate(1.04);
+}
+.work-aim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+/* cantoneiras: 2 px, braço de 16 px; fechadas a 10 px das bordas; abertas
+ * (e invisíveis) 14 px para fora */
+.work-aim i {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border: 0 solid var(--color-accent);
+  opacity: 0;
+  transition:
+    transform 0.25s cubic-bezier(0.2, 0.7, 0.2, 1),
+    opacity 0.25s ease-out;
+}
+.work-aim i:nth-child(1) {
+  top: 10px;
+  left: 10px;
+  border-top-width: 2px;
+  border-left-width: 2px;
+  transform: translate(-14px, -14px);
+}
+.work-aim i:nth-child(2) {
+  top: 10px;
+  right: 10px;
+  border-top-width: 2px;
+  border-right-width: 2px;
+  transform: translate(14px, -14px);
+}
+.work-aim i:nth-child(3) {
+  bottom: 10px;
+  left: 10px;
+  border-bottom-width: 2px;
+  border-left-width: 2px;
+  transform: translate(-14px, 14px);
+}
+.work-aim i:nth-child(4) {
+  bottom: 10px;
+  right: 10px;
+  border-bottom-width: 2px;
+  border-right-width: 2px;
+  transform: translate(14px, 14px);
+}
+.work-item[data-aim] .work-aim i {
+  opacity: 1;
+  transform: none;
+}
+/* linha de scan: o bloco inteiro desce (translateY 0 → 100%) com a linha de
+ * 1 px na borda de cima; uma vez por data-aim */
+.work-scan {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+}
+.work-scan::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--color-accent);
+  box-shadow:
+    0 0 6px 1px rgb(245 165 36 / 0.6),
+    0 0 18px 2px rgb(245 165 36 / 0.25);
+}
+.work-item[data-aim] .work-scan {
+  animation: work-scan 0.7s cubic-bezier(0.45, 0, 0.25, 1) forwards;
+}
+@keyframes work-scan {
+  0% {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  8%,
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .work-scan {
+    display: none;
+  }
+  .work-aim i,
+  .work-media {
+    transition: none;
+  }
+  .work-item[data-aim] .work-media,
+  .work-item:focus-within .work-media {
+    transform: none;
+  }
 }
 /* placeholder: hachura fina + nome em contorno, até existir o print */
 .work-ph {
