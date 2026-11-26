@@ -5,6 +5,8 @@
  *
  * Quando: depois do load, com a intro terminada, no 1º momento ocioso
  * (requestIdleCallback). Cada carga roda num idle próprio, uma de cada vez.
+ * No celular, só depois da 1ª rolagem: quem não desce não paga ~590 KB nem
+ * a tarefa de avaliação (o celular também não prepara o AUDIT cedo).
  */
 type Job = () => Promise<unknown>;
 const queue: Job[] = [];
@@ -38,8 +40,12 @@ function arm() {
     open = true;
     pump();
   };
-  if (document.readyState === "complete") ready();
-  else addEventListener("load", ready, { once: true });
+  const loaded = () => {
+    if (!matchMedia("(max-width: 639px)").matches || scrollY > 0) return ready();
+    addEventListener("scroll", ready, { once: true, passive: true });
+  };
+  if (document.readyState === "complete") loaded();
+  else addEventListener("load", loaded, { once: true });
 }
 
 /** agenda `load` para o 1º momento ocioso depois do hero; devolve o cancelamento */
