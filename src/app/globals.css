@@ -1369,96 +1369,57 @@ html:not([data-js]) .audit-list {
 }
 /* ---- entrada do AUDIT (AuditReveal): animação de tempo, sem pin ----
  * Quando o topo da seção cruza ~60% da viewport (data-in), um círculo
- * escuro nasce no centro do buraco negro e cobre a seção em ~900 ms
- * (ease-out). Nada fica preso na tela. Tudo restrito ao .audit-wrap
- * (relative + isolation + overflow: clip): nem o círculo nem o anel vazam
- * para outras seções. Sem JS: a seção aparece pronta. */
-@property --k {
-  syntax: "<number>";
-  inherits: true;
-  initial-value: 1;
-}
+ * escuro de 100 px nasce no centro do buraco negro e cresce SÓ com
+ * transform: scale() (Web Animations, ~900 ms, ease-out) até cobrir a seção.
+ * Dentro dele, a imagem estática do AUDIT, contra-escalada (fica parada) e
+ * recortada pelo próprio círculo (overflow hidden + border-radius). A seção
+ * fica invisível (opacity 0, o canvas parado) até o círculo cobrir tudo
+ * (data-done); aí o círculo some num crossfade de 200 ms sobre o canvas ao
+ * vivo. Tudo restrito ao .audit-wrap (overflow: clip). Sem JS: pronta. */
 .audit-wrap {
   position: relative;
   isolation: isolate;
   overflow: clip;
   --bhx: 25%;
   --bhy: 50%;
-  --rmax: 150vmax;
+  --sw: 100vw;
+  --sh: 100svh;
 }
-.audit-ring {
+.audit-iris {
   display: none;
+  position: absolute;
+  z-index: 2;
+  left: calc(var(--bhx) - 50px);
+  top: calc(var(--bhy) - 50px);
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #0b0d10;
+  transform: scale(0);
+  pointer-events: none;
 }
-html[data-reveal] .audit-wrap {
-  --k: 0;
-  --r: calc(var(--k) * var(--rmax));
-  transition: --k 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+.audit-iris[data-on] {
+  display: block;
 }
-html[data-reveal] .audit-wrap:has(.audit[data-in]) {
-  --k: 1;
+/* a imagem cobre a seção inteira; origem da escala = centro do círculo */
+.audit-iris img {
+  position: absolute;
+  left: calc(50px - var(--bhx));
+  top: calc(50px - var(--bhy));
+  width: var(--sw);
+  height: var(--sh);
+  max-width: none;
+  transform-origin: var(--bhx) var(--bhy);
 }
-html[data-reveal] .audit-wrap:has(.audit[data-reset]) {
-  transition: none;
+.audit-iris img:not([src]) {
+  display: none;
 }
 html[data-reveal] .audit {
   background: #0b0d10;
-  clip-path: circle(var(--r) at var(--bhx) var(--bhy));
 }
-/* aberto: sem clip-path (nada recortando cada quadro do canvas) */
-html[data-reveal] .audit[data-done] {
-  clip-path: none;
-}
-/* anel âmbar fino girando no limite do círculo, só enquanto ele cresce */
-html[data-reveal] .audit-ring {
-  display: block;
-  position: absolute;
-  left: var(--bhx);
-  top: var(--bhy);
-  z-index: 2;
-  width: calc(2 * var(--r));
-  height: calc(2 * var(--r));
-  translate: -50% -50%;
-  border-radius: 50%;
-  pointer-events: none;
-  opacity: calc(min(1, var(--k) * 25) * min(1, (1 - var(--k)) * 6));
-  box-shadow:
-    0 0 70px 28px rgb(11 13 16 / 0.42),
-    inset 0 0 50px 14px rgb(11 13 16 / 0.75);
-}
-html[data-reveal] .audit-ring::before,
-html[data-reveal] .audit-ring::after {
-  content: "";
-  position: absolute;
-  inset: -1px;
-  border-radius: 50%;
-  background: conic-gradient(
-    from 0deg,
-    transparent 0 8%,
-    rgb(245 165 36 / 0.95) 18%,
-    transparent 30% 46%,
-    rgb(255 214 140 / 0.8) 58%,
-    transparent 70% 84%,
-    rgb(245 165 36 / 0.7) 92%,
-    transparent
-  );
-  mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
-  animation: ring-spin 7s linear infinite;
-}
-html[data-reveal] .audit-ring::after {
-  inset: -7px;
-  opacity: 0.45;
-  mask: radial-gradient(farthest-side, transparent calc(100% - 14px), #000 calc(100% - 7px), transparent);
-}
-/* o anel só existe enquanto o círculo abre: antes e depois, display: none
- * (sem a animação infinita nem a camada gigante com sombra) */
-html[data-reveal] .audit-wrap:not(:has(.audit[data-in])) .audit-ring,
-html[data-reveal] .audit-wrap:has(.audit[data-done]) .audit-ring {
-  display: none;
-}
-@keyframes ring-spin {
-  to {
-    rotate: 1turn;
-  }
+html[data-reveal] .audit:not([data-done]) {
+  opacity: 0;
 }
 /* reduced-motion: fade simples de 300 ms ao entrar */
 @media (prefers-reduced-motion: reduce) {

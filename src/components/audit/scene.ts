@@ -28,8 +28,9 @@
  * Vale para a sessão inteira. Depois de visível só desce: fps < 40 por mais
  * de 2 s → um degrau abaixo (até "simple"), com crossfade de 300 ms.
  * "simple" (sem lente) é fixo no celular/toque.
- * Durante a revelação em círculo (transition) a simulação congela no último
- * quadro (nada é redesenhado), sem baixar a resolução.
+ * Durante a revelação em círculo o loop fica PARADO (quem liga é o
+ * AuditField quando o círculo termina); snapshot() dá a imagem que o círculo
+ * mostra enquanto cresce, e afterFrame() avisa do 1º quadro ao vivo.
  *
  * Movimento: tudo no vertex shader (a CPU nunca reescreve partículas). Por
  * frame a CPU resolve Kepler para os ~10 nós, integra 2 molas e a rotação e
@@ -351,7 +352,10 @@ export type Constellation = {
   /** escolhe o nível (uma vez por sessão; sem renderizar nada a mais) */
   choose(): { quality: string; why: string };
   /** revelação em andamento: congela a simulação por `ms` (último quadro na tela) */
-  transition(ms: number): void;
+  /** quadro atual em WebP (toBlob: só a cópia é síncrona; a codificação sai da main thread) */
+  snapshot(): Promise<string | null>;
+  /** chamado uma vez, no fim do próximo quadro desenhado pelo loop */
+  afterFrame(cb: () => void): void;
   /** onda de scan saindo do horizonte; acende os nós na ordem em que o anel os alcança */
   wave(onLit: (i: number) => void, onEnd: () => void): void;
   /** testes: centro e raio do disco (px) e os nós na tela */
@@ -558,8 +562,7 @@ export function createConstellation(
   let quality: Quality = LADDER[level];
   /* queda automática: janelas de 0,5 s; slow = desde quando o fps está < 40 */
   const watch = { t0: -1, frames: 0, slow: -1 };
-  /* revelação: até freezeUntil (ms) nada se move nem é redesenhado */
-  let freezeUntil = 0;
+  let after: (() => void) | null = null;
   function res() {
     const q = quality === "lens-0.75" ? 0.75 : quality === "lens-0.5" ? 0.5 : 1;
     renderer.setPixelRatio(dpr * q);
@@ -705,16 +708,6 @@ export function createConstellation(
     last = now;
     time += dt;
 
-    /* revelação em círculo: simulação parada, o último quadro fica na tela */
-    if (now < freezeUntil) {
-      time -= dt; // o relógio da cena também para (sem salto ao retomar)
-      if (canvas.clientWidth !== W || canvas.clientHeight !== H) {
-        resize();
-        draw(); // o resize limpa o buffer: redesenha o mesmo instante
-      }
-      if (running) raf = requestAnimationFrame(frame);
-      return;
-    }
     /* só para baixo: fps < 40 por mais de 2 s (janelas de 0,5 s) → um degrau */
     if (level < LADDER.length - 1) {
       const sec = now / 1000; // relógio real: o tempo da cena é limitado por quadro
@@ -824,6 +817,11 @@ export function createConstellation(
 
     draw();
     project();
+    if (after) {
+      const cb = after;
+      after = null;
+      cb();
+    }
     if (running) raf = requestAnimationFrame(frame);
   }
 
@@ -899,12 +897,21 @@ export function createConstellation(
       canvas.dataset.qualityWhy = chosen.why;
       return { quality, why: chosen.why };
     },
-    transition(ms) {
-      freezeUntil = performance.now() + ms;
-      resize();
-      draw(); // o instante congelado, já no nível escolhido
-      watch.t0 = -1;
-      watch.slow = -1;
+    snapshot() {
+      return new Promise<string | null>((res) => {
+        if (destroyed) return res(null);
+        resize();
+        updateLines();
+        draw(); // no mesmo task do toBlob: o buffer ainda é este quadro
+        try {
+          canvas.toBlob((b) => res(b && !destroyed ? URL.createObjectURL(b) : null), "image/webp", 0.85);
+        } catch {
+          res(null);
+        }
+      });
+    },
+    afterFrame(cb) {
+      after = cb;
     },
     run(on) {
       if (on === running) return;

@@ -116,7 +116,10 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
     let chooseGo: (() => void) | null = null;
     let chooseStop: (() => void) | null = null;
 
-    const sync = () => scene?.run(ready && active && !document.hidden);
+    /* com a entrada em círculo (data-reveal), o loop só começa quando o
+     * círculo terminou de cobrir a seção (data-done) */
+    const opened = () => !document.documentElement.dataset.reveal || "done" in section.dataset;
+    const sync = () => scene?.run(ready && active && opened() && !document.hidden);
     /* qualidade: escolhida quando o campo aparece (ou na hora, se a seção já
      * precisa renderizar), com tudo o que a STACK mediu até ali. Não
      * renderiza nada a mais (só ajusta resolução): o 1º quadro visível já sai
@@ -185,6 +188,12 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
       if (location.search.includes("auditdebug")) (window as unknown as { __audit?: Constellation }).__audit = scene;
       section.dataset.live = "";
       chooseWhenNear(made);
+      /* a imagem que o círculo de entrada mostra enquanto cresce (AuditReveal) */
+      if (document.documentElement.dataset.reveal) {
+        await idle();
+        const url = scene === made ? await made.snapshot() : null;
+        if (url) section.dispatchEvent(new CustomEvent("audit:snapshot", { detail: url, bubbles: true }));
+      }
     };
     const unmount = () => {
       chooseStop?.();
@@ -237,16 +246,20 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
       priority: () => ("in" in section.dataset ? 1 : 0),
     });
 
-    /* revelação em círculo (AuditReveal marca data-in): a simulação congela
-     * enquanto o círculo abre (mesma resolução), e o render passa para esta seção */
-    let wasIn = "in" in section.dataset;
+    /* revelação em círculo (AuditReveal): data-in passa o render para esta
+     * seção; data-done (círculo cobriu a tela) liga o loop, e o 1º quadro ao
+     * vivo é avisado (audit:live) para o crossfade imagem → canvas */
+    let wasDone = "done" in section.dataset;
     const mo = new MutationObserver(() => {
-      const isIn = "in" in section.dataset;
-      if (isIn && !wasIn) scene?.transition(900);
-      wasIn = isIn;
+      const isDone = "done" in section.dataset;
+      if (isDone && !wasDone && scene) {
+        scene.afterFrame(() => requestAnimationFrame(() => section.dispatchEvent(new Event("audit:live"))));
+      }
+      wasDone = isDone;
+      sync();
       nudgeGL();
     });
-    mo.observe(section, { attributes: true, attributeFilter: ["data-in"] });
+    mo.observe(section, { attributes: true, attributeFilter: ["data-in", "data-done"] });
     document.addEventListener("visibilitychange", sync);
 
     /* ---------- interação ---------- */

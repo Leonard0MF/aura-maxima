@@ -9,7 +9,7 @@ import { auditView } from "@/lib/site";
 
 /*
  * 03 · AUDIT: "este site, visto por dentro". Entra por um círculo que nasce
- * no buraco negro e se expande em ~900 ms (AuditReveal), com um buraco negro no terço esquerdo e uma constelação interativa
+ * no buraco negro e se expande em ~900 ms (AuditReveal, só transform), com um buraco negro no terço esquerdo e uma constelação interativa
  * em órbita (AuditField) cujos nós principais são os dados de segurança do
  * site, vindos de content/audit.json. Por cima, em DOM: cabeçalho, frase,
  * nota, trade-off do CSP e o CTA do Aegis (à direita no desktop, para não
@@ -35,7 +35,7 @@ export async function Audit() {
         <AuditField nodes={nodes} labels={labels} />
 
         <div className="audit-body text-fg">
-          <SectionHead n="03" label={tn("audit")} title={t("title")} id="audit-title" meta={`aegis · ${audit.target}`}>
+          <SectionHead n="03" label={tn("audit")} title={t("title")} id="audit-title" meta={`aegis · ${audit.target}`} decrypt="event">
             {/* mouse x toque: as duas versões no HTML, o CSS mostra uma pela media
                 query (pointer: coarse); sem troca depois da hidratação */}
             <span className="on-fine text-muted">{t("lede")}</span>

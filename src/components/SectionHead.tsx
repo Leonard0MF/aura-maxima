@@ -7,7 +7,9 @@ import { Decrypt } from "@/components/Decrypt";
  * "01 — WORK" em mono + título display clamp(48px, 7vw, 112px) com uma
  * frase curta ao lado.
  */
-export function SectionHead({ n, label, title, id, children, meta }: { n: string; label: string; title: string; id: string; children?: ReactNode; meta?: ReactNode }) {
+/* decrypt="event": o título só descriptografa quando alguém dispara o evento
+ * (o AUDIT dispara quando o círculo de entrada cobre a tela) */
+export function SectionHead({ n, label, title, id, children, meta, decrypt = "view" }: { n: string; label: string; title: string; id: string; children?: ReactNode; meta?: ReactNode; decrypt?: "view" | "event" }) {
   return (
     <header className="sh">
       <div className="sh-label">
@@ -18,7 +20,7 @@ export function SectionHead({ n, label, title, id, children, meta }: { n: string
       </div>
       <div className="sh-row">
         <h2 id={id} className="sh-title font-display">
-          <Decrypt text={title} />
+          <Decrypt text={title} trigger={decrypt} />
         </h2>
         {children && <p className="sh-lede">{children}</p>}
       </div>
