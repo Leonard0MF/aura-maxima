@@ -221,29 +221,31 @@ html[data-intro] .hero .hl-bot {
 }
 /* ---------- Enigma (fundo do hero) ----------
  * Caixa = enigmaRect() em core.ts (mesmas constantes, em unidades do .hero):
- * altura min(42cqh, 36cqw / proporção), centro em (27cqw, 62cqh); abaixo de
- * 640px: min(20cqh, 55cqw / proporção), centro em (30cqw, 40cqh). */
+ * altura min(46cqh, 38cqw / proporção); centro em (max(19cqw, 2cqw +
+ * largura/2), 50cqh): à esquerda do retrato, entre FULL-STACK e DEVELOPER.
+ * Abaixo de 640px: min(20cqh, 55cqw / proporção), centro em (30cqw, 40cqh). */
 .hero-enigma-box {
+  --eh: min(46cqh, 38cqw / var(--ea));
   position: absolute;
-  left: 27cqw;
-  top: 62cqh;
-  height: min(42cqh, 36cqw / var(--ea));
+ left: max(19cqw, calc(2cqw + var(--eh) * var(--ea) / 2));
+  top: 50cqh;
+  height: var(--eh);
   aspect-ratio: var(--ea);
   translate: -50% -50%;
 }
 @container (width < 640px) {
   .hero-enigma-box {
-    left: 30cqw;
+    --eh: min(20cqh, 55cqw / var(--ea));
+    left: max(30cqw, calc(2cqw + var(--eh) * var(--ea) / 2));
     top: 40cqh;
-    height: min(20cqh, 55cqw / var(--ea));
   }
   .ascii-fallback--bg img {
-    opacity: 0.2;
+    opacity: 0.35;
   }
 }
-/* fallback estático: glifos finos, apagados (nunca competem com o rosto) */
+/* fallback estático: mesma opacidade do canvas (abaixo do retrato) */
 .ascii-fallback--bg img {
-  opacity: 0.3;
+  opacity: 0.52;
 }
 /* legenda: canto inferior direito, só com a lente sobre a Enigma */
 .hero-enigma-cap {
