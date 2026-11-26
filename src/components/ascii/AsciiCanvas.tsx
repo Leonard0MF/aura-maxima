@@ -93,13 +93,24 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
     const canvas = ref.current;
     const box = canvas?.parentElement;
     if (!canvas || !box) return;
+    const html = document.documentElement;
+    /* por que a intro não rodou (data-intro-why; no dev, também no console) */
+    const skipped = (why: string) => {
+      if (!html.dataset.introWhy) html.dataset.introWhy = why;
+      if (html.dataset.intro === "1" || html.dataset.intro === "run") html.dataset.intro = "done";
+      if (process.env.NODE_ENV !== "production") console.info(`[intro] skipped: ${html.dataset.introWhy}`);
+    };
+    const fail = (why: string) => {
+      skipped(why);
+      onFail();
+    };
     const gl = canvas.getContext("webgl2", { alpha: true, premultipliedAlpha: true, antialias: false, powerPreference: "low-power" });
-    if (!gl) return onFail();
+    if (!gl) return fail("error");
     /* WebGL emulado na CPU (SwiftShader, llvmpipe: sem GPU ou driver) conta
      * como aparelho fraco → fallback estático. `?gl=force` liga mesmo assim (testes). */
     const dbg = gl.getExtension("WEBGL_debug_renderer_info");
     const renderer = dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : "";
-    if (/swiftshader|llvmpipe|softpipe|software/i.test(renderer) && !location.search.includes("gl=force")) return onFail();
+    if (/swiftshader|llvmpipe|softpipe|software/i.test(renderer) && !location.search.includes("gl=force")) return fail("no-gpu");
 
     /* Compila sem consultar o status: com KHR_parallel_shader_compile o
      * driver trabalha em paralelo e a main thread não trava (ver init). */
@@ -112,10 +123,11 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
     };
     const prog = link(FRAG);
     const gridProg = link(GRID_FRAG);
-    const html0 = document.documentElement;
-    /* intro: só na 1ª carga da sessão (o boot marca data-intro="1"; um
-     * clique/tecla/rolagem antes daqui já a cancelou) */
-    let intro = html0.dataset.intro === "1";
+    /* intro: só na 1ª carga da sessão (o boot marca data-intro="1" e anota o
+     * motivo quando não marca; um clique/tecla/rolagem antes daqui já a
+     * cancelou). ?intro=1 força, ?intro=0 desliga. */
+    let intro = html.dataset.intro === "1";
+    if (!intro) skipped(html.dataset.introWhy || "input");
     const introProg = intro ? link(INTRO_FS, INTRO_VS) : null;
     const parallel = gl.getExtension("KHR_parallel_shader_compile");
     gl.bindVertexArray(gl.createVertexArray());
@@ -125,7 +137,6 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
     let alive = true;
     let ready = false;
     let imgW = 1;
-    const html = document.documentElement;
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
     let introStart = 0;
     /* celular: a mesma sequência em 1,8 s (u = tempo na escala do desktop) */
@@ -491,6 +502,7 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
       const limit = cost > 12 ? 120 : 50;
       if (gap > limit && ++slow > 40) {
         alive = false;
+        if (intro) skipped("slow");
         return onFail();
       }
       if (gap < limit) slow = 0;
@@ -533,9 +545,12 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
         });
       }
       if (!alive) return;
-      if (![prog, gridProg].every((p) => gl.getProgramParameter(p, gl.LINK_STATUS))) return onFail();
+      if (![prog, gridProg].every((p) => gl.getProgramParameter(p, gl.LINK_STATUS))) return fail("error");
       /* intro que não compilou: segue sem ela */
-      if (introProg && !gl.getProgramParameter(introProg, gl.LINK_STATUS)) intro = false;
+      if (introProg && !gl.getProgramParameter(introProg, gl.LINK_STATUS)) {
+        intro = false;
+        skipped("error");
+      }
 
       const family = getComputedStyle(canvas).fontFamily;
       const img = new Image();
@@ -598,9 +613,16 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
       const f = face();
       lx = tx = f.x;
       ly = ty = f.y;
-      /* chegou tarde (a capa de segurança do CSS já mostrou o texto em 2,5 s):
-       * não cobre de novo o que já apareceu */
-      if (intro && performance.now() > 2300) finishIntro();
+      /* chegou tarde (a capa de segurança do CSS já mostrou o texto 2,5 s
+       * depois do boot): não cobre de novo o que já apareceu. O relógio é o
+       * do boot (data-intro-at), não o da navegação: numa 1ª visita fria o
+       * próprio HTML pode chegar tarde, e a intro ainda tem os 2,5 s dela. */
+      const bootAt = Number(html.dataset.introAt) || 0;
+      if (intro && performance.now() - bootAt > 2300 && !("introForce" in html.dataset)) {
+        html.dataset.introWhy = "late";
+        finishIntro();
+        skipped("late");
+      }
       introStart = performance.now();
       ready = true;
       schedule();
