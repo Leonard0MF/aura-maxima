@@ -151,13 +151,16 @@
     "labels": {
       "tls": "TLS certificate",
       "hosting": "CDN / hosting",
-      "dns": "DNS"
+      "dns": "DNS / e-mail",
+      "cookies": "Cookies"
     },
     "exampleValues": {
       "tls": "issuer, version and expiry come with the real scan",
-      "dns": "CAA and DNSSEC come with the real scan",
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' (no nonce)"
-    }
+      "dns": "CAA, DNSSEC, SPF and DMARC come with the real scan",
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' (no nonce)",
+      "cookies": "Secure, HttpOnly and SameSite come with the real scan"
+    },
+    "band": { "ok": "excellent posture", "warn": "moderate posture", "bad": "weak posture" }
   },
   "about": {
     "title": "About me",

@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "check:i18n": "node scripts/check-i18n.mjs"
+    "check:i18n": "node scripts/check-i18n.mjs",
+    "audit:import": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/import-aegis.ts"
   },
   "dependencies": {
     "next": "16.3.5",
