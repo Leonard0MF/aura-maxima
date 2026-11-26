@@ -68,7 +68,8 @@ export const services: ServiceGroup[] = [
 /*
  * Seção 02 · STACK.
  *
- * stackIndex: o índice em texto, por categoria. `level` só onde foi indicado:
+ * stackIndex: o índice em texto, por categoria. `level` em todas as
+ * ferramentas; os conceitos de segurança não têm nível:
  *   practice = Prática (uso em projetos reais), familiar = Familiaridade (já
  *   usei, sem profundidade), contact = Contato (explorando).
  * `name` ausente = nome traduzível em messages (stack.items.<id>).
@@ -108,27 +109,27 @@ export const stackIndex: StackCategory[] = [
   {
     id: "visual",
     items: [
-      { id: "threejs", name: "Three.js" },
-      { id: "r3f", name: "React Three Fiber" },
-      { id: "webgl", name: "WebGL" },
-      { id: "gsap", name: "GSAP" },
-      { id: "framer", name: "Framer Motion" },
-      { id: "lenis", name: "Lenis" },
-      { id: "lucide", name: "Lucide React" },
-      { id: "tsrouter", name: "TanStack Router" },
-      { id: "tsstart", name: "TanStack Start" },
+      { id: "threejs", name: "Three.js", level: "practice" },
+      { id: "r3f", name: "React Three Fiber", level: "practice" },
+      { id: "webgl", name: "WebGL", level: "familiar" },
+      { id: "gsap", name: "GSAP", level: "familiar" },
+      { id: "framer", name: "Framer Motion", level: "practice" },
+      { id: "lenis", name: "Lenis", level: "familiar" },
+      { id: "lucide", name: "Lucide React", level: "practice" },
+      { id: "tsrouter", name: "TanStack Router", level: "practice" },
+      { id: "tsstart", name: "TanStack Start", level: "practice" },
     ],
   },
   {
     id: "backend",
     items: [
-      { id: "nodejs", name: "Node.js" },
-      { id: "supabase", name: "Supabase" },
-      { id: "postgresql", name: "PostgreSQL" },
-      { id: "sql", name: "SQL" },
-      { id: "rest" },
-      { id: "auth" },
-      { id: "rls", name: "Row Level Security (RLS)" },
+      { id: "nodejs", name: "Node.js", level: "practice" },
+      { id: "supabase", name: "Supabase", level: "practice" },
+      { id: "postgresql", name: "PostgreSQL", level: "practice" },
+      { id: "sql", name: "SQL", level: "familiar" },
+      { id: "rest", level: "practice" },
+      { id: "auth", level: "practice" },
+      { id: "rls", name: "Row Level Security (RLS)", level: "practice" },
     ],
   },
   {
@@ -136,9 +137,9 @@ export const stackIndex: StackCategory[] = [
     items: [
       { id: "kali", name: "Kali Linux", level: "practice" },
       { id: "nmap", name: "Nmap", level: "practice" },
-      { id: "docker", name: "Docker" },
-      { id: "git", name: "Git" },
-      { id: "github", name: "GitHub" },
+      { id: "docker", name: "Docker", level: "familiar" },
+      { id: "git", name: "Git", level: "practice" },
+      { id: "github", name: "GitHub", level: "practice" },
     ],
   },
   {
@@ -162,10 +163,10 @@ export const stackIndex: StackCategory[] = [
   {
     id: "systems",
     items: [
-      { id: "linux" },
-      { id: "kali", name: "Kali Linux" },
-      { id: "ubuntu", name: "Ubuntu" },
-      { id: "windows", name: "Windows" },
+      { id: "linux", level: "practice" },
+      { id: "kali", name: "Kali Linux", level: "practice" },
+      { id: "ubuntu", name: "Ubuntu", level: "practice" },
+      { id: "windows", name: "Windows", level: "practice" },
     ],
   },
 ];

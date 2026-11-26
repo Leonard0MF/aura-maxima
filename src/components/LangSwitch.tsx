@@ -24,9 +24,28 @@ function switchTo(e: MouseEvent<HTMLAnchorElement>, to: Locale, path: string) {
   location.assign(localePath(to, path) + hash);
 }
 
-export function LangSwitch({ locale, path, label, names, className = "" }: { locale: Locale; path: string; label: string; names: Record<Locale, string>; className?: string }) {
+export function LangSwitch({
+  locale,
+  path,
+  label,
+  names,
+  className = "",
+  intro,
+}: {
+  locale: Locale;
+  path: string;
+  label: string;
+  names: Record<Locale, string>;
+  className?: string;
+  /** posição na entrada em sequência da intro do hero */
+  intro?: number;
+}) {
   return (
-    <nav aria-label={label} className={`flex items-center gap-1.5 ${className}`}>
+    <nav
+      aria-label={label}
+      className={`flex items-center gap-1.5 ${className}`}
+      {...(intro !== undefined && { "data-intro-item": "", style: { "--i": intro } as React.CSSProperties })}
+    >
       {routing.locales.map((l, i) => (
         <span key={l} className="flex items-center gap-1.5">
           {i > 0 && (

@@ -14,9 +14,8 @@ const AsciiCanvas = dynamic(() => import("@/components/ascii/AsciiCanvas"), { ss
  * O script de boot marca data-fx="static" com reduced-motion ou
  * hardwareConcurrency ≤ 4: aí fica só o <pre> gerado no build. Se o WebGL2
  * (ou a foto) falhar, voltamos para ele também.
- * Um contexto WebGL por vez na página (lib/gl-slot): o hero só tem o canvas
- * enquanto é a seção 3D mais perto do centro da tela; longe, o canvas é
- * desmontado (contexto liberado) e volta ao chegar perto.
+ * lib/gl-slot: o hero só tem o canvas perto da tela (≤ 1,5 viewport); longe
+ * (> 2,5), o canvas é desmontado (contexto liberado) e volta ao chegar perto.
  */
 export function AsciiStage({ src, aspect, levels, bg }: { src: string; aspect: number; levels: Levels; bg?: BgImage }) {
   const [ready, setReady] = useState(false);
@@ -34,16 +33,18 @@ export function AsciiStage({ src, aspect, levels, bg }: { src: string; aspect: n
     const go = () => setReady(idle && owner && document.documentElement.dataset.fx !== "static");
     const release = claimGL({
       el,
-      mount() {
+      prepare() {
         owner = true;
         go();
       },
-      unmount() {
+      release() {
         owner = false;
         go();
         /* o canvas libera o contexto no cleanup (setTimeout 0): espera passar */
         return new Promise<void>((r) => setTimeout(r, 32));
       },
+      /* o loop do hero já para sozinho fora da tela (IntersectionObserver) */
+      run() {},
     });
     const first = () => {
       idle = true;

@@ -168,19 +168,79 @@ html[data-scan="instant"] .scan-line {
     top: calc(50cqh + min(21cqh, 47.5cqw / var(--pa, 0.67)) + 0.1em);
   }
 }
-/* Entrada: a tipografia sobe enquanto o retrato se monta (só na 1ª carga da
- * sessão, nunca com reduced-motion). Opacidade nunca chega a 0: não atrasa o LCP. */
-@keyframes hl-in {
-  from {
-    opacity: 0.12;
-    transform: translateY(0.3em);
+/* Intro "descriptografia" (1ª carga da sessão; nunca com reduced-motion nem
+ * no modo estático: o boot nem marca data-intro). A tipografia real é pintada
+ * desde o 1º frame (é o LCP) e NUNCA recebe opacity/visibility: a intro é uma
+ * camada por cima.
+ *   data-intro="1"   (boot) papel sobre o hero até o canvas assumir
+ *   data-intro="run" o canvas 2D das palavras cobre só as palavras
+ *   data-intro-meta  metadados, navegação e idiomas entram em sequência
+ *   data-intro="done" fim (ou pulado por clique/tecla/rolagem)
+ * Segurança: se o JS não chegar em 2,5 s, a capa sai e os metadados
+ * aparecem (o canvas que chegar depois não refaz a intro). */
+.hero-intro-cover,
+.hero-intro-words {
+  position: absolute;
+  inset: 0;
+  z-index: 1; /* acima da tipografia, abaixo do retrato (z 2) */
+  pointer-events: none;
+}
+.hero-intro-cover {
+  display: none;
+  background: var(--color-paper);
+}
+.hero-intro-words {
+  width: 100%;
+  height: 100%;
+}
+@keyframes intro-safety {
+  to {
+    visibility: hidden;
   }
 }
-html[data-intro] .hero .hl {
-  animation: hl-in 1.3s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+@keyframes intro-safety-show {
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
 }
-html[data-intro] .hero .hl-bot {
-  animation-delay: 0.15s;
+html[data-intro="1"]:not([data-fx="static"]) .hero-intro-cover {
+  display: block;
+  animation: intro-safety 0s linear 2.5s forwards;
+}
+html[data-intro="1"]:not([data-fx="static"]) .hero [data-intro-item],
+html[data-intro="run"] .hero [data-intro-item] {
+  opacity: 0;
+  translate: 0 8px;
+}
+html[data-intro="1"]:not([data-fx="static"]) .hero [data-intro-item] {
+  animation: intro-safety-show 0s linear 2.5s forwards;
+}
+html[data-intro-meta] .hero [data-intro-item] {
+  opacity: 1;
+  translate: 0 0;
+  transition:
+    opacity calc(0.3s * var(--ik, 1)) ease-out,
+    translate calc(0.3s * var(--ik, 1)) cubic-bezier(0.16, 1, 0.3, 1);
+  transition-delay: calc(var(--i, 0) * 0.12s * var(--ik, 1));
+}
+html[data-intro-skip] .hero [data-intro-item] {
+  transition: none;
+}
+/* a lente "acorda": um pulso âmbar no aro */
+@keyframes lens-wake {
+  0% {
+    box-shadow: 0 0 0 0 rgb(245 165 36 / 0.65);
+  }
+  100% {
+    box-shadow: 0 0 0 18px rgb(245 165 36 / 0);
+  }
+}
+.lens-ring[data-wake] {
+  animation: lens-wake 0.6s ease-out 2;
+}
+html[data-intro-skip] .lens-ring[data-wake] {
+  animation: none;
 }
 
 /* Retrato: canvas do tamanho do hero (o shader centraliza o retrato). */
@@ -252,29 +312,31 @@ html[data-intro] .hero .hl-bot {
 }
 /* ---------- Enigma (fundo do hero) ----------
  * Caixa = enigmaRect() em core.ts (mesmas constantes, em unidades do .hero):
- * altura min(42cqh, 36cqw / proporção), centro em (27cqw, 62cqh); abaixo de
- * 640px: min(20cqh, 55cqw / proporção), centro em (30cqw, 40cqh). */
+ * altura min(46cqh, 38cqw / proporção); centro em (max(19cqw, 2cqw +
+ * largura/2), 50cqh): à esquerda do retrato, entre FULL-STACK e DEVELOPER.
+ * Abaixo de 640px: min(20cqh, 55cqw / proporção), centro em (30cqw, 40cqh). */
 .hero-enigma-box {
+  --eh: min(46cqh, 38cqw / var(--ea));
   position: absolute;
-  left: 27cqw;
-  top: 62cqh;
-  height: min(42cqh, 36cqw / var(--ea));
+ left: max(19cqw, calc(2cqw + var(--eh) * var(--ea) / 2));
+  top: 50cqh;
+  height: var(--eh);
   aspect-ratio: var(--ea);
   translate: -50% -50%;
 }
 @container (width < 640px) {
   .hero-enigma-box {
-    left: 30cqw;
+    --eh: min(20cqh, 55cqw / var(--ea));
+    left: max(30cqw, calc(2cqw + var(--eh) * var(--ea) / 2));
     top: 40cqh;
-    height: min(20cqh, 55cqw / var(--ea));
   }
   .ascii-fallback--bg img {
-    opacity: 0.2;
+    opacity: 0.35;
   }
 }
-/* fallback estático: glifos finos, apagados (nunca competem com o rosto) */
+/* fallback estático: mesma opacidade do canvas (abaixo do retrato) */
 .ascii-fallback--bg img {
-  opacity: 0.3;
+  opacity: 0.52;
 }
 /* legenda: canto inferior direito, só com a lente sobre a Enigma */
 .hero-enigma-cap {
@@ -340,6 +402,10 @@ html[data-js]:not([data-fx="static"]) .ascii-fallback {
 }
 html[data-js] .hero[data-live] .ascii-fallback {
   opacity: 0;
+}
+/* na intro os glifos voam para o lugar: o esboço estático sai na hora */
+html[data-intro="run"] .hero[data-live] .ascii-fallback {
+  transition: none;
 }
 .ascii-fallback img {
   position: absolute;
@@ -604,6 +670,18 @@ html[data-js] .hero[data-live] .ascii-fallback {
   display: inline-flex;
   align-items: center;
 }
+.stack-legend > .stack-legend__note {
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+/* dica de uso, logo acima das categorias */
+.stack-usage {
+  padding-bottom: 0.6rem;
+  color: var(--color-ink-soft);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
 /* etiqueta de nível do popup da moeda (inalterada) */
 .stack-lvl {
   display: inline-block;
@@ -687,6 +765,21 @@ html[data-js] .hero[data-live] .ascii-fallback {
 }
 .stack-cat__btn[aria-expanded="true"]::after {
   rotate: 45deg;
+}
+/* primeira visita: o "+" da primeira categoria pulsa 2× */
+.stack-cat__btn[data-pulse]::after {
+  animation: stack-plus 0.55s ease-in-out 2;
+}
+@keyframes stack-plus {
+  50% {
+    scale: 1.9;
+    color: var(--color-accent-ink);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stack-cat__btn[data-pulse]::after {
+    animation: none;
+  }
 }
 .stack-cat__items {
   columns: 2 9.5rem;

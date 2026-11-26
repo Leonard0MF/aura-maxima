@@ -49,29 +49,55 @@ export const portraitBoxStyle = (aspect: number) =>
     translate: "-50% -50%",
   }) as const;
 /*
- * Enigma (fundo do hero): atrás do retrato, deslocada para a esquerda e para
- * baixo; no celular, menor e no alto à esquerda (ao lado da cabeça). Mesma
- * regra no shader (enigmaRect, px) e no CSS (.hero-enigma-box, com as mesmas
- * constantes em cqw/cqh). Frações da largura (W) e da altura (H) do hero:
- *   altura = min(h·H, wMax·W / proporção); centro em (cx·W, cy·H)
+ * Enigma (fundo do hero): à esquerda e atrás do retrato, na faixa entre
+ * FULL-STACK e DEVELOPER (centro vertical do hero), sem encostar nas bordas
+ * (margem de 2% da largura). No celular, menor e no alto à esquerda (ao lado
+ * da cabeça). Mesma regra no shader (enigmaRect, px) e no CSS
+ * (.hero-enigma-box, com as mesmas constantes em cqw/cqh):
+ *   altura = min(h·H, wMax·W / proporção)
+ *   centro = (max(cx·W, 2%·W + largura/2), cy·H)
+ * alpha: opacidade dos glifos (sempre abaixo do retrato, que é 100%).
  */
 export const ENIGMA = {
-  wide: { h: 0.42, wMax: 0.36, cx: 0.27, cy: 0.62, alpha: 0.3 },
-  narrow: { h: 0.2, wMax: 0.55, cx: 0.3, cy: 0.4, alpha: 0.2 },
+  wide: { h: 0.46, wMax: 0.38, cx: 0.19, cy: 0.5, alpha: 0.52 },
+  narrow: { h: 0.2, wMax: 0.55, cx: 0.3, cy: 0.4, alpha: 0.35 },
 } as const;
 export const NARROW = 640;
+const EDGE = 0.02;
 export function enigmaRect(W: number, H: number, aspect: number) {
   const p = W < NARROW ? ENIGMA.narrow : ENIGMA.wide;
   const h = Math.min(p.h * H, (p.wMax * W) / aspect);
   const w = h * aspect;
-  return { x: p.cx * W - w / 2, y: p.cy * H - h / 2, w, h, alpha: p.alpha };
+  const cx = Math.max(p.cx * W, EDGE * W + w / 2);
+  return { x: cx - w / 2, y: p.cy * H - h / 2, w, h, alpha: p.alpha };
 }
-/* glifos finos da Enigma (só a rampa, sem tokens de código) */
-export const THIN = " .:-=+";
-export const THIN_IDX = [...THIN].map((ch) => GLYPHS.indexOf(ch));
-export function thinGlyph(d: number) {
+/*
+ * Tom da Enigma: a máquina é quase toda preta, e a curva do retrato a
+ * transformaria num bloco denso. Aqui entra contraste LOCAL (luminância
+ * menos a média de ~6 células): teclas, lâmpadas e rotores viram vazios
+ * claros contra o corpo, que fica em meio-tom; o branco dos níveis sai do
+ * percentil 75 (não 97) e a densidade tem teto (`cap`), para a máquina
+ * nunca pesar mais que o retrato. Rampa completa, sem tokens de código.
+ */
+/* grade da Enigma: células com 60% do tamanho das do retrato (mais detalhe
+ * na máquina; o retrato, com glifos maiores e cor cheia, segue dominante) */
+export const BG_SUB = 0.6;
+export const TONE_BG = { sharpen: 1.0, curve: 0.6, gamma: 1.8, local: 0.55, gain: 3.2, cap: 0.9, white: 0.75 } as const;
+export function bgGlyph(d: number) {
   if (d < MIN_DENSITY) return 0;
-  return THIN_IDX[1 + Math.min(THIN.length - 2, Math.floor(((d - MIN_DENSITY) / (1 - MIN_DENSITY)) * (THIN.length - 1)))];
+  return RAMP_IDX[1 + Math.min(8, Math.floor(((d - MIN_DENSITY) / (1 - MIN_DENSITY)) * 9))];
+}
+/* densidade da Enigma: blur = ~3 células (nitidez), big = ~6 células (contraste local) */
+export function bgDensity(l: number, blur: number, big: number, u: number, v: number, lv: Levels) {
+  const T = TONE_BG;
+  let x = l + T.sharpen * (l - blur);
+  x = clamp01((x - lv.black) / (lv.white - lv.black));
+  x = x + (smoothstep(0, 1, x) - x) * T.curve;
+  x = Math.pow(x, T.gamma);
+  const loc = clamp01(0.5 + T.gain * (l - big));
+  x = x + (loc - x) * T.local;
+  const edge = smoothstep(0, 0.04, u) * smoothstep(0, 0.04, 1 - u) * smoothstep(0, 0.04, 1 - v) * smoothstep(0, 0.02, v);
+  return Math.min(T.cap, 1 - x) * edge;
 }
 
 /* Largura da célula ao vivo, em px CSS: ~W/220, entre 5 e 7. */
@@ -84,7 +110,7 @@ export const LEVELS = { sharpen: 0.7, curve: 0.5, gamma: 1.35 } as const;
 export type Levels = { black: number; white: number };
 
 /* Níveis automáticos: preto no percentil 2, branco no 97 (o fundo branco da foto vira papel). */
-export function autoLevels(lum: ArrayLike<number>): Levels {
+export function autoLevels(lum: ArrayLike<number>, hi = 0.97): Levels {
   const hist = new Array(256).fill(0);
   for (let i = 0; i < lum.length; i++) hist[lum[i]]++;
   const at = (q: number) => {
@@ -93,7 +119,7 @@ export function autoLevels(lum: ArrayLike<number>): Levels {
     return 1;
   };
   const black = at(0.02);
-  const white = Math.max(black + 0.3, at(0.97));
+  const white = Math.max(black + 0.3, at(hi));
   return { black, white: Math.min(1, white) };
 }
 
@@ -153,7 +179,7 @@ export function renderText(cols: number, rows: number, dens: Density, thin = fal
   const lines: string[] = [];
   for (let r = rows - 1; r >= 0; r--) {
     let s = "";
-    for (let c = 0; c < cols; c++) s += GLYPHS[thin ? thinGlyph(dens(c, r)) : pickGlyph(c, r, dens)];
+    for (let c = 0; c < cols; c++) s += GLYPHS[thin ? bgGlyph(dens(c, r)) : pickGlyph(c, r, dens)];
     lines.push(s.trimEnd());
   }
   return lines.join("\n");

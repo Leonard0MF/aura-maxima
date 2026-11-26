@@ -3,9 +3,45 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { AuditNode, CheckStatus } from "@/content/audit";
-import { claimGL } from "@/lib/gl-slot";
+import { claimGL, schedule as nudgeGL } from "@/lib/gl-slot";
 
+import type { Layout } from "./layout";
 import type { Constellation } from "./scene";
+
+/* posições das partículas: geradas uma vez (num Worker; sem Worker, em idle)
+ * e reaproveitadas a cada nova montagem */
+const layouts = new Map<string, Promise<Layout>>();
+function getLayout(n: number, count: number) {
+  const key = `${n}:${count}`;
+  let p = layouts.get(key);
+  if (!p) {
+    const local = () =>
+      new Promise<Layout>((res) => {
+        const go = () => void import("./layout").then((m) => res(m.makeLayout(n, count)));
+        if ("requestIdleCallback" in window) requestIdleCallback(go, { timeout: 500 });
+        else setTimeout(go, 0);
+      });
+    p = new Promise<Layout>((res) => {
+      try {
+        const w = new Worker(new URL("./layout.worker.ts", import.meta.url), { type: "module" });
+        w.onmessage = (e: MessageEvent<Layout>) => {
+          res(e.data);
+          w.terminate();
+        };
+        w.onerror = () => {
+          w.terminate();
+          void local().then(res);
+        };
+        w.postMessage({ n, count });
+      } catch {
+        void local().then(res);
+      }
+    });
+    layouts.set(key, p);
+  }
+  return p;
+}
+const idle = () => new Promise<void>((r) => ("requestIdleCallback" in window ? requestIdleCallback(() => r(), { timeout: 400 }) : setTimeout(r, 30)));
 
 const STATUS: Record<CheckStatus, string> = {
   pass: "bg-[#8fd6a8]",
@@ -72,32 +108,48 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
     const simple = mobile || matchMedia("(pointer: coarse)").matches || (navigator.hardwareConcurrency || 8) <= 4;
     let scene: Constellation | null = null;
     let canvas: HTMLCanvasElement | null = null;
-    let want = false; // esta seção é a dona do WebGL
+    let want = false; // o contexto deve existir (lib/gl-slot)
+    let active = false; // esta seção é a que renderiza
     let pending: Promise<void> | null = null;
-    let visible = false;
     let follow = 0;
 
-    const sync = () => scene?.run(visible && !document.hidden);
+    const sync = () => scene?.run(active && !document.hidden);
+    /* preparação em pedaços: código e layout em paralelo (o layout num
+     * Worker), contexto num idle, shaders e aquecimento em outros (warm).
+     * Termina com o loop PARADO; quem liga é o gl-slot. */
+    const count = mobile ? 1500 : 4500;
     const mount = async () => {
       if (scene) return;
-      const { createConstellation } = await import("./scene");
+      const [{ createConstellation }, layout] = await Promise.all([import("./scene"), getLayout(Math.min(nodes.length, 12), count)]);
+      await idle();
       if (!want || scene) return;
-      canvas = document.createElement("canvas");
-      canvas.className = "audit-canvas";
-      canvas.setAttribute("aria-hidden", "true");
-      field.prepend(canvas);
+      const c = document.createElement("canvas");
+      c.className = "audit-canvas";
+      c.setAttribute("aria-hidden", "true");
+      let made: Constellation;
       try {
-        scene = createConstellation(canvas, nodes.length, { count: mobile ? 1500 : 4500, simple, onLost: () => {
+        made = createConstellation(c, nodes.length, {
+          count,
+          simple,
+          layout: layout.orbits.length === Math.min(nodes.length, 12) ? layout : undefined,
+          onLost: () => {
             unmount();
             fallback();
           },
         });
       } catch {
-        canvas.remove();
-        canvas = null;
         fallback();
         return;
       }
+      field.prepend(c);
+      await made.warm();
+      if (!want) {
+        made.destroy();
+        c.remove();
+        return;
+      }
+      canvas = c;
+      scene = made;
       sceneRef.current = scene;
       /* testes automatizados (?auditdebug) */
       if (location.search.includes("auditdebug")) (window as unknown as { __audit?: Constellation }).__audit = scene;
@@ -115,24 +167,38 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
       cardIdx.current = -1;
       setCard(-1);
     };
+    /* lib/gl-slot: prepara a ~1,5 viewport (parado), renderiza só quando é a
+     * vez desta seção (prioridade depois que a revelação começou) */
     const release = claimGL({
       el: field,
-      mount() {
+      prepare() {
         want = true;
         pending = mount().finally(() => (pending = null));
+        return pending;
       },
-      async unmount() {
+      async release() {
         want = false;
+        active = false;
         await pending;
         unmount();
       },
+      run(on) {
+        active = on;
+        sync();
+      },
+      priority: () => ("in" in section.dataset ? 1 : 0),
     });
 
-    const io = new IntersectionObserver(([e]) => {
-      visible = e.isIntersecting;
-      sync();
+    /* revelação em círculo (AuditReveal marca data-in): resolução 0,5
+     * enquanto o círculo abre, e o render passa para esta seção */
+    let wasIn = "in" in section.dataset;
+    const mo = new MutationObserver(() => {
+      const isIn = "in" in section.dataset;
+      if (isIn && !wasIn) scene?.transition(900);
+      wasIn = isIn;
+      nudgeGL();
     });
-    io.observe(field);
+    mo.observe(section, { attributes: true, attributeFilter: ["data-in"] });
     document.addEventListener("visibilitychange", sync);
 
     /* ---------- interação ---------- */
@@ -274,7 +340,7 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
     field.addEventListener("pointercancel", onCancel);
 
     return () => {
-      io.disconnect();
+      mo.disconnect();
       document.removeEventListener("visibilitychange", sync);
       field.removeEventListener("touchstart", onTouch);
       document.removeEventListener("pointerdown", onDocDown);

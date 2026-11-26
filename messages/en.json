@@ -89,7 +89,8 @@
     "close": "Close",
     "index": "Stack index",
     "clear": "Clear filter",
-    "filterHint": "Click a category to highlight its coins.",
+    "usage": "Click a category to see everything · the coins light up too",
+    "noLevel": "Concepts have no level.",
     "levelLabel": "Level",
     "levels": {
       "practice": "Practice",

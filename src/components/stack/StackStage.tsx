@@ -13,6 +13,7 @@ type Scene = {
   snapshot(): string | null;
   focus(id: string): void;
   unfocus(): void;
+  pause(on: boolean): void;
   destroy(): void;
   debug(): unknown;
 };
@@ -36,6 +37,37 @@ type Scene = {
  */
 export function StackStage({ tokens, mobile: mobileIds, cats }: { tokens: { id: string; name: string }[]; mobile: string[]; cats: Record<string, string[]> }) {
   const ref = useRef<HTMLDivElement>(null);
+
+  /* dica de uso: na primeira vez que o índice entra na tela, o "+" da
+   * primeira categoria pulsa duas vezes (uma vez por sessão; sem animação
+   * com reduced-motion, que o CSS já corta) */
+  useEffect(() => {
+    const ix = ref.current?.closest("[data-stack]")?.querySelector<HTMLElement>(".stack-index");
+    const first = ix?.querySelector<HTMLElement>(".stack-cat__btn");
+    if (!ix || !first) return;
+    const KEY = "stack-hint";
+    try {
+      if (sessionStorage.getItem(KEY)) return;
+    } catch {
+      /* sem storage: pulsa nesta visita */
+    }
+    const io = new IntersectionObserver(
+      ([e]) => {
+        if (!e.isIntersecting) return;
+        io.disconnect();
+        try {
+          sessionStorage.setItem(KEY, "1");
+        } catch {
+          /* ignora */
+        }
+        first.dataset.pulse = "";
+        first.addEventListener("animationend", () => delete first.dataset.pulse, { once: true });
+      },
+      { threshold: 0.5 },
+    );
+    io.observe(first);
+    return () => io.disconnect();
+  }, []);
 
   useEffect(() => {
     const stage = ref.current;
@@ -212,6 +244,7 @@ export function StackStage({ tokens, mobile: mobileIds, cats }: { tokens: { id: 
     let loading = false;
     let wantDrop = false;
     let near = false;
+    let active = false; // esta seção é a que renderiza agora
     let canvas: HTMLCanvasElement | null = null;
     let saved: Saved | null = null;
     const snap = stage.querySelector<HTMLImageElement>(".stack-snap")!;
@@ -266,10 +299,17 @@ export function StackStage({ tokens, mobile: mobileIds, cats }: { tokens: { id: 
       if (saved?.length) scene.restore(saved);
       else if (wantDrop) scene.drop();
       if (section.dataset.cat) scene.highlight(cats[section.dataset.cat] ?? null);
-      /* o canvas só aparece depois do primeiro frame (sem piscar vazio) */
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        if (scene === made) section.dataset.live = "";
-      }));
+      if (active) start();
+    };
+    /* o canvas só aparece depois do primeiro frame desenhado (sem piscar vazio) */
+    const start = () => {
+      const made = scene;
+      if (!made) return;
+      made.pause(false);
+      if (!("live" in section.dataset))
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          if (scene === made) section.dataset.live = "";
+        }));
     };
     const unmount = () => {
       close();
@@ -290,19 +330,25 @@ export function StackStage({ tokens, mobile: mobileIds, cats }: { tokens: { id: 
       hover(null, 0, 0);
     };
 
-    /* um contexto WebGL por vez entre STACK e AUDIT (lib/gl-slot): monta
-     * quando esta seção é a dona; ao perder, só "libera" depois que uma
-     * montagem em andamento terminou e foi descartada */
+    /* lib/gl-slot: prepara o contexto (loop parado) a ~1,5 viewport, libera
+     * longe; o loop só roda quando esta seção é a que renderiza */
     const releaseGL = claimGL({
       el: stage,
-      mount() {
+      prepare() {
         near = true;
         pending = mount().finally(() => (pending = null));
+        return pending;
       },
-      async unmount() {
+      async release() {
         near = false;
+        active = false;
         unmount();
         await pending;
+      },
+      run(on) {
+        active = on;
+        if (on) start();
+        else scene?.pause(true);
       },
     });
     const ioIn = new IntersectionObserver(
