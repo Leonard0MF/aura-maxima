@@ -104,13 +104,15 @@ float vnoise(vec2 p) {
 /*
  * Passe de grade: 1 fragmento por célula, refeito no resize, a cada frame da
  * montagem e depois a cada passo da tremulação (6×/s).
- * Saída: r = glifo, g = âmbar forçado, b = célula opaca (cobre a tipografia), a = densidade.
+ * Saída: r = glifo, g = máscara (0 = fora da silhueta, 0.5 = dentro, 1 = dentro
+ * e em âmbar), b = célula opaca (cobre a tipografia), a = densidade.
  */
 export const GRID_FRAG = `${HEAD}${GRID}
 void main() {
   ivec2 c = ivec2(gl_FragCoord.xy);
   vec2 uv = cellUV(c);
   bool inRect = uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0;
+  bool inMask = inRect && alphaAt(uv) >= 0.5;
   float d = dens(c);
   int g = pick(c, d);
   float amber = 0.0;
@@ -126,7 +128,7 @@ void main() {
 
   /* montagem: glifos aleatórios que travam no certo, de dentro para fora
    * (só dentro da silhueta: o fundo transparente nunca vira retângulo) */
-  if (inRect && uIntro < 2.0 && alphaAt(uv) >= 0.5) {
+  if (inMask && uIntro < 2.0) {
     float dc = length((uv - vec2(0.5, 0.55)) * vec2(uAspect, 1.0)) / 0.7;
     float lockAt = 0.12 + 1.1 * dc + float(hash3(uint(c.x), uint(c.y), 3u) % 1000u) * 2.5e-4;
     if (uIntro < lockAt) {
@@ -137,53 +139,63 @@ void main() {
       solid = 0.0;
     }
   }
-  o = vec4(float(g) / 255.0, amber, solid, d);
+  if (!inMask) g = 0;
+  o = vec4(float(g) / 255.0, inMask ? (amber > 0.5 ? 1.0 : 0.5) : 0.0, inMask ? solid : 0.0, d);
 }`;
 
-/* Passe por frame: lê a grade; só embaralhamento e lente são por pixel. */
+/*
+ * Passe por frame: lê a grade; só o efeito do cursor é por pixel.
+ * Efeito do cursor (só dentro da silhueta): a grade desliza no máximo ~1
+ * célula para longe do ponteiro e alguns glifos trocam. Pixel cuja célula
+ * está fora da máscara não desenha nada, e o deslocamento nunca traz um
+ * glifo de fora para dentro nem de dentro para fora.
+ */
 export const FRAG = `${HEAD}
 void main() {
   vec2 p = gl_FragCoord.xy;
   vec2 cell = vec2(uCell, uCell * RATIO);
 
-  /* embaralhamento: empurra a grade para fora do cursor */
   vec2 dv = p - uPtr.xy;
   float dist = length(dv);
-  float s = uPtr.z * pow(1.0 - smoothstep(0.0, 120.0 * uDpr, dist), 2.0);
-  vec2 pw = p - (dist > 0.0 ? dv / dist : vec2(0.0)) * s * 10.0 * uDpr;
+  float s = uPtr.z * pow(1.0 - smoothstep(0.0, 110.0 * uDpr, dist), 2.0);
+  vec2 pw = p - (dist > 0.0 ? dv / dist : vec2(0.0)) * s * uCell;
   vec2 gp = pw / cell;
-  /* derivadas fora de qualquer desvio (o uv do atlas salta entre células) */
+  /* derivadas antes de qualquer desvio (o uv do atlas salta entre células) */
   vec2 gdx = dFdx(gp), gdy = dFdy(gp);
+  o = vec4(0.0);
+
+  ivec2 gs = textureSize(uGrid, 0);
+  ivec2 c0 = ivec2(floor(p / cell));
+  if (c0.x < 0 || c0.y < 0 || c0.x >= gs.x || c0.y >= gs.y) return;
+  if (texelFetch(uGrid, c0, 0).g < 0.25) return; // fora da silhueta: nada
 
   ivec2 c = ivec2(floor(gp));
   vec2 fr = fract(gp);
-  ivec2 gs = textureSize(uGrid, 0);
-  o = vec4(0.0);
-
-  if (c.x >= 0 && c.y >= 0 && c.x < gs.x && c.y < gs.y) {
-    vec4 cv = texelFetch(uGrid, c, 0);
-    int g = int(cv.r * 255.0 + 0.5);
-    bool amber = cv.g > 0.5;
-    float solid = cv.b * uKnock;
-    float d = cv.a;
-    if (s > 0.001) {
-      uint sh = hash3(uint(c.x), uint(c.y), uint(uTime * 16.0) + 31u);
-      if (float(sh % 10000u) * 1e-4 < s * (g == 0 ? 0.25 : 0.85)) {
-        g = 1 + int((sh >> 14u) % uint(NG - 1.0));
-        amber = ((sh >> 11u) & 3u) == 0u;
-      }
-    }
-    o = vec4(PAPER, 1.0) * solid;
-    if (g != 0) {
-      vec2 auv = vec2((float(g) + fr.x) / NG, 1.0 - fr.y);
-      vec2 k = vec2(1.0 / NG, -1.0);
-      /* opacidade modulada pela densidade: gradação tonal além do glifo */
-      float a = textureGrad(uAtlas, auv, gdx * k, gdy * k).a * mix(0.42, 1.0, smoothstep(MIN_D, 0.85, d));
-      /* destaques (áreas mais claras do rosto) em âmbar sutil */
-      float hi = (amber ? 1.0 : smoothstep(0.32, 0.12, d) * 0.8 * solid) * uAccent;
-      vec3 col = mix(INK, AMBER, hi);
-      o = o * (1.0 - a) + vec4(col * a, a);
+  if (c.x < 0 || c.y < 0 || c.x >= gs.x || c.y >= gs.y || texelFetch(uGrid, c, 0).g < 0.25) {
+    c = c0;
+    fr = fract(p / cell);
+  }
+  vec4 cv = texelFetch(uGrid, c, 0);
+  int g = int(cv.r * 255.0 + 0.5);
+  bool amber = cv.g > 0.75;
+  float solid = cv.b * uKnock;
+  float d = cv.a;
+  if (s > 0.001 && g != 0) {
+    uint sh = hash3(uint(c.x), uint(c.y), uint(uTime * 12.0) + 31u);
+    if (float(sh % 10000u) * 1e-4 < s * 0.6) {
+      g = 1 + int((sh >> 14u) % uint(NG - 1.0));
+      amber = ((sh >> 11u) & 3u) == 0u;
     }
   }
-
+  o = vec4(PAPER, 1.0) * solid;
+  if (g != 0) {
+    vec2 auv = vec2((float(g) + fr.x) / NG, 1.0 - fr.y);
+    vec2 k = vec2(1.0 / NG, -1.0);
+    /* opacidade modulada pela densidade: gradação tonal além do glifo */
+    float a = textureGrad(uAtlas, auv, gdx * k, gdy * k).a * mix(0.42, 1.0, smoothstep(MIN_D, 0.85, d));
+    /* destaques (áreas mais claras do rosto) em âmbar sutil */
+    float hi = (amber ? 1.0 : smoothstep(0.32, 0.12, d) * 0.8 * solid) * uAccent;
+    vec3 col = mix(INK, AMBER, hi);
+    o = o * (1.0 - a) + vec4(col * a, a);
+  }
 }`;
