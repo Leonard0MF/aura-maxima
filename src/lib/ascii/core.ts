@@ -19,17 +19,23 @@ export const TOK3_IDX = TOKENS3.flatMap((t) => [...t].map(gi));
 /* célula: altura = RATIO × largura (JetBrains Mono avança 0,6em → line-height 1,08em) */
 export const RATIO = 1.8;
 export const MIN_DENSITY = 0.08;
-/* Retrato centralizado: 70% da altura do hero, limitado a 95% da largura. */
+/* Retrato centralizado: 70% da altura do hero, limitado a 95% da largura.
+ * Celular em pé (largura < 640 e altura > 1,2 × largura): menor (42% da
+ * altura), entre FULL-STACK e DEVELOPER. */
 export const PORTRAIT_H = 0.7;
+export const PORTRAIT_H_NARROW = 0.42;
 export const PORTRAIT_MAX_W = 0.95;
+export const isNarrow = (W: number, H: number) => W < 640 && H > W * 1.2;
 /*
  * Retângulo do retrato: FONTE ÚNICA do posicionamento. O shader (via
  * portraitRect, em px) e as camadas HTML do hero (via portraitBoxStyle, em
- * unidades de container do .hero) usam exatamente a mesma conta:
- *   altura = min(70% da altura, 95% da largura / proporção), centralizado.
+ * unidades de container do .hero, com --ph trocado por container query na
+ * mesma condição de isNarrow) usam exatamente a mesma conta:
+ *   altura = min(ph × altura, 95% da largura / proporção), centralizado.
  */
 export function portraitRect(W: number, H: number, aspect: number) {
-  const h = Math.min(PORTRAIT_H * H, (PORTRAIT_MAX_W * W) / aspect);
+  const ph = isNarrow(W, H) ? PORTRAIT_H_NARROW : PORTRAIT_H;
+  const h = Math.min(ph * H, (PORTRAIT_MAX_W * W) / aspect);
   const w = h * aspect;
   return { x: (W - w) / 2, y: (H - h) / 2, w, h };
 }
@@ -38,7 +44,7 @@ export const portraitBoxStyle = (aspect: number) =>
     position: "absolute",
     left: "50%",
     top: "50%",
-    height: `min(${PORTRAIT_H * 100}cqh, ${PORTRAIT_MAX_W * 100}cqw / ${aspect})`,
+    height: `min(var(--ph, ${PORTRAIT_H}) * 100cqh, ${PORTRAIT_MAX_W * 100}cqw / ${aspect})`,
     aspectRatio: String(aspect),
     translate: "-50% -50%",
   }) as const;

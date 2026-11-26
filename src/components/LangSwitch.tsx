@@ -35,12 +35,12 @@ export function LangSwitch({ locale, path, label, names, className = "" }: { loc
             </span>
           )}
           {l === locale ? (
-            <span aria-current="true" lang={htmlLang[l]} className="text-accent-ink underline decoration-1 underline-offset-4">
+            <span aria-current="true" lang={htmlLang[l]} className="tap text-accent-ink underline decoration-1 underline-offset-4">
               <span aria-hidden="true">{l.toUpperCase()}</span>
               <span className="sr-only">{names[l]}</span>
             </span>
           ) : (
-            <a href={localePath(l, path)} hrefLang={htmlLang[l]} lang={htmlLang[l]} onClick={(e) => switchTo(e, l, path)} className="opacity-70 hover:text-accent-ink hover:opacity-100">
+            <a href={localePath(l, path)} hrefLang={htmlLang[l]} lang={htmlLang[l]} onClick={(e) => switchTo(e, l, path)} className="tap opacity-70 hover:text-accent-ink hover:opacity-100">
               <span aria-hidden="true">{l.toUpperCase()}</span>
               <span className="sr-only">{names[l]}</span>
             </a>

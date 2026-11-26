@@ -182,7 +182,9 @@ function bounce(t: number) {
 
 export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[], on: SceneEvents) {
   const box = canvas.parentElement!;
-  const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+  /* aparelho mais modesto (celular, poucos núcleos): DPR e shadow map menores */
+  const lite = matchMedia("(max-width: 639px)").matches || (navigator.hardwareConcurrency || 8) <= 6;
+  const dpr = Math.min(window.devicePixelRatio || 1, lite ? 1.25 : 1.5);
   const renderer = new WebGLRenderer({ canvas, alpha: true, antialias: dpr < 1.3, powerPreference: "high-performance" });
   renderer.setPixelRatio(dpr);
   renderer.outputColorSpace = SRGBColorSpace;
@@ -202,7 +204,7 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
   const sun = new DirectionalLight(0xfff1dc, 1.4);
   sun.position.set(-5, 9, 6.5);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(1024, 1024);
+  sun.shadow.mapSize.set(lite ? 512 : 1024, lite ? 512 : 1024);
   sun.shadow.bias = -0.0006;
   sun.shadow.normalBias = 0.03;
   sun.shadow.radius = 3;
@@ -607,6 +609,16 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
     on.hover(null, 0, 0);
     if (!drag) canvas.style.cursor = "";
   };
+  /* toque: o canvas tem touch-action: pan-y (a página rola por cima dele);
+   * só quando o dedo COMEÇA sobre uma peça o gesto é capturado (cancela a
+   * rolagem desse toque e vira arraste/clique) */
+  const onTouchStart = (e: TouchEvent) => {
+    if (focus || e.touches.length !== 1) return;
+    const t = e.touches[0];
+    const r = canvas.getBoundingClientRect();
+    if (pick(((t.clientX - r.left) / r.width) * 2 - 1, -((t.clientY - r.top) / r.height) * 2 + 1)) e.preventDefault();
+  };
+  canvas.addEventListener("touchstart", onTouchStart, { passive: false });
   canvas.addEventListener("pointermove", onMove);
   canvas.addEventListener("pointerdown", onDown);
   canvas.addEventListener("pointerup", onUp);
@@ -877,11 +889,15 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
     unfocus: focusOff,
     /* testes: estado da mesa (posições, velocidades, rotação) */
     debug: () =>
-      pieces.map((p) => ({ id: p.token.id, state: p.state, x: p.x, z: p.z, v: Math.hypot(p.vx, p.vz), w: p.w, yaw: p.yaw, asleep: p.asleep, bounds: { ...bounds } })),
+      pieces.map((p) => {
+        const sp = new Vector3(p.x, T / 2, p.z).project(camera);
+        return { id: p.token.id, state: p.state, x: p.x, z: p.z, v: Math.hypot(p.vx, p.vz), w: p.w, yaw: p.yaw, asleep: p.asleep, bounds: { ...bounds }, sx: ((sp.x + 1) / 2) * W, sy: ((1 - sp.y) / 2) * H };
+      }),
     destroy() {
       cancelAnimationFrame(raf);
       ro.disconnect();
       document.removeEventListener("visibilitychange", onVis);
+      canvas.removeEventListener("touchstart", onTouchStart);
       canvas.removeEventListener("pointermove", onMove);
       canvas.removeEventListener("pointerdown", onDown);
       canvas.removeEventListener("pointerup", onUp);

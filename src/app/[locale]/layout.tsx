@@ -51,6 +51,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export const viewport: Viewport = {
   themeColor: "#0b0d10",
+  /* ocupa a tela inteira (notch); as margens usam env(safe-area-inset-*) */
+  viewportFit: "cover",
   colorScheme: "dark",
 };
 

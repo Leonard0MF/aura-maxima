@@ -145,7 +145,9 @@ export function AuditField({ nodes, grade, score, example, labels }: { nodes: Au
       }
       const p = scene.nodeAt(i);
       const w = field.clientWidth;
-      const left = p.x + 18 + el.offsetWidth > w - 12 ? p.x - 18 - el.offsetWidth : p.x + 18;
+      /* ao lado do nó (direita, senão esquerda) e sempre dentro do campo */
+      const side = p.x + 18 + el.offsetWidth > w - 12 ? p.x - 18 - el.offsetWidth : p.x + 18;
+      const left = Math.max(12, Math.min(w - el.offsetWidth - 12, side));
       const top = Math.max(8, Math.min(field.clientHeight - el.offsetHeight - 8, p.y - el.offsetHeight / 2));
       el.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
       el.style.visibility = "visible";

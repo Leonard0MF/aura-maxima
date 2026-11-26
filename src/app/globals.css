@@ -42,6 +42,20 @@ html {
   -webkit-text-size-adjust: 100%;
 }
 
+/* margens laterais que respeitam as safe areas (notch em paisagem) */
+:root {
+  --gx: 1rem;
+  --safe-l: max(var(--gx), env(safe-area-inset-left, 0px));
+  --safe-r: max(var(--gx), env(safe-area-inset-right, 0px));
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+@media (min-width: 640px) {
+  :root {
+    --gx: 1.5rem;
+  }
+}
+
 body {
   margin: 0;
   min-height: 100dvh;
@@ -114,8 +128,8 @@ html[data-scan="instant"] .scan-line {
 }
 .hl {
   position: absolute;
-  left: 1rem;
-  right: 1rem;
+  left: var(--safe-l);
+  right: var(--safe-r);
   /* "FULL-STACK" ≈ 6.9em em Archivo Black: cabe na largura útil */
   font-size: min(calc((100cqw - 2rem) / 6.95), 24cqh);
   line-height: 0.8;
@@ -132,9 +146,26 @@ html[data-scan="instant"] .scan-line {
 }
 @media (min-width: 640px) {
   .hl {
-    left: 1.5rem;
-    right: 1.5rem;
     font-size: min(calc((100cqw - 3rem) / 6.95), 24cqh);
+  }
+}
+/* Celular em pé (mesma condição de isNarrow em lib/ascii/core.ts): retrato
+ * menor no centro e as palavras logo acima e logo abaixo dele. Corpo com
+ * clamp em vw: cabe sem cortar de 320px para cima. */
+@container (max-width: 639px) and (max-aspect-ratio: 5 / 6) {
+  .hero-layer {
+    --ph: 0.42;
+  }
+  .hero-layer .hl {
+    font-size: clamp(2rem, calc((100vw - 2rem) / 7.05), 5.5rem);
+  }
+  .hero-layer .hl-top {
+    top: auto;
+    bottom: calc(50cqh + min(21cqh, 47.5cqw / var(--pa, 0.67)) + 0.1em);
+  }
+  .hero-layer .hl-bot {
+    bottom: auto;
+    top: calc(50cqh + min(21cqh, 47.5cqw / var(--pa, 0.67)) + 0.1em);
   }
 }
 /* Entrada: a tipografia sobe enquanto o retrato se monta (só na 1ª carga da
@@ -466,9 +497,11 @@ html[data-js] .hero[data-live] .ascii-fallback {
   border-top: 1px solid rgb(20 20 20 / 0.2);
   border-bottom: 1px solid rgb(20 20 20 / 0.2);
 }
-@media (max-width: 639px) {
+/* celular: ~70svh (a seção não precisa caber inteira: rola normalmente) */
+@media (max-width: 639px), (max-height: 520px) {
   .stack-box {
-    height: 66svh;
+    height: 70svh;
+    min-height: 260px;
   }
 }
 .stack-stage,
@@ -527,6 +560,7 @@ html[data-js] .hero[data-live] .ascii-fallback {
 .stack-cell {
   display: flex;
   width: 100%;
+  min-height: 44px;
   flex-direction: column;
   align-items: flex-start;
   gap: 0.9rem;
@@ -582,15 +616,36 @@ html[data-js] .hero[data-live] .ascii-fallback {
 .stack-dialog[hidden] {
   display: none;
 }
+/* celular: bottom sheet (largura toda, colado embaixo, sobe deslizando) */
 @media (max-width: 639px) {
   .stack-dialog {
-    left: 0.75rem;
-    right: 0.75rem;
+    left: 0;
+    right: 0;
     top: auto;
-    bottom: 0.75rem;
+    bottom: 0;
     width: auto;
     translate: none;
-    padding: 1.1rem;
+    padding: 1.6rem var(--safe-r) max(1.25rem, var(--safe-b)) var(--safe-l);
+    border-width: 1px 0 0;
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -10px 30px rgb(20 20 20 / 0.12);
+    animation-name: sheet-in;
+  }
+  .stack-dialog::before {
+    content: "";
+    position: absolute;
+    top: 0.5rem;
+    left: 50%;
+    width: 2.5rem;
+    height: 4px;
+    translate: -50% 0;
+    border-radius: 2px;
+    background: rgb(20 20 20 / 0.2);
+  }
+}
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
   }
 }
 @keyframes dialog-in {
@@ -609,8 +664,8 @@ html[data-js] .hero[data-live] .ascii-fallback {
   top: 0.5rem;
   right: 0.5rem;
   display: grid;
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 2.75rem;
+  height: 2.75rem;
   place-items: center;
   font-size: 1.5rem;
   line-height: 1;
@@ -842,6 +897,7 @@ html:not([data-js]) .audit-list {
 .audit-cta {
   display: inline-flex;
   align-items: center;
+  min-height: 44px;
   gap: 0.6rem;
   font-size: clamp(1.25rem, 2.4vw, 2rem);
   font-weight: 500;
@@ -1218,4 +1274,202 @@ html:not([data-js]) .audit-list {
 .about-cv:hover {
   background: transparent;
   color: var(--color-ink);
+}
+
+/* ---------- celular / toque ---------- */
+/* fora de @layer: vence px-4 / sm:px-6 do Tailwind e aplica as safe areas */
+.px-4,
+.sh {
+  padding-left: var(--safe-l);
+  padding-right: var(--safe-r);
+}
+.hero-meta {
+  padding: max(var(--gx), var(--safe-t)) var(--safe-r) max(var(--gx), var(--safe-b)) var(--safe-l);
+}
+footer {
+  padding-bottom: var(--safe-b);
+}
+/* alvos de toque ≥ 44px em telas de toque, sem mudar o desenho no desktop */
+@media (pointer: coarse) {
+  .tap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* menu do celular (MobileMenu) */
+.menu-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 44px;
+  min-width: 44px;
+  margin: -12px -10px -12px 0;
+  padding: 0 10px;
+  font: inherit;
+  text-transform: uppercase;
+  letter-spacing: inherit;
+}
+.menu-btn:hover {
+  color: var(--color-accent-ink);
+}
+html:not([data-js]) .menu-btn {
+  display: none;
+}
+.menu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: max(var(--gx), var(--safe-t)) var(--safe-r) max(1.5rem, var(--safe-b)) var(--safe-l);
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.menu-overlay__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+}
+.menu-overlay__nav {
+  display: grid;
+  border-top: 1px solid color-mix(in srgb, var(--color-ink) 20%, transparent);
+}
+.menu-overlay__nav a {
+  display: flex;
+  align-items: baseline;
+  gap: 0.9rem;
+  min-height: 44px;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-ink) 20%, transparent);
+  font-size: clamp(2rem, 11vw, 3.5rem);
+  line-height: 1;
+  letter-spacing: -0.02em;
+  text-transform: none;
+}
+.menu-overlay__nav a:hover,
+.menu-overlay__nav a:focus-visible {
+  color: var(--color-accent-ink);
+}
+.menu-overlay__n {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--color-ink-soft);
+}
+.menu-overlay__lang {
+  margin-top: auto;
+  font-size: 15px;
+  gap: 0.25rem;
+}
+
+/* WORK no celular/tablet: nome → print → texto → links (o bloco de texto se
+ * desfaz em itens soltos do mesmo fluxo; no desktop volta às duas colunas) */
+@media (max-width: 1023px) {
+  .work-grid {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+  .work-info {
+    display: contents;
+  }
+  .work-info > * {
+    order: 2;
+  }
+  .work-info > .work-top {
+    order: 0;
+  }
+  .work-figure {
+    order: 1;
+    margin-block: 0.5rem 0.75rem;
+  }
+}
+
+/* CONTACT: e-mail/endereço grande quebra linha sem estourar a largura */
+.contact-wrap {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  min-height: 44px;
+}
+
+/* AUDIT no celular em pé: cabeçalho → campo (buraco negro no topo,
+ * constelação abaixo) → texto. Nada fica por cima da constelação. */
+@media (max-width: 639px) {
+  .audit {
+    display: grid;
+    grid-template-areas: "head" "field" "foot";
+    height: auto;
+  }
+  .audit-body {
+    display: contents;
+  }
+  .audit-body > .sh {
+    grid-area: head;
+    position: relative;
+    z-index: 1;
+  }
+  .audit-field {
+    grid-area: field;
+    position: relative;
+    inset: auto;
+    height: clamp(380px, 68svh, 620px);
+  }
+  .audit-foot {
+    grid-area: foot;
+    position: relative;
+    z-index: 1;
+    padding-top: 0.5rem;
+  }
+}
+
+/* celular em paisagem (tela baixa): o hero cabe na altura da tela, com as
+ * palavras limitadas pela altura (24cqh) e o retrato entre as linhas de meta */
+@media (max-height: 520px) and (orientation: landscape) {
+  .hero {
+    height: 100svh;
+    min-height: 320px;
+  }
+  .hl-top {
+    top: 4.25rem;
+  }
+  .hl-bot {
+    bottom: 3rem;
+  }
+}
+@media (max-width: 639px) {
+  .audit-bg {
+    background: #000;
+  }
+}
+
+/* cabeçalho do hero: navegação completa no desktop/tablet; botão Menu no
+ * celular (em pé < 768px ou qualquer tela baixa em paisagem) */
+.hdr-menu {
+  display: none;
+}
+@media (max-width: 767px), (max-height: 520px) and (orientation: landscape) {
+  .hdr-full {
+    display: none !important;
+  }
+  .hdr-menu {
+    display: block;
+  }
+}
+@media (max-height: 520px) and (orientation: landscape) {
+  .hero-scroll {
+    display: none !important;
+  }
 }

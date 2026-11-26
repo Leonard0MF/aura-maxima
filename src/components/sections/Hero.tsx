@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { AsciiStage } from "@/components/hero/AsciiStage";
 import { HeroLayer } from "@/components/hero/HeroLayer";
 import { LocalTime } from "@/components/hero/LocalTime";
+import { MobileMenu } from "@/components/hero/MobileMenu";
 import { getLocale, getTranslations } from "next-intl/server";
 
 import { LangSwitch } from "@/components/LangSwitch";
@@ -70,11 +71,11 @@ export async function Hero() {
               </span>
             </p>
           </div>
-          <nav aria-label={tn("label")} className="hidden md:block">
+          <nav aria-label={tn("label")} className="hdr-full">
             <ul className="flex gap-4 lg:gap-6">
               {nav.map((i) => (
                 <li key={i.n}>
-                  <a href={i.href} className="group inline-flex gap-1.5 hover:text-accent-ink">
+                  <a href={i.href} className="tap group inline-flex gap-1.5 hover:text-accent-ink">
                     <span className="text-ink-soft group-hover:text-accent-ink">{i.n}</span>
                     {tn(i.key)}
                   </a>
@@ -87,8 +88,16 @@ export async function Hero() {
             path="/"
             label={tl("label")}
             names={{ pt: tl("pt"), en: tl("en"), es: tl("es") }}
-            className="shrink-0 md:w-24 md:justify-end"
+            className="hdr-full shrink-0 md:w-24 md:justify-end"
           />
+          <div className="hdr-menu shrink-0">
+            <MobileMenu
+              items={nav.map((i) => ({ n: i.n, label: tn(i.key), href: i.href }))}
+              locale={locale}
+              labels={{ menu: tn("menu"), close: tn("close"), nav: tn("label"), lang: tl("label") }}
+              langNames={{ pt: tl("pt"), en: tl("en"), es: tl("es") }}
+            />
+          </div>
         </div>
 
         <div className="grid grid-cols-1 items-end gap-4 pr-32 sm:grid-cols-3 sm:pr-0">
@@ -104,7 +113,7 @@ export async function Hero() {
               </dd>
             </div>
           </dl>
-          <a href="#findings" className="hidden justify-self-center hover:text-accent-ink sm:block">
+          <a href="#findings" className="hero-scroll tap hidden justify-self-center hover:text-accent-ink sm:inline-flex">
             {t("scroll")} <span aria-hidden="true">↓</span>
           </a>
         </div>

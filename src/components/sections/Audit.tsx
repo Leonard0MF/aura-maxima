@@ -65,7 +65,7 @@ export async function Audit() {
           <dl className="audit-list font-mono text-[11px] sm:text-xs">
             {nodes.map((n) => (
               <div key={n.id} className="flex gap-3 border-b border-line py-1.5">
-                <dt className="w-44 shrink-0 text-muted uppercase">{n.label}</dt>
+                <dt className="w-28 shrink-0 text-muted uppercase sm:w-44">{n.label}</dt>
                 <dd className="min-w-0 text-paper">{n.value}</dd>
               </div>
             ))}

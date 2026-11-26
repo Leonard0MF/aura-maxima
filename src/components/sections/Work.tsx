@@ -45,8 +45,8 @@ function WorkItem({ p, i, total, t, locale }: { p: Project; i: number; total: nu
 
   return (
     <li className="work-item border-t border-ink/20 py-8" aria-labelledby={`w-${p.slug}`}>
-      <div className="grid items-center gap-8 lg:grid-cols-12 lg:gap-10">
-        <figure className={`lg:col-span-7 ${flip ? "lg:order-2" : ""}`}>
+      <div className="work-grid grid items-center gap-8 lg:grid-cols-12 lg:gap-10">
+        <figure className={`work-figure lg:col-span-7 ${flip ? "lg:order-2" : ""}`}>
           <Link href={caseHref} tabIndex={-1} aria-hidden="true" className="work-win block">
             <span className="work-bar" aria-hidden="true">
               <i />
@@ -73,7 +73,7 @@ function WorkItem({ p, i, total, t, locale }: { p: Project; i: number; total: nu
         </figure>
 
         <div className={`work-info flex flex-col gap-3 lg:col-span-5 xl:gap-4 ${flip ? "lg:order-1" : ""}`}>
-          <div className={`${meta} flex items-center justify-between gap-4`}>
+          <div className={`work-top ${meta} flex items-center justify-between gap-4`}>
             <p className="flex items-center gap-2">
               <span
                 aria-hidden="true"
@@ -86,16 +86,16 @@ function WorkItem({ p, i, total, t, locale }: { p: Project; i: number; total: nu
             </p>
           </div>
 
-          <h3 id={`w-${p.slug}`} className="work-name font-display">
+          <h3 id={`w-${p.slug}`} className="work-top work-name font-display">
             {p.display}
           </h3>
 
-          <p className={`${meta} text-ink-soft`}>
+          <p className={`work-top ${meta} text-ink-soft`}>
             {[t(`${k}.role`), known(p.year)].filter(Boolean).join(" · ")}
           </p>
 
           {p.usage && (
-            <p className={`${meta} flex items-center gap-2`}>
+            <p className={`work-top ${meta} flex items-center gap-2`}>
               <span aria-hidden="true" className="size-1.5 rounded-full bg-[#17633a]" />
               {t(`${k}.usage`)}
             </p>
@@ -133,17 +133,17 @@ function WorkItem({ p, i, total, t, locale }: { p: Project; i: number; total: nu
                 {t("common.private")}
               </span>
             )}
-            <Link href={caseHref} className="ulink">
+            <Link href={caseHref} className="tap ulink">
               {t("common.caseStudy")} <span aria-hidden="true">→</span>
             </Link>
             {p.links.demo && (
-              <a href={p.links.demo} target="_blank" rel="noreferrer" className="ulink">
+              <a href={p.links.demo} target="_blank" rel="noreferrer" className="tap ulink">
                 {t("common.demo")} <span aria-hidden="true">↗</span>
                 <span className="sr-only">{newTab}</span>
               </a>
             )}
             {p.links.repo && (
-              <a href={p.links.repo} target="_blank" rel="noreferrer" className="ulink">
+              <a href={p.links.repo} target="_blank" rel="noreferrer" className="tap ulink">
                 {t("common.repo")} <span aria-hidden="true">↗</span>
                 <span className="sr-only">{newTab}</span>
               </a>

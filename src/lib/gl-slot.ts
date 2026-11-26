@@ -1,11 +1,9 @@
 /*
- * Um único "dono" de WebGL por vez entre as seções 3D vizinhas (STACK e
+ * Um único "dono" de WebGL por vez entre as seções 3D (hero, STACK e
  * AUDIT). Cada uma se registra com o seu elemento; o árbitro escolhe a que
  * está mais perto do centro da tela (até 1 tela de distância) e só monta a
  * nova DEPOIS que a anterior terminou de liberar o contexto (unmount pode ser
  * assíncrono, ex.: cena ainda sendo criada). Fora de alcance: ninguém.
- *
- * O hero tem o próprio canvas (loop pausado fora da tela) e não participa.
  */
 type Owner = {
   el: Element;

@@ -20,7 +20,9 @@
     "audit": "Audit",
     "about": "About",
     "contact": "Contact",
-    "back": "Work"
+    "back": "Work",
+    "menu": "Menu",
+    "close": "Fechar"
   },
   "common": {
     "newTab": " (abre em nova aba)",

@@ -22,24 +22,26 @@ export async function Contact() {
       <div className="sec-end px-4 sm:px-6">
         <div className="flex flex-col gap-5 border-t border-ink/20 pt-6">
           {email ? (
-            <a href={`mailto:${email}`} className="contact-big w-fit break-all">
-              {email}
+            /* quebra de preferência logo depois do @ (e onde mais precisar), nunca estoura a largura */
+            <a href={`mailto:${email}`} className="contact-big contact-wrap w-fit">
+              {email.split("@")[0]}
+              <wbr />@{email.split("@")[1]}
             </a>
           ) : (
-            <a href={contact.github} target="_blank" rel="noopener noreferrer" className="contact-big w-fit break-all">
+            <a href={contact.github} target="_blank" rel="noopener noreferrer" className="contact-big contact-wrap w-fit">
               github.com/{contact.githubHandle}
               <span className="sr-only">{newTab}</span>
             </a>
           )}
           <p className="flex flex-wrap gap-x-8 gap-y-2 font-mono text-xs tracking-wide uppercase sm:text-sm">
             {linkedin && (
-              <a href={linkedin} target="_blank" rel="noopener noreferrer" className="ulink">
+              <a href={linkedin} target="_blank" rel="noopener noreferrer" className="tap ulink">
                 LinkedIn <span aria-hidden="true">↗</span>
                 <span className="sr-only">{newTab}</span>
               </a>
             )}
             {email && (
-              <a href={contact.github} target="_blank" rel="noopener noreferrer" className="ulink">
+              <a href={contact.github} target="_blank" rel="noopener noreferrer" className="tap ulink">
                 GitHub <span aria-hidden="true">↗</span>
                 <span className="sr-only">{newTab}</span>
               </a>
