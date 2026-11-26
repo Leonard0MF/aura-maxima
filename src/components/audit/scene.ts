@@ -17,14 +17,19 @@
  *
  * Preparação (lib/gl-slot): a cena nasce PARADA a ~1,5 viewport da seção;
  * warm() compila os shaders em paralelo (compileAsync) e faz um render de
- * aquecimento em baixa resolução, em pedaços (requestIdleCallback). As
- * posições das partículas chegam prontas (layout.worker, uma vez só).
+ * aquecimento, em pedaços (requestIdleCallback). As posições das partículas
+ * chegam prontas (layout.worker, uma vez só).
  *
- * Níveis automáticos, de baixo para cima: começa em lente 0,5 (65% das
- * partículas) e sobe para 0,75 → 1,0 enquanto o fps medido sobra (janelas de
- * 1,5 s); se um degrau não aguenta, volta e trava. "simple" é o piso
- * (celular, máquina fraca, ou se nem a lente 0,5 aguenta).
- * Durante a revelação em círculo (transition) a resolução cai para 0,5.
+ * Qualidade: decidida ANTES de a seção aparecer. bench() renderiza ~36
+ * quadros no nível alto, fora da tela (a ~1 viewport, com os outros loops
+ * parados) e mede o tempo médio por quadro com a GPU sincronizada:
+ * ≤ 12 ms → alto (lente 1,0), ≤ 20 ms → médio (0,75), acima → baixo (0,5,
+ * 65% das partículas). O 1º quadro visível já sai no nível escolhido, que
+ * vale para a sessão inteira. Depois de visível só desce: fps < 40 por mais
+ * de 2 s → um degrau abaixo (até "simple"), com crossfade de 300 ms.
+ * "simple" (sem lente) é fixo no celular/toque.
+ * Durante a revelação em círculo (transition) a simulação congela no último
+ * quadro (nada é redesenhado), sem baixar a resolução.
  *
  * Movimento: tudo no vertex shader (a CPU nunca reescreve partículas). Por
  * frame a CPU resolve Kepler para os ~10 nós, integra 2 molas e a rotação e
@@ -327,6 +332,9 @@ const POST_VS = /* glsl */ `void main() { gl_Position = vec4(position.xy, 0.0, 1
 
 type Quality = "lens-1" | "lens-0.75" | "lens-0.5" | "simple";
 const LADDER: Quality[] = ["lens-1", "lens-0.75", "lens-0.5", "simple"];
+const BENCH_FRAMES = 36;
+/* resultado do benchmark: vale para a sessão (a cena pode ser liberada e recriada) */
+let benched: { level: number; ms: number } | null = null;
 
 export type Constellation = {
   run(on: boolean): void;
@@ -339,7 +347,11 @@ export type Constellation = {
   hover(i: number): void;
   /** compila os shaders e faz um render de aquecimento, em pedaços ociosos */
   warm(): Promise<void>;
-  /** revelação em andamento: resolução 0,5 por `ms` */
+  /** o nível ainda não foi medido nesta sessão */
+  needsBench(): boolean;
+  /** mede o tempo por quadro fora da tela e escolhe o nível (loop parado) */
+  bench(): Promise<{ quality: string; ms: number }>;
+  /** revelação em andamento: congela a simulação por `ms` (último quadro na tela) */
   transition(ms: number): void;
   /** onda de scan saindo do horizonte; acende os nós na ordem em que o anel os alcança */
   wave(onLit: (i: number) => void, onEnd: () => void): void;
@@ -541,16 +553,39 @@ export function createConstellation(
   const buf = new Vector2();
 
   /* ---------- qualidade ---------- */
-  let level = opts.simple ? 3 : 2;
+  let level = opts.simple ? 3 : (benched?.level ?? 0);
   let quality: Quality = LADDER[level];
-  const measure = { t0: -1, frames: 0, done: opts.simple, climbed: false };
-  /* revelação: até lowUntil (ms) a resolução fica em 0,5; 0 = sem prazo ainda */
-  let low = true;
-  let lowUntil = 0;
+  /* queda automática: janelas de 0,5 s; slow = desde quando o fps está < 40 */
+  const watch = { t0: -1, frames: 0, slow: -1 };
+  /* revelação: até freezeUntil (ms) nada se move nem é redesenhado */
+  let freezeUntil = 0;
   function res() {
     const q = quality === "lens-0.75" ? 0.75 : quality === "lens-0.5" ? 0.5 : 1;
-    renderer.setPixelRatio(dpr * (low ? Math.min(q, 0.5) : q));
+    renderer.setPixelRatio(dpr * q);
     W = H = -1; // força o resize
+  }
+  /* troca de nível na frente do usuário: o quadro atual vira uma imagem por
+   * cima do canvas e some em 300 ms enquanto o novo nível já desenha */
+  function crossfade(apply: () => void) {
+    const snap = document.createElement("canvas");
+    snap.width = canvas.width;
+    snap.height = canvas.height;
+    snap.setAttribute("aria-hidden", "true");
+    draw();
+    snap.getContext("2d")?.drawImage(canvas, 0, 0); // mesmo frame: o buffer ainda vale
+    Object.assign(snap.style, {
+      position: "absolute",
+      left: `${canvas.offsetLeft}px`,
+      top: `${canvas.offsetTop}px`,
+      width: `${canvas.clientWidth}px`,
+      height: `${canvas.clientHeight}px`,
+      pointerEvents: "none",
+      transition: "opacity 300ms linear",
+    });
+    canvas.after(snap);
+    apply();
+    requestAnimationFrame(() => requestAnimationFrame(() => (snap.style.opacity = "0")));
+    setTimeout(() => snap.remove(), 360);
   }
   function applyQuality() {
     quality = LADDER[level];
@@ -669,37 +704,43 @@ export function createConstellation(
     last = now;
     time += dt;
 
-    /* fim da revelação: volta à resolução do nível */
-    if (low && lowUntil && now >= lowUntil) {
-      low = false;
-      lowUntil = 0;
-      res();
-      measure.t0 = -1;
-      measure.frames = 0;
+    /* revelação em círculo: simulação parada, o último quadro fica na tela */
+    if (now < freezeUntil) {
+      time -= dt; // o relógio da cena também para (sem salto ao retomar)
+      if (canvas.clientWidth !== W || canvas.clientHeight !== H) {
+        resize();
+        draw(); // o resize limpa o buffer: redesenha o mesmo instante
+      }
+      if (running) raf = requestAnimationFrame(frame);
+      return;
     }
-    /* nível de qualidade, de baixo para cima: janelas de 1,5 s (depois de
-     * 0,4 s de folga), nunca durante a revelação */
-    if (!measure.done && !low) {
+    /* só para baixo: fps < 40 por mais de 2 s (janelas de 0,5 s) → um degrau */
+    if (level < LADDER.length - 1) {
       const sec = now / 1000; // relógio real: o tempo da cena é limitado por quadro
-      if (measure.t0 < 0) measure.t0 = sec + 0.4;
-      else if (sec >= measure.t0) {
-        measure.frames++;
-        if (sec - measure.t0 >= 1.5) {
-          const fps = measure.frames / (sec - measure.t0);
-          let next = level;
-          if (fps >= 55 && level > 0 && level <= 2) {
-            next = level - 1; // sobra: sobe um degrau
-            measure.climbed = true;
-          } else if (fps < 48 && level < LADDER.length - 1) {
-            next = level + 1; // não aguentou: volta (e trava, se tinha subido)
-            if (measure.climbed) measure.done = true;
-          } else measure.done = true;
-          if (next !== level) {
-            level = next;
-            applyQuality();
+      if (watch.t0 < 0) watch.t0 = sec + 0.3;
+      else if (sec >= watch.t0) {
+        watch.frames++;
+        if (sec - watch.t0 >= 0.5) {
+          const fps = watch.frames / (sec - watch.t0);
+          if (fps >= 40) watch.slow = -1;
+          else if (watch.slow < 0) watch.slow = watch.t0;
+          else if (sec - watch.slow > 2) {
+            crossfade(() => {
+              level++;
+              applyQuality();
+              resize();
+              updateLines();
+              draw();
+            });
+            if (benched) benched.level = level;
+            watch.slow = -1;
+            watch.t0 = sec + 0.4; // depois da troca, nova janela
+            watch.frames = 0;
+            if (running) raf = requestAnimationFrame(frame);
+            return;
           }
-          measure.t0 = sec + 0.4;
-          measure.frames = 0;
+          watch.t0 = sec;
+          watch.frames = 0;
         }
       }
     }
@@ -841,26 +882,74 @@ export function createConstellation(
         }
       }
       post.material = quality === "simple" ? simpleMat : lensMat;
-      /* 3. render de aquecimento em 0,5 (sobe buffers e render target para a GPU) */
+      /* 3. render de aquecimento (sobe buffers e render target para a GPU) */
       await idle();
       if (destroyed) return;
       resize();
       updateLines();
       draw();
     },
+    needsBench: () => !opts.simple && !benched,
+    async bench() {
+      /* no nível alto, no tamanho real; cada quadro termina com readPixels de
+       * 1 px (espera a GPU: mede o custo de verdade, não só o envio) */
+      level = 0;
+      applyQuality();
+      resize();
+      updateLines();
+      const gl = renderer.getContext();
+      const px = new Uint8Array(4);
+      let warmup = 4;
+      let total = 0;
+      let count = 0;
+      await new Promise<void>((done) => {
+        const step = () => {
+          if (destroyed) return done();
+          /* vários quadros por frame da página, até ~8 ms: nada de tarefa longa */
+          const t0 = performance.now();
+          while (count < BENCH_FRAMES && performance.now() - t0 < 8) {
+            const s0 = performance.now();
+            time += 1 / 60;
+            dustMat.uniforms.uTime.value = time;
+            bhUniforms.uTime.value = time;
+            draw();
+            gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+            const d = performance.now() - s0;
+            if (warmup > 0) warmup--;
+            else {
+              total += d;
+              count++;
+            }
+          }
+          if (count >= BENCH_FRAMES) done();
+          else requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+      });
+      const ms = count ? total / count : 99;
+      level = ms <= 12 ? 0 : ms <= 20 ? 1 : 2;
+      benched = { level, ms };
+      applyQuality();
+      resize();
+      draw(); // o canvas já guarda um quadro no nível escolhido
+      canvas.dataset.benchMs = ms.toFixed(1);
+      return { quality, ms };
+    },
     transition(ms) {
-      low = true;
-      lowUntil = performance.now() + ms;
-      res();
+      freezeUntil = performance.now() + ms;
+      resize();
+      draw(); // o instante congelado, já no nível escolhido
+      watch.t0 = -1;
+      watch.slow = -1;
     },
     run(on) {
       if (on === running) return;
       running = on;
       if (on) {
-        if (low && !lowUntil) lowUntil = performance.now() + 900; // sem revelação: sobe sozinho
         last = performance.now();
-        if (!measure.done) measure.t0 = -1; // recomeça a medição depois de uma pausa
-        measure.frames = 0;
+        watch.t0 = -1; // recomeça a vigia depois de uma pausa
+        watch.slow = -1;
+        watch.frames = 0;
         if (!raf) raf = requestAnimationFrame(frame);
       } else {
         cancelAnimationFrame(raf);
