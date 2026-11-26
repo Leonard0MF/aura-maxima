@@ -640,6 +640,7 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
   const up = new Vector3(0, 1, 0);
   let raf = 0;
   let quiet = 0;
+  let paused = true; // o StackStage liga quando esta seção é a que renderiza (lib/gl-slot)
   let last = performance.now();
   let acc = 0;
 
@@ -884,9 +885,9 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
   };
 
   function schedule() {
-    /* o StackStage desmonta a cena longe da tela; perto dela o loop dorme
-     * sozinho quando tudo para (render sob demanda) */
-    if (!raf && !document.hidden) raf = requestAnimationFrame(frame);
+    /* pausado (fora da tela ou outra seção renderizando): nenhum frame; na
+     * tela, o loop dorme sozinho quando tudo para (render sob demanda) */
+    if (!raf && !paused && !document.hidden) raf = requestAnimationFrame(frame);
   }
   function wake() {
     quiet = 0;
@@ -970,6 +971,15 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
     },
     focus: focusOn,
     unfocus: focusOff,
+    /* liga/desliga o loop (só uma seção 3D renderiza por vez) */
+    pause(on: boolean) {
+      if (on === paused) return;
+      paused = on;
+      if (on) {
+        cancelAnimationFrame(raf);
+        raf = 0;
+      } else wake();
+    },
     /* testes: estado da mesa (posições, velocidades, rotação) */
     debug: () =>
       pieces.map((p) => ({ id: p.token.id, state: p.state, x: p.x, z: p.z, v: Math.hypot(p.vx, p.vz), w: p.w, yaw: p.yaw, asleep: p.asleep, dim: +p.dim.toFixed(3), dimT: p.dimT, bounds: { ...bounds } })),
