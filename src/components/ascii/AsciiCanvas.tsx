@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
-import { BG_SUB, GLYPHS, RATIO, cellWidth, enigmaRect, portraitRect, type Levels } from "@/lib/ascii/core";
+import { BG_SUB, ENIGMA_ALPHA, GLYPHS, RATIO, cellWidth, portraitRect, type Levels } from "@/lib/ascii/core";
 
 import { createIntroWords } from "./introWords";
 import { FRAG, GRID_FRAG, INTRO_FS, INTRO_VS, VERT } from "./shader";
@@ -245,7 +245,12 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
       gridCols = Math.ceil(W / cw);
       gridRows = Math.ceil(H / (cw * RATIO));
       Object.assign(rect, portraitRect(W, H, aspect));
-      if (bg) Object.assign(rect2, enigmaRect(W, H, bg.aspect));
+      /* Enigma: a caixa do CSS (.hero-enigma-box), medida no DOM */
+      const eb = bg ? box.querySelector<HTMLElement>(".hero-layer--surface .hero-enigma-box") : null;
+      if (eb) {
+        const hb = box.getBoundingClientRect(), er = eb.getBoundingClientRect();
+        Object.assign(rect2, { x: er.left - hb.left, y: er.top - hb.top, w: er.width, h: er.height, alpha: ENIGMA_ALPHA });
+      }
       lensR = W < 640 ? 66 : 100;
 
       gl.activeTexture(gl.TEXTURE2);

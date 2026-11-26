@@ -8,6 +8,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 
 import { LangSwitch } from "@/components/LangSwitch";
 import { profile } from "@/content/profile";
+import { SHOW_ENIGMA } from "@/content/enigma";
 import { getEnigma, getPortrait } from "@/lib/ascii/image";
 
 const nav = [
@@ -32,7 +33,7 @@ const nav = [
  */
 export async function Hero() {
   const portrait = await getPortrait();
-  const enigma = await getEnigma();
+  const enigma = SHOW_ENIGMA ? await getEnigma() : undefined;
   const locale = await getLocale();
   const t = await getTranslations("hero");
   const tn = await getTranslations("nav");
@@ -57,15 +58,17 @@ export async function Hero() {
       <div className="hero-intro-cover" aria-hidden="true" />
 
       {/* 2 · retrato ASCII ao vivo (WebGL) */}
-      <AsciiStage src={portrait.src} aspect={portrait.aspect} levels={portrait.levels} bg={{ src: enigma.src, aspect: enigma.aspect, levels: enigma.levels }} />
+      <AsciiStage src={portrait.src} aspect={portrait.aspect} levels={portrait.levels} bg={enigma && { src: enigma.src, aspect: enigma.aspect, levels: enigma.levels }} />
 
       {/* 3 · por baixo da superfície, recortada pela lente (clip-path + vars CSS) */}
       <HeroLayer variant="under" portrait={portrait} bg={enigma} alt="" />
       <div className="lens-ring" aria-hidden="true" />
       {/* legenda da Enigma: só quando a lente passa sobre ela (data-enigma) */}
-      <p className="hero-enigma-cap font-mono" aria-hidden="true">
-        {t("enigmaCaption")}
-      </p>
+      {enigma && (
+        <p className="hero-enigma-cap font-mono" aria-hidden="true">
+          {t("enigmaCaption")}
+        </p>
+      )}
 
       {/* 4 · metadados */}
       <div className="hero-meta relative z-10 flex h-full flex-col justify-between p-4 font-mono text-[11px] tracking-wide uppercase sm:p-6 sm:text-xs">
