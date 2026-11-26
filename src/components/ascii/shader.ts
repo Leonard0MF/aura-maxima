@@ -1,4 +1,4 @@
-import { GLYPHS, LEVELS, MIN_DENSITY, RAMP_IDX, RATIO, TOK2_IDX, TOK3_IDX } from "@/lib/ascii/core";
+import { GLYPHS, LEVELS, MIN_DENSITY, RAMP_IDX, RATIO, THIN_IDX, TOK2_IDX, TOK3_IDX } from "@/lib/ascii/core";
 
 /* Triângulo de tela cheia sem buffers. */
 export const VERT = `#version 300 es
@@ -29,6 +29,13 @@ uniform sampler2D uGrid;
 uniform vec3 uPtr;     // x, y, atividade 0..1
 uniform float uAccent; // 1 = destaques em âmbar; 0 = só tinta (blocos com inversão de cor)
 uniform float uKnock;  // 1 = o rosto cobre a tipografia; 0 = desenha por cima (telas estreitas)
+/* Enigma (fundo): segunda imagem, mesma grade, atrás do retrato */
+uniform sampler2D uImg2;
+uniform vec4 uRect2;   // x0, y0, w, h (px, origem embaixo)
+uniform vec2 uLevels2;
+uniform float uImg2Lod;
+uniform float uHas2;   // 0 = sem Enigma (imagem não carregou)
+uniform float uAlpha2; // opacidade dos glifos da Enigma (~0.3; 0.2 no celular)
 out vec4 o;
 
 const float RATIO = ${f(RATIO)};
@@ -37,6 +44,7 @@ const float NG = ${f(GLYPHS.length)};
 ${arr("RAMP", RAMP_IDX)}
 ${arr("TOK2", TOK2_IDX)}
 ${arr("TOK3", TOK3_IDX)}
+${arr("THIN", THIN_IDX)}
 
 const vec3 INK = vec3(0.078);
 const vec3 AMBER = vec3(0.80, 0.50, 0.06);
@@ -58,22 +66,32 @@ vec2 cellUV(ivec2 c) {
 /* uImg tem alpha PRÉ-multiplicado (subido assim de propósito: o mipmap faz
  * a média certa na borda da silhueta). "Sobre branco" = rgb + (1 - a):
  * transparente vira claro (vazio), nunca preto (glifo denso). */
-float lum(vec2 uv, float lod) {
-  vec4 t = textureLod(uImg, uv, lod);
+float lumOf(sampler2D img, vec2 uv, float lod) {
+  vec4 t = textureLod(img, uv, lod);
   return dot(t.rgb + (1.0 - t.a), vec3(0.2126, 0.7152, 0.0722));
 }
 float alphaAt(vec2 uv) { return textureLod(uImg, uv, uImgLod).a; }
-float dens(ivec2 c) {
-  vec2 uv = cellUV(c);
+/* toneDensity de core.ts para qualquer uma das duas imagens */
+float densOf(sampler2D img, vec2 uv, float lod, vec2 lv) {
   if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return 0.0;
-  if (alphaAt(uv) < 0.5) return 0.0; // fora da silhueta: célula vazia
-  float l = lum(uv, uImgLod);
-  float x = l + ${f(LEVELS.sharpen)} * (l - lum(uv, uImgLod + 2.0));
-  x = clamp((x - uLevels.x) / (uLevels.y - uLevels.x), 0.0, 1.0);
+  if (textureLod(img, uv, lod).a < 0.5) return 0.0; // fora da silhueta: célula vazia
+  float l = lumOf(img, uv, lod);
+  float x = l + ${f(LEVELS.sharpen)} * (l - lumOf(img, uv, lod + 2.0));
+  x = clamp((x - lv.x) / (lv.y - lv.x), 0.0, 1.0);
   x = mix(x, smoothstep(0.0, 1.0, x), ${f(LEVELS.curve)});
   x = pow(x, ${f(LEVELS.gamma)});
   float edge = smoothstep(0.0, 0.07, uv.x) * smoothstep(0.0, 0.07, 1.0 - uv.x) * smoothstep(0.0, 0.07, 1.0 - uv.y) * smoothstep(0.0, 0.02, uv.y);
   return (1.0 - x) * edge;
+}
+float dens(ivec2 c) { return densOf(uImg, cellUV(c), uImgLod, uLevels); }
+vec2 cellUV2(ivec2 c) {
+  vec2 p = (vec2(c) + 0.5) * vec2(uCell, uCell * RATIO);
+  return (p - uRect2.xy) / uRect2.zw;
+}
+/* glifo fino da Enigma (thinGlyph de core.ts) */
+int pickThin(float d) {
+  if (d < MIN_D) return 0;
+  return THIN[1 + min(${THIN_IDX.length - 2}, int(floor((d - MIN_D) / (1.0 - MIN_D) * ${f(THIN_IDX.length - 1)})))];
 }
 int pick(ivec2 c, float d) {
   if (d < MIN_D) return 0;
@@ -139,7 +157,19 @@ void main() {
       solid = 0.0;
     }
   }
-  if (!inMask) g = 0;
+  if (!inMask) {
+    /* fora do retrato: a Enigma (g = 0.2 marca "célula da Enigma"; sem
+     * tremulação nem montagem, e o cursor não mexe nela) */
+    if (uHas2 > 0.5) {
+      float d2 = densOf(uImg2, cellUV2(c), uImg2Lod, uLevels2);
+      int g2 = pickThin(d2);
+      if (g2 != 0) {
+        o = vec4(float(g2) / 255.0, 0.2, 0.0, d2);
+        return;
+      }
+    }
+    g = 0;
+  }
   o = vec4(float(g) / 255.0, inMask ? (amber > 0.5 ? 1.0 : 0.5) : 0.0, inMask ? solid : 0.0, d);
 }`;
 
@@ -167,7 +197,19 @@ void main() {
   ivec2 gs = textureSize(uGrid, 0);
   ivec2 c0 = ivec2(floor(p / cell));
   if (c0.x < 0 || c0.y < 0 || c0.x >= gs.x || c0.y >= gs.y) return;
-  if (texelFetch(uGrid, c0, 0).g < 0.25) return; // fora da silhueta: nada
+  vec4 c0v = texelFetch(uGrid, c0, 0);
+  /* Enigma: glifo fino em tinta, opacidade baixa, parado (sem cursor) */
+  if (c0v.g > 0.1 && c0v.g < 0.25) {
+    int ge = int(c0v.r * 255.0 + 0.5);
+    vec2 fe = fract(p / cell);
+    vec2 euv = vec2((float(ge) + fe.x) / NG, 1.0 - fe.y);
+    vec2 pe = p / cell;
+    vec2 ke = vec2(1.0 / NG, -1.0);
+    float ae = textureGrad(uAtlas, euv, dFdx(pe) * ke, dFdy(pe) * ke).a * uAlpha2 * mix(0.6, 1.0, smoothstep(MIN_D, 0.85, c0v.a));
+    o = vec4(INK * ae, ae);
+    return;
+  }
+  if (c0v.g < 0.25) return; // fora da silhueta: nada
 
   ivec2 c = ivec2(floor(gp));
   vec2 fr = fract(gp);

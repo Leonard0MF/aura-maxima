@@ -42,6 +42,32 @@ export const portraitBoxStyle = (aspect: number) =>
     aspectRatio: String(aspect),
     translate: "-50% -50%",
   }) as const;
+/*
+ * Enigma (fundo do hero): atrás do retrato, deslocada para a esquerda e para
+ * baixo; no celular, menor e no alto à esquerda (ao lado da cabeça). Mesma
+ * regra no shader (enigmaRect, px) e no CSS (.hero-enigma-box, com as mesmas
+ * constantes em cqw/cqh). Frações da largura (W) e da altura (H) do hero:
+ *   altura = min(h·H, wMax·W / proporção); centro em (cx·W, cy·H)
+ */
+export const ENIGMA = {
+  wide: { h: 0.42, wMax: 0.36, cx: 0.27, cy: 0.62, alpha: 0.3 },
+  narrow: { h: 0.2, wMax: 0.55, cx: 0.3, cy: 0.4, alpha: 0.2 },
+} as const;
+export const NARROW = 640;
+export function enigmaRect(W: number, H: number, aspect: number) {
+  const p = W < NARROW ? ENIGMA.narrow : ENIGMA.wide;
+  const h = Math.min(p.h * H, (p.wMax * W) / aspect);
+  const w = h * aspect;
+  return { x: p.cx * W - w / 2, y: p.cy * H - h / 2, w, h, alpha: p.alpha };
+}
+/* glifos finos da Enigma (só a rampa, sem tokens de código) */
+export const THIN = " .:-=+";
+export const THIN_IDX = [...THIN].map((ch) => GLYPHS.indexOf(ch));
+export function thinGlyph(d: number) {
+  if (d < MIN_DENSITY) return 0;
+  return THIN_IDX[1 + Math.min(THIN.length - 2, Math.floor(((d - MIN_DENSITY) / (1 - MIN_DENSITY)) * (THIN.length - 1)))];
+}
+
 /* Largura da célula ao vivo, em px CSS: ~W/220, entre 5 e 7. */
 export const cellWidth = (w: number) => Math.min(7, Math.max(5, w / 220));
 /* Colunas do <pre> estático (fallback), na largura do retrato. */
@@ -117,11 +143,11 @@ export function pickGlyph(c: number, r: number, dens: Density) {
   return RAMP_IDX[ri];
 }
 
-export function renderText(cols: number, rows: number, dens: Density) {
+export function renderText(cols: number, rows: number, dens: Density, thin = false) {
   const lines: string[] = [];
   for (let r = rows - 1; r >= 0; r--) {
     let s = "";
-    for (let c = 0; c < cols; c++) s += GLYPHS[pickGlyph(c, r, dens)];
+    for (let c = 0; c < cols; c++) s += GLYPHS[thin ? thinGlyph(dens(c, r)) : pickGlyph(c, r, dens)];
     lines.push(s.trimEnd());
   }
   return lines.join("\n");

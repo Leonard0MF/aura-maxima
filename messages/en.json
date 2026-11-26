@@ -30,6 +30,7 @@
     "private": "Internal system · private"
   },
   "hero": {
+    "enigmaCaption": "ENIGMA · the cipher machine whose breaking, in World War II, helped turn security into engineering.",
     "h1": "{name}, Full-Stack Developer & Pentester",
     "portfolio": "Portfolio 2026",
     "status": "Available · focused on cybersecurity",
@@ -240,6 +241,7 @@
     "done": "scan complete · 0 critical vulnerabilities in the candidate"
   },
   "footer": {
+    "enigmaCredit": "Enigma photo",
     "headers": "Security headers enabled",
     "verify": "Check it",
     "verifySr": " (opens securityheaders.com in a new tab)"

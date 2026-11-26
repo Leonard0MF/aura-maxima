@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
 
+import type { BgImage } from "@/components/ascii/AsciiCanvas";
 import type { Levels } from "@/lib/ascii/core";
 
 /* WebGL + interação num chunk próprio, carregado só depois do primeiro paint. */
@@ -13,7 +14,7 @@ const AsciiCanvas = dynamic(() => import("@/components/ascii/AsciiCanvas"), { ss
  * hardwareConcurrency ≤ 4: aí fica só o <pre> gerado no build. Se o WebGL2
  * (ou a foto) falhar, voltamos para ele também.
  */
-export function AsciiStage({ src, aspect, levels }: { src: string; aspect: number; levels: Levels }) {
+export function AsciiStage({ src, aspect, levels, bg }: { src: string; aspect: number; levels: Levels; bg?: BgImage }) {
   const [ready, setReady] = useState(false);
   const fail = useCallback(() => {
     document.documentElement.dataset.fx = "static";
@@ -36,5 +37,5 @@ export function AsciiStage({ src, aspect, levels }: { src: string; aspect: numbe
     return () => clearTimeout(id);
   }, []);
 
-  return ready ? <AsciiCanvas src={src} aspect={aspect} levels={levels} onFail={fail} /> : null;
+  return ready ? <AsciiCanvas src={src} aspect={aspect} levels={levels} bg={bg} onFail={fail} /> : null;
 }
