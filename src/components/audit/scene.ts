@@ -74,6 +74,7 @@ uniform float uHz;      // raio do horizonte (espaço local) onde a poeira some
 uniform vec2 uMouse;
 uniform vec3 uWave;     // xy: centro (NDC), z: raio
 uniform float uWaveA;
+uniform float uDepthR;  // celular: meia profundidade da nuvem de nós (0 = desliga)
 varying float vA;
 varying float vTone;
 varying float vGlow;
@@ -125,6 +126,8 @@ void main() {
   gl_Position = clip;
   float tw = 0.75 + 0.25 * sin(uTime * 1.7 + aSeed * 40.0);
   vA = ((0.36 + 0.24 * aTone) * tw + abs(push) * 0.5) * fade;
+  /* poeira dos nós e filamentos: a do fundo mais apagada (perspectiva já reduz o tamanho) */
+  if (uDepthR > 0.0 && aRef.x < 1.5) vA *= mix(0.35, 1.0, clamp(0.5 + 0.5 * (${CAMERA_Z.toFixed(1)} + mv.z) / uDepthR, 0.0, 1.0));
   vTone = aTone;
   vGlow = glow * fade;
   gl_PointSize = aSize * uPR * uScale * (1.0 + glow * 1.8) / -mv.z;
@@ -150,10 +153,14 @@ uniform float uTime;
 uniform float uPR;
 uniform float uLit[${MAX_NODES}];
 uniform float uHover;
+uniform float uDepthR;
 varying float vLit;
 varying float vHover;
+varying float vDepth;
 void main() {
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  /* 0 = fundo, 1 = frente (só no celular; no desktop sempre 1) */
+  vDepth = uDepthR > 0.0 ? clamp(0.5 + 0.5 * (${CAMERA_Z.toFixed(1)} + mv.z) / uDepthR, 0.0, 1.0) : 1.0;
   gl_Position = projectionMatrix * mv;
   int i = int(aIndex + 0.5);
   float lit = 0.0;
@@ -162,7 +169,7 @@ void main() {
   float pulse = 0.9 + 0.1 * sin(uTime * 2.2 + aIndex * 1.7);
   vLit = lit;
   vHover = hov;
-  gl_PointSize = uPR * (26.0 + 10.0 * lit + 14.0 * hov) * pulse * (${CAMERA_Z.toFixed(1)} / -mv.z);
+  gl_PointSize = uPR * (26.0 + 10.0 * lit + 14.0 * hov) * pulse * (${CAMERA_Z.toFixed(1)} / -mv.z) * mix(0.62, 1.0, max(vDepth, hov));
 }`;
 
 const NODE_FS = /* glsl */ `
@@ -170,13 +177,14 @@ uniform vec3 uWhite;
 uniform vec3 uAmber;
 varying float vLit;
 varying float vHover;
+varying float vDepth;
 void main() {
   float r = length(gl_PointCoord - 0.5);
   float halo = smoothstep(0.5, 0.0, r) * (0.28 + 0.3 * vLit + 0.25 * vHover);
   float core = smoothstep(0.13, 0.05, r);
   float ring = smoothstep(0.035, 0.0, abs(r - 0.21)) * (0.35 + 0.65 * max(vLit, vHover));
   vec3 c = mix(uAmber, uWhite, core * 0.7);
-  gl_FragColor = vec4(c, min(1.0, halo + core + ring));
+  gl_FragColor = vec4(c, min(1.0, halo + core + ring) * mix(0.3, 1.0, max(vDepth, max(vLit, vHover))));
 }`;
 
 /* ---------- buraco negro ---------- */
@@ -300,9 +308,9 @@ void main() {
   float sh = smoothstep(${SHADOW.toFixed(1)} + 0.04, ${SHADOW.toFixed(1)} - 0.04, r);
   col *= 1.0 - sh;
   A = max(A, sh);
-  // anel de fótons
-  float ring = exp(-pow((r - ${SHADOW.toFixed(1)} - 0.06) / 0.07, 2.0));
-  col += uWhite * ring * 0.8;
+  // anel de fótons: quente e colado ao horizonte (cinza puro lia como um círculo solto)
+  float ring = exp(-pow((r - ${SHADOW.toFixed(1)} - 0.05) / 0.06, 2.0));
+  col += mix(uAmber, uWhite, 0.6) * ring * 0.9;
   A = max(A, ring * 0.8);
   // frente: a metade de baixo do disco, por cima de tudo
   float rh = length(vec2(p.x, p.y / si));
@@ -324,6 +332,8 @@ export type Constellation = {
   run(on: boolean): void;
   pointer(x: number, y: number, inside: boolean): void;
   dragBy(dx: number, dy: number): void;
+  /** fim do arrasto (dedo/botão solto) */
+  release(): void;
   hit(x: number, y: number): number;
   nodeAt(i: number): { x: number; y: number };
   hover(i: number): void;
@@ -366,18 +376,26 @@ export function createConstellation(
   const nodePos = new Float32Array(n * 3);
   const nodeVec = Array.from({ length: MAX_NODES }, () => new Vector3());
   const tmp = [0, 0, 0];
-  /* tela estreita: nós em posições fixas (layoutNarrow), com uma oscilação
-   * de ~2 px para não parecerem congelados */
-  let fixed: Float32Array | null = null;
-  let wob = 0;
+  /* tela estreita: os nós formam uma nuvem 3D (elipsoide) abaixo do buraco
+   * negro, que gira devagar em torno do eixo vertical; o arrasto gira à mão
+   * (e pausa a rotação automática). Perspectiva real da câmera; o fundo fica
+   * menor e mais apagado (uDepthR nos shaders) e os filamentos também. */
+  const cloud = { on: false, c: new Vector3(), r: new Vector3(), pts: new Float32Array(MAX_NODES * 3), yaw: 0, spin: 0, held: false };
+  const depth = new Float32Array(MAX_NODES).fill(1);
+  const CLOUD_SPIN = 0.16; // rad/s (~40 s por volta)
+  const CLOUD_PITCH = 0.32; // inclinação fixa: o volume se lê como volume
   const updateNodes = (t: number) => {
+    const cy = Math.cos(cloud.yaw), sy = Math.sin(cloud.yaw), cp = Math.cos(CLOUD_PITCH), sp = Math.sin(CLOUD_PITCH);
     for (let i = 0; i < n; i++) {
-      if (fixed) {
-        tmp[0] = fixed[i * 3] + Math.sin(t * 0.7 + i * 1.7) * wob;
-        tmp[1] = fixed[i * 3 + 1] + Math.cos(t * 0.55 + i * 2.3) * wob;
-        tmp[2] = fixed[i * 3 + 2];
-        nodePos.set(tmp, i * 3);
-        nodeVec[i].set(tmp[0], tmp[1], tmp[2]);
+      if (cloud.on) {
+        const ox = cloud.pts[i * 3] * cloud.r.x, oy = cloud.pts[i * 3 + 1] * cloud.r.y, oz = cloud.pts[i * 3 + 2] * cloud.r.z;
+        const x1 = ox * cy + oz * sy, z1 = -ox * sy + oz * cy; // yaw (eixo vertical)
+        const y2 = oy * cp - z1 * sp, z2 = oy * sp + z1 * cp; // pitch fixo
+        depth[i] = Math.max(0, Math.min(1, 0.5 + (0.5 * z2) / cloud.r.z));
+        v.set(cloud.c.x + x1, cloud.c.y + y2, cloud.c.z + z2);
+        group.worldToLocal(v);
+        nodePos.set([v.x, v.y, v.z], i * 3);
+        nodeVec[i].copy(v);
         continue;
       }
       orbitPos(L.orbits[i], t, tmp);
@@ -411,6 +429,7 @@ export function createConstellation(
       uMouse: { value: [9, 9] },
       uWave: { value: [0, 0, 0] },
       uWaveA: { value: 0 },
+      uDepthR: { value: 0 },
       uWhite: { value: white },
       uAmber: { value: amber },
     },
@@ -437,7 +456,8 @@ export function createConstellation(
       seg.set(nodePos.subarray(j * 3, j * 3 + 3), k * 6 + 3);
       const d = Math.hypot(nodePos[i * 3] - nodePos[j * 3], nodePos[i * 3 + 1] - nodePos[j * 3 + 1], nodePos[i * 3 + 2] - nodePos[j * 3 + 2]);
       const t = Math.max(0, Math.min(1, (2.0 - d) / 0.9));
-      const v = 0.22 * t * t * (3 - 2 * t);
+      /* celular: o filamento do fundo some junto com os nós */
+      const v = 0.22 * t * t * (3 - 2 * t) * (cloud.on ? 0.2 + 0.8 * Math.min(depth[i], depth[j]) : 1);
       segCol.set([amber.x * v, amber.y * v, amber.z * v, amber.x * v, amber.y * v, amber.z * v], k * 6);
     });
     lineGeo.attributes.position.needsUpdate = true;
@@ -460,6 +480,7 @@ export function createConstellation(
       uPR: { value: dpr },
       uLit: { value: lit },
       uHover: { value: -1 },
+      uDepthR: { value: 0 },
       uWhite: { value: white },
       uAmber: { value: amber },
     },
@@ -569,9 +590,14 @@ export function createConstellation(
     const room = narrow ? (bhNdc.y + 0.55) * HALF_H : 1.45 * HALF_H * asp;
     const k = Math.min(1, room / 5.4);
     group.scale.setScalar(k);
-    fixed = narrow ? layoutNarrow(w, h, hc) : null;
-    wob = narrow ? (2 * ((2 * HALF_H) / h)) / k : 0;
+    group.rotation.set(0, 0, rot.z);
+    group.updateMatrixWorld();
     const worldPerPx = (2 * HALF_H) / h;
+    cloud.on = narrow;
+    if (narrow) placeCloud(w, h, hc, worldPerPx);
+    const dr = narrow ? cloud.r.z * 1.1 : 0;
+    dustMat.uniforms.uDepthR.value = dr;
+    nodeMat.uniforms.uDepthR.value = dr;
     dustMat.uniforms.uHz.value = (SHADOW * pxPerRs * worldPerPx) / k;
     renderer.getDrawingBufferSize(buf);
     const pr = buf.x / w;
@@ -586,71 +612,46 @@ export function createConstellation(
   }
 
   /*
-   * Tela estreita: os nós principais saem das órbitas (no instante 0, para
-   * manter os vizinhos e os filamentos) e são relaxados para a área abaixo
-   * do buraco negro: margem de 24 px nas bordas, ≥ 56 px entre nós (o alvo
-   * de toque é 48) e nunca a menos de 1,5× o raio do disco do centro.
+   * Tela estreita: a nuvem fica na área livre abaixo do disco (24 px de
+   * margem). As posições saem das órbitas no instante 0, normalizadas por
+   * eixo para dentro de uma esfera unitária (os vizinhos continuam vizinhos:
+   * filamentos curtos) e relaxadas para não se sobreporem.
    */
-  const MARGIN = 24, MIN_D = 56;
-  function layoutNarrow(w: number, h: number, hc: { x: number; y: number; rs: number }) {
-    const keep = 1.5 * DISK_RS * hc.rs + 6;
-    const top = hc.y + 7.7 * hc.rs * 0.6;
+  const MARGIN = 24;
+  function placeCloud(w: number, h: number, hc: { x: number; y: number; rs: number }, wpp: number) {
+    const top = Math.max(hc.y + DISK_RS * hc.rs * 1.25, MARGIN);
+    const bottom = h - MARGIN;
     const asp = w / h;
-    /* 1. órbitas no instante 0, projetadas com o grupo em repouso */
-    const saved = group.rotation.clone();
-    group.rotation.set(0, 0, rot.z);
-    group.updateMatrixWorld();
-    const pts: number[][] = [];
-    for (let i = 0; i < n; i++) {
-      orbitPos(L.orbits[i], 0, tmp);
-      v.set(tmp[0], tmp[1], tmp[2]).applyMatrix4(group.matrixWorld).project(camera);
-      pts.push([(v.x * 0.5 + 0.5) * w, (-v.y * 0.5 + 0.5) * h]);
-    }
-    /* 2. encaixa o desenho na área livre (escala uniforme) */
-    const x0 = MARGIN, x1 = w - MARGIN, y0 = Math.max(top, MARGIN), y1 = h - MARGIN;
-    let bx0 = Infinity, bx1 = -Infinity, by0 = Infinity, by1 = -Infinity;
-    for (const [x, y] of pts) {
-      bx0 = Math.min(bx0, x); bx1 = Math.max(bx1, x);
-      by0 = Math.min(by0, y); by1 = Math.max(by1, y);
-    }
-    const sc = Math.min((x1 - x0) / Math.max(1, bx1 - bx0), (y1 - y0) / Math.max(1, by1 - by0));
-    const ox = (x0 + x1) / 2 - ((bx0 + bx1) / 2) * sc, oy = (y0 + y1) / 2 - ((by0 + by1) / 2) * sc;
-    for (const p of pts) {
-      p[0] = p[0] * sc + ox;
-      p[1] = p[1] * sc + oy;
-    }
-    /* 3. relaxa: afasta pares próximos, empurra para fora do disco, prende na área */
-    for (let it = 0; it < 120; it++) {
-      for (let i = 0; i < n; i++)
-        for (let j = i + 1; j < n; j++) {
-          const dx = pts[j][0] - pts[i][0], dy = pts[j][1] - pts[i][1];
-          const d = Math.hypot(dx, dy) || 0.01;
-          if (d < MIN_D) {
-            const push = (MIN_D - d) / 2 / d;
-            pts[i][0] -= dx * push; pts[i][1] -= dy * push;
-            pts[j][0] += dx * push; pts[j][1] += dy * push;
+    const cx = w / 2, cy = (top + bottom) / 2;
+    cloud.c.set(((cx / w) * 2 - 1) * HALF_H * asp, (1 - (cy / h) * 2) * HALF_H, 0);
+    /* a frente se aproxima da câmera e cresce: raios com folga para caber */
+    const rx = 0.5 * (w - 2 * MARGIN) * wpp * 0.74;
+    cloud.r.set(rx, 0.5 * Math.max(40, bottom - top) * wpp * 0.72, rx * 1.2);
+    const raw: number[][] = [];
+    for (let i = 0; i < n; i++) raw.push(orbitPos(L.orbits[i], 0, [0, 0, 0]));
+    const mean = [0, 1, 2].map((k) => raw.reduce((a, p) => a + p[k], 0) / n);
+    const ext = [0, 1, 2].map((k) => Math.max(1e-3, ...raw.map((p) => Math.abs(p[k] - mean[k]))));
+    /* local (x, y, z) → nuvem: y local vira a largura, x a altura, z a profundidade */
+    const q = raw.map((p) => [(p[1] - mean[1]) / ext[1], (p[0] - mean[0]) / ext[0], (p[2] - mean[2]) / ext[2]]);
+    for (let it = 0; it < 80; it++) {
+      for (let a = 0; a < n; a++)
+        for (let b = a + 1; b < n; b++) {
+          const d = [0, 1, 2].map((k) => q[b][k] - q[a][k]);
+          const l = Math.hypot(d[0], d[1], d[2]) || 0.01;
+          if (l < 0.62) {
+            const f = (0.62 - l) / 2 / l;
+            for (let k = 0; k < 3; k++) {
+              q[a][k] -= d[k] * f;
+              q[b][k] += d[k] * f;
+            }
           }
         }
-      for (const p of pts) {
-        const dx = p[0] - hc.x, dy = p[1] - hc.y, d = Math.hypot(dx, dy) || 0.01;
-        if (d < keep) {
-          p[0] = hc.x + (dx / d) * keep;
-          p[1] = hc.y + (dy / d) * keep;
-        }
-        p[0] = Math.max(x0, Math.min(x1, p[0]));
-        p[1] = Math.max(y0, Math.min(y1, p[1]));
+      for (const p of q) {
+        const l = Math.hypot(p[0], p[1], p[2]);
+        if (l > 1) for (let k = 0; k < 3; k++) p[k] /= l;
       }
     }
-    /* 4. tela → plano z = 0 → espaço local do grupo */
-    const out = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) {
-      v.set(((pts[i][0] / w) * 2 - 1) * HALF_H * asp, (1 - (pts[i][1] / h) * 2) * HALF_H, 0);
-      group.worldToLocal(v);
-      out.set([v.x, v.y, v.z], i * 3);
-    }
-    group.rotation.copy(saved);
-    group.updateMatrixWorld();
-    return out;
+    q.forEach((p, i) => cloud.pts.set(p, i * 3));
   }
 
   function project() {
@@ -721,9 +722,20 @@ export function createConstellation(
       rot.x += (0 - rot.x) * Math.min(1, dt * 0.5);
       rot.y += (0 - rot.y) * Math.min(1, dt * 0.5);
     }
-    rot.y = Math.max(-0.9, Math.min(0.9, rot.y + rot.vy * dt));
-    rot.x = Math.max(-0.5, Math.min(0.5, rot.x + rot.vx * dt));
-    group.rotation.set(rot.x, rot.y, rot.z);
+    if (cloud.on) {
+      /* celular: gira só a nuvem; solto, a inércia volta à rotação lenta */
+      if (cloud.held) {
+        /* dedo na tela: só o arrasto gira (o valor guardado é para a inércia) */
+        cloud.spin *= Math.exp(-dt * 10);
+      } else {
+        cloud.spin += (CLOUD_SPIN - cloud.spin) * Math.min(1, dt * 1.5);
+        cloud.yaw += cloud.spin * dt;
+      }
+    } else {
+      rot.y = Math.max(-0.9, Math.min(0.9, rot.y + rot.vy * dt));
+      rot.x = Math.max(-0.5, Math.min(0.5, rot.x + rot.vx * dt));
+      group.rotation.set(rot.x, rot.y, rot.z);
+    }
 
     updateNodes(time);
     nodeGeo.attributes.position.needsUpdate = true;
@@ -867,8 +879,20 @@ export function createConstellation(
       }
       pk.t = inside ? 1 : 0;
     },
+    release() {
+      cloud.held = false;
+      dragging = 0;
+    },
     dragBy(dx, dy) {
       dragging = 1;
+      if (cloud.on) {
+        /* celular: o dedo gira a nuvem (a rotação automática para enquanto arrasta) */
+        const a = (dx / Math.max(1, W)) * Math.PI * 1.4;
+        cloud.yaw += a;
+        cloud.held = true; // até release(): dedo parado continua segurando
+        cloud.spin = Math.max(-5, Math.min(5, a * 60)); // inércia ao soltar
+        return;
+      }
       rot.vy = (dx / Math.max(1, W)) * 36;
       rot.vx = (dy / Math.max(1, H)) * 18;
       rot.y = Math.max(-0.9, Math.min(0.9, rot.y + (dx / Math.max(1, W)) * 3));

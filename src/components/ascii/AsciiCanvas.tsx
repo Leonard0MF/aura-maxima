@@ -431,7 +431,8 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
       const r = full * (1 - Math.pow(1 - open, 3)) * (0.6 + 0.4 * lv) * (lv > 0 ? 1 : 0);
       gl.uniform1f(U.time, t);
       gl.uniform1f(U.alpha2, rect2.alpha);
-      gl.uniform3f(U.ptr, px * dpr, (H - py) * dpr, pa);
+      /* embaralhamento sob o ponteiro: efeito de cursor, só com mouse (no toque não há cursor) */
+      gl.uniform3f(U.ptr, px * dpr, (H - py) * dpr, hoverable ? pa : 0);
       /* lente: só variáveis CSS (a camada under e o aro leem daqui) */
       const lr = Math.round(r * 10) / 10;
       if (lr !== shownR || Math.abs(lx - shownX) > 0.05 || Math.abs(ly - shownY) > 0.05 || lv !== shownV || big !== shownB) {

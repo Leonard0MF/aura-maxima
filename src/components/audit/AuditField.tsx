@@ -279,7 +279,10 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
       if (!scene || !down || down.id !== e.pointerId) return;
       const wasDrag = down.drag;
       down = null;
-      if (wasDrag) return;
+      if (wasDrag) {
+        scene.release();
+        return;
+      }
       const p = pos(e);
       const i = scene.hit(p.x, p.y);
       if (i >= 0) {
@@ -309,6 +312,7 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
     };
     const onCancel = () => {
       down = null;
+      scene?.release();
       scene?.pointer(0, 0, false);
     };
     /* toque que começa num nó é nosso (sem rolar a página); fora dele, o
