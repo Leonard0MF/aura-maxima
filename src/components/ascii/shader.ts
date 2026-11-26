@@ -18,7 +18,6 @@ uniform vec2 uRes;     // framebuffer (px)
 uniform float uCell;   // largura da célula (px do framebuffer)
 uniform vec4 uRect;    // retrato: x0, y0, w, h (px, origem embaixo)
 uniform float uTime;
-uniform float uIntro;  // segundos desde o início da montagem (>= 2 = pronta)
 uniform float uDpr;
 uniform float uAspect;
 uniform float uImgLod;
@@ -157,19 +156,6 @@ void main() {
     amber = ((fh >> 9u) & 7u) == 0u ? 1.0 : 0.0;
   }
 
-  /* montagem: glifos aleatórios que travam no certo, de dentro para fora
-   * (só dentro da silhueta: o fundo transparente nunca vira retângulo) */
-  if (inMask && uIntro < 2.0) {
-    float dc = length((uv - vec2(0.5, 0.55)) * vec2(uAspect, 1.0)) / 0.7;
-    float lockAt = 0.12 + 1.1 * dc + float(hash3(uint(c.x), uint(c.y), 3u) % 1000u) * 2.5e-4;
-    if (uIntro < lockAt) {
-      uint rh = hash3(uint(c.x), uint(c.y), uint(uIntro * 24.0) + 71u);
-      g = rh % 4u == 0u ? 0 : 1 + int((rh >> 8u) % uint(NG - 1.0));
-      amber = ((rh >> 4u) & 7u) == 0u ? 1.0 : 0.0;
-      d = 0.4;
-      solid = 0.0;
-    }
-  }
   if (!inMask) g = 0;
   o = vec4(float(g) / 255.0, inMask ? (amber > 0.5 ? 1.0 : 0.5) : 0.0, inMask ? solid : 0.0, d);
 }`;
@@ -249,4 +235,87 @@ void main() {
     vec3 col = mix(INK, AMBER, hi);
     o = o * (1.0 - a) + vec4(col * a, a);
   }
+}`;
+
+
+/*
+ * Intro "descriptografia" (só na 1ª carga da sessão): cada glifo do retrato
+ * e da Enigma é um quad instanciado (1 instância por célula, nenhum DOM).
+ * Cada célula tem a própria origem aleatória no hero e o próprio progresso:
+ *   0–0,3 s   campo esparso: ~22% dos glifos piscando na origem
+ *   0,2–1,4 s voo até a célula certa, easing expo-out, com atraso pela
+ *             distância ao centro do rosto; trava no glifo certo ao chegar
+ * uFly está sempre na escala do desktop (o celular comprime o tempo antes).
+ */
+export const INTRO_VS = `${HEAD.replace("out vec4 o;\n", "")}${COMMON}
+uniform float uFly;
+uniform int uCols;
+uniform int uMode;     // 0 = retrato (lê a grade), 1 = Enigma (grade fina, densBg)
+uniform vec2 uE0;      // Enigma: primeira célula da grade fina (em células)
+uniform vec2 uFace;    // centro do rosto (px do framebuffer, origem embaixo)
+flat out int vG;
+flat out float vA;
+flat out float vAmber;
+out vec2 vUV;
+void main() {
+  ivec2 c = ivec2(gl_InstanceID % uCols, gl_InstanceID / uCols);
+  vec2 cellSz = vec2(uCell, uCell * RATIO);
+  vec2 target;
+  int g;
+  float a;
+  float amber = 0.0;
+  gl_Position = vec4(2.0, 2.0, 2.0, 1.0); // descartado
+  if (uMode == 0) {
+    vec4 cv = texelFetch(uGrid, c, 0);
+    if (cv.g < 0.25) return;
+    g = int(cv.r * 255.0 + 0.5);
+    if (g == 0) return;
+    amber = cv.g > 0.75 ? 1.0 : 0.0;
+    a = mix(0.42, 1.0, smoothstep(MIN_D, 0.85, cv.a));
+    target = vec2(c) * cellSz;
+  } else {
+    cellSz *= ${f(BG_SUB)};
+    vec2 ce = vec2(c) + uE0;
+    vec2 uv2 = ((ce + 0.5) * cellSz - uRect2.xy) / uRect2.zw;
+    float d = densBg(uv2, uImg2Lod + ${f(Math.log2(BG_SUB))});
+    g = pickBg(d);
+    if (g == 0) return;
+    a = uAlpha2 * mix(0.55, 1.0, smoothstep(MIN_D, 0.8, d));
+    target = ce * cellSz;
+  }
+  uint h = hash3(uint(c.x), uint(c.y), uint(uMode) + 101u);
+  vec2 org = vec2(float(h & 0xffffu), float(h >> 16u)) / 65535.0 * uRes;
+  float dist = clamp(length(target - uFace) / uRes.y / 0.9, 0.0, 1.0);
+  float start = 0.2 + 0.5 * dist + float((h >> 7u) % 100u) * 5e-4;
+  float p = clamp((uFly - start) / 0.6, 0.0, 1.0);
+  float e = p >= 1.0 ? 1.0 : 1.0 - exp2(-10.0 * p);
+  vec2 pos = mix(org, target, e);
+  float vis = 1.0;
+  if (p < 1.0) {
+    /* em voo (ou ainda na origem): glifo aleatório piscando */
+    uint fh = hash3(uint(c.x), uint(c.y), uint(uFly * 14.0) + uint(uMode) * 977u);
+    g = 1 + int((fh >> 8u) % uint(NG - 1.0));
+    amber = (fh & 7u) == 0u ? 1.0 : 0.0;
+    float spark = (fh % 100u) < 22u ? 0.75 : 0.0; // campo esparso
+    vis = max(spark * smoothstep(0.0, 0.08, uFly), smoothstep(0.0, 0.12, p));
+    a = max(a, 0.6);
+  }
+  vA = a * vis;
+  if (vA <= 0.001) return;
+  vG = g;
+  vAmber = amber;
+  int k = gl_VertexID;
+  vec2 q = vec2((k == 1 || k == 2 || k == 4) ? 1.0 : 0.0, (k == 2 || k == 4 || k == 5) ? 1.0 : 0.0);
+  vUV = q;
+  gl_Position = vec4((pos + q * cellSz) / uRes * 2.0 - 1.0, 0.0, 1.0);
+}`;
+
+export const INTRO_FS = `${HEAD}
+flat in int vG;
+flat in float vA;
+flat in float vAmber;
+in vec2 vUV;
+void main() {
+  float a = texture(uAtlas, vec2((float(vG) + vUV.x) / NG, 1.0 - vUV.y)).a * vA;
+  o = vec4(mix(INK, AMBER, vAmber * uAccent) * a, a);
 }`;
