@@ -1,19 +1,22 @@
 import photo from "../../public/enigma.webp";
 
 /*
- * Foto de fundo do hero: uma máquina Enigma (Enigma-K do Exército suíço).
- * Fonte: Wikimedia Commons, "Enigma-IMG 0484-white.jpg", por Rama,
- * CC BY-SA 2.0 FR (atribuição obrigatória: CREDITS.md e rodapé do site).
- * Alterações: fundo branco removido (alfa), recorte, redução para 1100 px,
- * WebP sem metadados. O arquivo derivado segue sob CC BY-SA 2.0 FR.
+ * Foto de fundo do hero: uma máquina Enigma I (modelo militar), em 3/4 de
+ * cima: painel de lâmpadas, rotores, teclado e plugboard visíveis.
+ * Fonte: Wikimedia Commons, "Enigma (crittografia) - Museo scienza e
+ * tecnologia Milano.jpg", por Alessandro Nassiri / Museo Nazionale della
+ * Scienza e della Tecnologia "Leonardo da Vinci", CC BY-SA 4.0 (atribuição
+ * obrigatória: CREDITS.md e rodapé do site).
+ * Alterações: fundo removido (alfa), recorte, WebP sem metadados. O arquivo
+ * derivado segue sob CC BY-SA 4.0.
  */
 export const enigma = {
   photo,
   file: "public/enigma.webp",
   credit: {
-    author: "Rama",
-    license: "CC BY-SA 2.0 FR",
-    licenseUrl: "https://creativecommons.org/licenses/by-sa/2.0/fr/deed.en",
-    source: "https://commons.wikimedia.org/wiki/File:Enigma-IMG_0484-white.jpg",
+    author: "Alessandro Nassiri / Museo della Scienza e della Tecnologia",
+    license: "CC BY-SA 4.0",
+    licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/",
+    source: "https://commons.wikimedia.org/wiki/File:Enigma_(crittografia)_-_Museo_scienza_e_tecnologia_Milano.jpg",
   },
 } as const;
