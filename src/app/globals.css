@@ -458,13 +458,155 @@ html[data-js] .hero[data-live] .ascii-fallback {
 }
 
 /* ---------- 02 · STACK ---------- */
-/* a seção inteira cabe em 100svh: cabeçalho compacto (~12rem) + canvas */
+/* a seção inteira cabe em 100svh: cabeçalho compacto (~12rem) + canvas e
+ * índice. Desktop: canvas à esquerda (~60%), índice à direita (~40%);
+ * abaixo de 1024px: canvas em cima, índice embaixo. */
+.stack-layout {
+  border-top: 1px solid rgb(20 20 20 / 0.2);
+  border-bottom: 1px solid rgb(20 20 20 / 0.2);
+}
 .stack-box {
   position: relative;
   height: clamp(360px, calc(100svh - 13rem), 820px);
   overflow: hidden;
-  border-top: 1px solid rgb(20 20 20 / 0.2);
-  border-bottom: 1px solid rgb(20 20 20 / 0.2);
+}
+@media (min-width: 1024px) {
+  .stack-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    height: clamp(420px, calc(100svh - 13rem), 820px);
+  }
+  .stack-box {
+    height: 100%;
+    border-right: 1px solid rgb(20 20 20 / 0.2);
+  }
+}
+
+/* índice: texto compacto por categoria, com hairlines */
+.stack-index {
+  display: flex;
+  flex-direction: column;
+  padding: 1rem var(--gx, 1rem) 1.25rem;
+  font-size: 14px;
+  line-height: 1.45;
+}
+@media (min-width: 640px) {
+  .stack-index {
+    padding-inline: 1.5rem;
+  }
+}
+@media (min-width: 1024px) {
+  .stack-index {
+    justify-content: center;
+    min-height: 0;
+    overflow-y: auto; /* só se a altura não der (telas muito baixas) */
+    padding-block: 0.5rem;
+    font-size: clamp(12.5px, 1.6svh, 14px);
+    line-height: 1.38;
+  }
+}
+.stack-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  padding-bottom: 0.45rem;
+  color: var(--color-ink-soft);
+  font-size: 12px;
+}
+.stack-lvl {
+  display: inline-block;
+  margin-left: 0.4em;
+  padding: 0 0.3em;
+  border: 1px solid rgb(20 20 20 / 0.22);
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.05em;
+  line-height: 1.5;
+  text-transform: uppercase;
+  vertical-align: 0.12em;
+  color: var(--color-ink-soft);
+}
+.stack-legend .stack-lvl {
+  margin: 0 0.25em 0 0;
+}
+.stack-cat {
+  border-top: 1px solid rgb(20 20 20 / 0.16);
+  padding: clamp(0.25rem, 0.6svh, 0.45rem) 0 clamp(0.3rem, 0.7svh, 0.55rem);
+  transition: opacity 0.25s;
+}
+.stack-cat:last-child {
+  border-bottom: 1px solid rgb(20 20 20 / 0.16);
+}
+/* com uma categoria destacada, as outras recuam no índice também */
+[data-stack][data-cat] .stack-cat {
+  opacity: 0.45;
+}
+[data-stack][data-cat="languages"] .stack-cat[data-cat="languages"],
+[data-stack][data-cat="frontend"] .stack-cat[data-cat="frontend"],
+[data-stack][data-cat="visual"] .stack-cat[data-cat="visual"],
+[data-stack][data-cat="backend"] .stack-cat[data-cat="backend"],
+[data-stack][data-cat="secTools"] .stack-cat[data-cat="secTools"],
+[data-stack][data-cat="secConcepts"] .stack-cat[data-cat="secConcepts"],
+[data-stack][data-cat="systems"] .stack-cat[data-cat="systems"] {
+  opacity: 1;
+}
+.stack-cat__btn {
+  display: flex;
+  width: 100%;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.1rem 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+}
+.stack-cat__btn:disabled {
+  cursor: default;
+  color: inherit;
+}
+.stack-cat__n,
+.stack-cat__count {
+  color: var(--color-ink-soft);
+}
+.stack-cat__count {
+  margin-left: auto;
+}
+.stack-cat__btn:not(:disabled):hover .stack-cat__name,
+.stack-cat__btn[aria-pressed="true"] .stack-cat__name {
+  color: var(--color-accent-ink);
+}
+.stack-cat__btn[aria-pressed="true"] .stack-cat__name::after {
+  content: " ●";
+  font-size: 0.8em;
+}
+.stack-cat__items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.2rem;
+  margin-top: 0.15rem;
+}
+.stack-cat__items li:not(:last-child)::after {
+  content: "·";
+  margin-left: 0.2rem;
+  color: rgb(20 20 20 / 0.35);
+}
+.stack-item {
+  white-space: nowrap;
+}
+.stack-item--coin {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: rgb(20 20 20 / 0.25);
+  text-underline-offset: 0.2em;
+}
+.stack-item--coin:hover,
+.stack-item--coin:focus-visible {
+  color: var(--color-accent-ink);
+  text-decoration-color: currentColor;
 }
 @media (max-width: 639px) {
   .stack-box {
@@ -543,32 +685,15 @@ html:not([data-js]) .stack-ph {
     padding: 0 1.5rem;
   }
 }
-/* 3D disponível (carregando, ativo ou desmontado): a lista em texto sai de
- * vista (fica para leitores de tela e SEO) e só aparece como uma faixa de
- * botões quando recebe foco do teclado. Visível de verdade apenas sem JS ou
- * com data-static (marcado pela STACK na montagem: reduced-motion, aparelho
- * fraco, sem WebGL2). Não depende do data-fx global, que o hero pode trocar
- * em tempo de execução. */
+/* o grid de logos é só o visual do modo estático (sem JS ou data-static:
+ * reduced-motion, aparelho fraco, sem WebGL2, marcado pela STACK na
+ * montagem). Com o 3D disponível ele não existe; para leitores de tela e
+ * teclado, a lista é o índice ao lado. */
 html[data-js] [data-stack]:not([data-static]) .stack-grid {
-  inset: auto 0 0 0;
-  z-index: 3;
-  clip-path: inset(50%);
-  grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
-  padding-block: 0.5rem;
-  background: var(--color-paper);
-  border-top: 1px solid rgb(20 20 20 / 0.2);
+  display: none;
 }
-html[data-js] [data-stack]:not([data-static]) .stack-grid:focus-within {
-  clip-path: none;
-}
-html[data-js] [data-stack]:not([data-static]) .stack-cell {
-  flex-direction: row;
-  padding: 0.5rem 0.25rem;
-  border: 0;
-}
-html[data-js] [data-stack]:not([data-static]) .stack-cell svg {
-  width: 1rem;
-  height: 1rem;
+.stack-cell[data-dim] {
+  opacity: 0.3;
 }
 .stack-cell {
   display: flex;

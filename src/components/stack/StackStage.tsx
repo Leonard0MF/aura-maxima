@@ -7,6 +7,8 @@ type Saved = { id: string; x: number; z: number; yaw: number }[];
 type Scene = {
   drop(): void;
   restore(s: Saved): void;
+  highlight(ids: string[] | null): void;
+  bump(id: string): boolean;
   state(): Saved;
   snapshot(): string | null;
   focus(id: string): void;
@@ -24,12 +26,15 @@ type Scene = {
  * - enquanto nada está pronto, a área mostra só um placeholder do mesmo
  *   tamanho; a lista em texto fica sr-only (visível só no modo estático)
  * - as peças caem quando ~25% da seção aparece
+ * - índice → 3D: clicar (ou hover, no desktop) numa categoria destaca as
+ *   moedas dela e apaga as outras; clicar de novo limpa. Clicar num item que
+ *   tem moeda faz a moeda pular e abre o popup dela
  * - tooltip e dialog: escrita direta no DOM renderizado no servidor
  * - dialog: foco preso, Esc / X / clique fora fecham, foco volta para quem abriu
  * - modo estático (reduced-motion, aparelho fraco, sem WebGL2): grid de SVG;
  *   o dialog funciona igual, só sem a peça voando
  */
-export function StackStage({ tokens }: { tokens: { id: string; name: string }[] }) {
+export function StackStage({ tokens, mobile: mobileIds, cats }: { tokens: { id: string; name: string }[]; mobile: string[]; cats: Record<string, string[]> }) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -49,7 +54,7 @@ export function StackStage({ tokens }: { tokens: { id: string; name: string }[] 
     /* ---------- dialog ---------- */
     const open = (id: string) => {
       if (openId === id) return;
-      if (!openId) returnFocus = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
+      if (!openId && !returnFocus) returnFocus = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
       openId = id;
       for (const p of panels) p.hidden = p.dataset.panel !== id;
       dialog.setAttribute("aria-labelledby", `tech-${id}`);
@@ -88,12 +93,55 @@ export function StackStage({ tokens }: { tokens: { id: string; name: string }[] 
         }
       }
     };
+    /* ---------- filtro por categoria ---------- */
+    const catBtns = [...section.querySelectorAll<HTMLButtonElement>("[data-cat-btn]")];
+    const cells = [...section.querySelectorAll<HTMLElement>("[data-cell]")];
+    let picked: string | null = null; // categoria fixada por clique
+    const show = (cat: string | null) => {
+      const ids = cat ? cats[cat] ?? [] : null;
+      scene?.highlight(ids);
+      for (const c of cells) c.toggleAttribute("data-dim", !!ids && !ids.includes(c.dataset.tech!));
+      if (cat) section.dataset.cat = cat;
+      else delete section.dataset.cat;
+    };
+    const pick = (cat: string | null) => {
+      picked = cat;
+      for (const b of catBtns) b.setAttribute("aria-pressed", String(b.dataset.catBtn === cat));
+      show(cat);
+    };
+    const fine = matchMedia("(hover: hover) and (pointer: fine)");
+    const onOver = (e: PointerEvent) => {
+      if (!fine.matches || e.pointerType !== "mouse") return;
+      const b = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-cat-btn]");
+      if (b && !b.disabled) show(b.dataset.catBtn!);
+    };
+    const onOut = (e: PointerEvent) => {
+      if (!fine.matches || e.pointerType !== "mouse") return;
+      const b = (e.target as HTMLElement).closest("[data-cat-btn]");
+      if (b && !b.contains(e.relatedTarget as Node)) show(picked);
+    };
+
+    let bumpT = 0;
     const onClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
+      const cb = target.closest<HTMLButtonElement>("[data-cat-btn]");
+      if (cb) return pick(picked === cb.dataset.catBtn ? null : cb.dataset.catBtn!);
       const b = target.closest<HTMLElement>("[data-tech]");
-      if (b?.dataset.tech) return open(b.dataset.tech);
+      if (b?.dataset.tech) {
+        const id = b.dataset.tech;
+        /* do índice: a moeda pula na mesa e o popup abre logo depois */
+        if (b.closest(".stack-index") && scene?.bump(id)) {
+          clearTimeout(bumpT);
+          returnFocus = b;
+          bumpT = window.setTimeout(() => open(id), 380);
+          return;
+        }
+        return open(id);
+      }
       if (target.closest(".stack-close")) return close();
     };
+    section.addEventListener("pointerover", onOver);
+    section.addEventListener("pointerout", onOut);
     /* clique fora do painel fecha (o canvas avisa pela cena) */
     const onDown = (e: PointerEvent) => {
       if (openId && !dialog.contains(e.target as Node) && !(e.target as HTMLElement).closest(".stack-canvas")) close();
@@ -120,6 +168,9 @@ export function StackStage({ tokens }: { tokens: { id: string; name: string }[] 
     }
 
     const cleanup = () => {
+      clearTimeout(bumpT);
+      section.removeEventListener("pointerover", onOver);
+      section.removeEventListener("pointerout", onOut);
       document.removeEventListener("keydown", onKey);
       section.removeEventListener("click", onClick);
       document.removeEventListener("pointerdown", onDown);
@@ -143,7 +194,7 @@ export function StackStage({ tokens }: { tokens: { id: string; name: string }[] 
 
     /* ---------- 3D ---------- */
     const mobile = matchMedia("(max-width: 639px)").matches;
-    const list = mobile ? tokens.slice(0, 10) : tokens;
+    const list = mobile ? tokens.filter((t) => mobileIds.includes(t.id)) : tokens;
     let loading = false;
     let wantDrop = false;
     let near = false;
@@ -200,6 +251,7 @@ export function StackStage({ tokens }: { tokens: { id: string; name: string }[] 
       if (location.search.includes("stackdebug")) (window as unknown as { __stack?: Scene }).__stack = made;
       if (saved?.length) scene.restore(saved);
       else if (wantDrop) scene.drop();
+      if (section.dataset.cat) scene.highlight(cats[section.dataset.cat] ?? null);
       /* o canvas só aparece depois do primeiro frame (sem piscar vazio) */
       requestAnimationFrame(() => requestAnimationFrame(() => {
         if (scene === made) section.dataset.live = "";
@@ -256,7 +308,7 @@ export function StackStage({ tokens }: { tokens: { id: string; name: string }[] 
       unmount();
       cleanup();
     };
-  }, [tokens]);
+  }, [tokens, mobileIds, cats]);
 
   return (
     <div ref={ref} className="stack-stage">
