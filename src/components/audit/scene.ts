@@ -15,18 +15,17 @@
  * Qualidade "simple" (celular, máquinas fracas): sem render target nem lente;
  * o mesmo disco/anel/horizonte desenhados analiticamente por cima da cena.
  *
- * Preparação (lib/gl-slot): a cena nasce PARADA a ~1,5 viewport da seção;
- * warm() compila os shaders em paralelo (compileAsync) e faz um render de
+ * Preparação (lib/gl-slot): a cena nasce PARADA, cedo (quando o usuário
+ * chega ao WORK, bem antes da STACK); warm() compila os shaders em paralelo
+ * (compileAsync + KHR_parallel_shader_compile) e faz um render de
  * aquecimento, em pedaços (requestIdleCallback). As posições das partículas
- * chegam prontas (layout.worker, uma vez só).
+ * chegam prontas (layout.worker, buffers transferidos, uma vez só).
  *
- * Qualidade: decidida ANTES de a seção aparecer. bench() renderiza ~36
- * quadros (menos, se a GPU for claramente lenta: para em 4 quadros com
- * média > 30 ms ou em ~700 ms) no nível alto, fora da tela (a ~1 viewport, com os outros loops
- * parados) e mede o tempo médio por quadro com a GPU sincronizada:
- * ≤ 12 ms → alto (lente 1,0), ≤ 20 ms → médio (0,75), acima → baixo (0,5,
- * 65% das partículas; > 60 ms → simple). O 1º quadro visível já sai no nível escolhido, que
- * vale para a sessão inteira. Depois de visível só desce: fps < 40 por mais
+ * Qualidade: sem benchmark (nenhum quadro extra no meio da rolagem).
+ * choose() lê o tempo por quadro que a STACK mediu enquanto rodava, com
+ * núcleos, memória e o nome da GPU como desempate (lib/gpu-perf), antes de
+ * a seção aparecer: lente 1,0 / 0,75 / 0,5 (65% das partículas) ou simple.
+ * Vale para a sessão inteira. Depois de visível só desce: fps < 40 por mais
  * de 2 s → um degrau abaixo (até "simple"), com crossfade de 300 ms.
  * "simple" (sem lente) é fixo no celular/toque.
  * Durante a revelação em círculo (transition) a simulação congela no último
@@ -58,6 +57,8 @@ import {
   WebGLRenderer,
   WebGLRenderTarget,
 } from "three";
+
+import { pickLevel } from "@/lib/gpu-perf";
 
 import { CAMERA_Z, DISK_RS, DISK_VISIBLE_RS, DUST_TILT, FOV, HALF_H, holeCenter, makeLayout, orbitPos, type Layout } from "./layout";
 
@@ -333,9 +334,8 @@ const POST_VS = /* glsl */ `void main() { gl_Position = vec4(position.xy, 0.0, 1
 
 type Quality = "lens-1" | "lens-0.75" | "lens-0.5" | "simple";
 const LADDER: Quality[] = ["lens-1", "lens-0.75", "lens-0.5", "simple"];
-const BENCH_FRAMES = 36;
-/* resultado do benchmark: vale para a sessão (a cena pode ser liberada e recriada) */
-let benched: { level: number; ms: number } | null = null;
+/* nível escolhido: vale para a sessão (a cena pode ser liberada e recriada) */
+let chosen: { level: number; why: string } | null = null;
 
 export type Constellation = {
   run(on: boolean): void;
@@ -348,10 +348,8 @@ export type Constellation = {
   hover(i: number): void;
   /** compila os shaders e faz um render de aquecimento, em pedaços ociosos */
   warm(): Promise<void>;
-  /** o nível ainda não foi medido nesta sessão */
-  needsBench(): boolean;
-  /** mede o tempo por quadro fora da tela e escolhe o nível (loop parado) */
-  bench(): Promise<{ quality: string; ms: number }>;
+  /** escolhe o nível (uma vez por sessão; sem renderizar nada a mais) */
+  choose(): { quality: string; why: string };
   /** revelação em andamento: congela a simulação por `ms` (último quadro na tela) */
   transition(ms: number): void;
   /** onda de scan saindo do horizonte; acende os nós na ordem em que o anel os alcança */
@@ -372,6 +370,8 @@ export function createConstellation(
 
   const renderer = new WebGLRenderer({ canvas, alpha: true, antialias: false, powerPreference: "high-performance" });
   renderer.setPixelRatio(dpr);
+  /* produção: sem ler o log de cada shader (consultas síncronas à GPU) */
+  if (process.env.NODE_ENV === "production") renderer.debug.checkShaderErrors = false;
   renderer.setClearColor(0x000000, 0);
   /* sem conversão de cor nos materiais prontos (linhas): o mesmo brilho com e sem o pass de lente */
   renderer.outputColorSpace = LinearSRGBColorSpace;
@@ -554,7 +554,7 @@ export function createConstellation(
   const buf = new Vector2();
 
   /* ---------- qualidade ---------- */
-  let level = opts.simple ? 3 : (benched?.level ?? 0);
+  let level = opts.simple ? 3 : (chosen?.level ?? 0);
   let quality: Quality = LADDER[level];
   /* queda automática: janelas de 0,5 s; slow = desde quando o fps está < 40 */
   const watch = { t0: -1, frames: 0, slow: -1 };
@@ -733,7 +733,7 @@ export function createConstellation(
               updateLines();
               draw();
             });
-            if (benched) benched.level = level;
+            if (chosen) chosen.level = level;
             watch.slow = -1;
             watch.t0 = sec + 0.4; // depois da troca, nova janela
             watch.frames = 0;
@@ -890,55 +890,14 @@ export function createConstellation(
       updateLines();
       draw();
     },
-    needsBench: () => !opts.simple && !benched,
-    async bench() {
-      /* no nível alto, no tamanho real; cada quadro termina com readPixels de
-       * 1 px (espera a GPU: mede o custo de verdade, não só o envio) */
-      level = 0;
-      applyQuality();
-      resize();
-      updateLines();
-      const gl = renderer.getContext();
-      const px = new Uint8Array(4);
-      let warmup = 2;
-      let total = 0;
-      let count = 0;
-      await new Promise<void>((done) => {
-        const step = () => {
-          if (destroyed) return done();
-          /* vários quadros por frame da página, até ~8 ms: nada de tarefa longa */
-          const t0 = performance.now();
-          while (count < BENCH_FRAMES && performance.now() - t0 < 8) {
-            const s0 = performance.now();
-            time += 1 / 60;
-            dustMat.uniforms.uTime.value = time;
-            bhUniforms.uTime.value = time;
-            draw();
-            gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
-            const d = performance.now() - s0;
-            if (warmup > 0) warmup--;
-            else {
-              total += d;
-              count++;
-            }
-          }
-          /* GPU lenta: o resultado já é "baixo" — não insiste (cada quadro
-           * dela é uma tarefa longa); teto de ~700 ms no total */
-          const avg = count ? total / count : 0;
-          if (count >= BENCH_FRAMES || (count >= 4 && avg > 30) || total > 700) done();
-          else requestAnimationFrame(step);
-        };
-        requestAnimationFrame(step);
-      });
-      const ms = count ? total / count : 99;
-      /* > 60 ms: nem a lente 0,5 roda (GPU de software, p.ex.) → simple direto */
-      level = ms <= 12 ? 0 : ms <= 20 ? 1 : ms <= 60 ? 2 : 3;
-      benched = { level, ms };
-      applyQuality();
-      resize();
-      draw(); // o canvas já guarda um quadro no nível escolhido
-      canvas.dataset.benchMs = ms.toFixed(1);
-      return { quality, ms };
+    choose() {
+      if (!chosen) chosen = pickLevel(renderer.getContext(), opts.simple);
+      if (chosen.level !== level) {
+        level = chosen.level;
+        applyQuality();
+      }
+      canvas.dataset.qualityWhy = chosen.why;
+      return { quality, why: chosen.why };
     },
     transition(ms) {
       freezeUntil = performance.now() + ms;
