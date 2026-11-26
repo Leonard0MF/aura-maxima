@@ -53,7 +53,7 @@ import {
   WebGLRenderTarget,
 } from "three";
 
-import { CAMERA_Z, DISK_RS, DUST_TILT, FOV, HALF_H, holeCenter, makeLayout, orbitPos, type Layout } from "./layout";
+import { CAMERA_Z, DISK_RS, DISK_VISIBLE_RS, DUST_TILT, FOV, HALF_H, holeCenter, makeLayout, orbitPos, type Layout } from "./layout";
 
 const MAX_NODES = 12;
 /* raio da sombra em rs (≈ 2,6 rs: 3√3/2) */
@@ -619,14 +619,14 @@ export function createConstellation(
    */
   const MARGIN = 24;
   function placeCloud(w: number, h: number, hc: { x: number; y: number; rs: number }, wpp: number) {
-    const top = Math.max(hc.y + DISK_RS * hc.rs * 1.25, MARGIN);
+    const top = Math.max(hc.y + DISK_VISIBLE_RS * hc.rs * 1.1, MARGIN);
     const bottom = h - MARGIN;
     const asp = w / h;
     const cx = w / 2, cy = (top + bottom) / 2;
     cloud.c.set(((cx / w) * 2 - 1) * HALF_H * asp, (1 - (cy / h) * 2) * HALF_H, 0);
     /* a frente se aproxima da câmera e cresce: raios com folga para caber */
-    const rx = 0.5 * (w - 2 * MARGIN) * wpp * 0.74;
-    cloud.r.set(rx, 0.5 * Math.max(40, bottom - top) * wpp * 0.72, rx * 1.2);
+    const rx = 0.5 * (w - 2 * MARGIN) * wpp * 0.86;
+    cloud.r.set(rx, 0.5 * Math.max(40, bottom - top) * wpp * 0.86, rx * 1.2);
     const raw: number[][] = [];
     for (let i = 0; i < n; i++) raw.push(orbitPos(L.orbits[i], 0, [0, 0, 0]));
     const mean = [0, 1, 2].map((k) => raw.reduce((a, p) => a + p[k], 0) / n);
