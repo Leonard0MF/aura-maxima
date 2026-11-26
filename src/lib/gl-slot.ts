@@ -12,6 +12,9 @@
  * Nunca desmonta e monta no mesmo frame: no máximo uma preparação ou
  * liberação por frame, e liberações têm a vez antes.
  *
+ * exclusive(fn): para todos os loops enquanto fn roda (o benchmark do AUDIT
+ * mede o tempo por quadro sem a STACK disputando a GPU) e devolve a vez.
+ *
  * O hero participa só do "existir" (o canvas dele já pausa sozinho fora da
  * tela, e a WORK fica entre ele e a STACK: nunca divide a tela com elas).
  */
@@ -35,6 +38,7 @@ const slots = new Map<Owner, Slot>();
 let raf = 0;
 let listening = false;
 let renderer: Slot | null = null;
+let held = 0; // exclusive() em andamento: ninguém renderiza
 
 /* distância (px) do retângulo até a viewport; 0 = visível */
 function gap(el: Element, vh: number) {
@@ -58,7 +62,7 @@ function arbitrate() {
   let best: Slot | null = null;
   let bk = [-Infinity, Infinity];
   for (const s of slots.values()) {
-    if (s.state !== "ready" || gap(s.o.el, vh) > 0) continue;
+    if (held || s.state !== "ready" || gap(s.o.el, vh) > 0) continue;
     const k = [s.o.priority?.() ?? 0, centerDist(s.o.el, vh)];
     if (k[0] > bk[0] || (k[0] === bk[0] && k[1] < bk[1])) {
       best = s;
@@ -118,6 +122,23 @@ function done(s: Slot, state: Slot["state"]) {
 /** reavalia no próximo frame (scroll, resize, mudança de prioridade) */
 export function schedule() {
   if (!raf) raf = requestAnimationFrame(arbitrate);
+}
+
+/** para todos os loops de render enquanto `fn` roda (ex.: benchmark) */
+export async function exclusive<T>(fn: () => Promise<T>): Promise<T> {
+  held++;
+  for (const s of slots.values())
+    if (s.running) {
+      s.running = false;
+      s.o.run(false);
+    }
+  renderer = null;
+  try {
+    return await fn();
+  } finally {
+    held--;
+    schedule();
+  }
 }
 
 export function claimGL(owner: Owner) {

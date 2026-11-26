@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { AuditNode, CheckStatus } from "@/content/audit";
-import { claimGL, schedule as nudgeGL } from "@/lib/gl-slot";
+import { claimGL, exclusive, schedule as nudgeGL } from "@/lib/gl-slot";
 
 import type { Layout } from "./layout";
 import type { Constellation } from "./scene";
@@ -103,17 +103,61 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
     }
 
     const mobile = matchMedia("(max-width: 639px)").matches;
-    /* sem o pass de lente: celular/toque e máquinas com poucos núcleos (o resto
-     * a cena decide sozinha medindo o fps) */
-    const simple = mobile || matchMedia("(pointer: coarse)").matches || (navigator.hardwareConcurrency || 8) <= 4;
+    /* sem o pass de lente: celular/toque (no resto, o benchmark escondido decide) */
+    const simple = mobile || matchMedia("(pointer: coarse)").matches;
     let scene: Constellation | null = null;
     let canvas: HTMLCanvasElement | null = null;
     let want = false; // o contexto deve existir (lib/gl-slot)
     let active = false; // esta seção é a que renderiza
     let pending: Promise<void> | null = null;
     let follow = 0;
+    let ready = false; // nível de qualidade escolhido: pode renderizar
+    let benchGo: (() => void) | null = null;
+    let benchStop: (() => void) | null = null;
 
-    const sync = () => scene?.run(active && !document.hidden);
+    const sync = () => scene?.run(ready && active && !document.hidden);
+    /* benchmark escondido: quando o campo chega a ~1 viewport (ou na hora, se
+     * a seção já precisa renderizar), com os outros loops parados e o canvas
+     * invisível; o 1º quadro visível já sai no nível escolhido */
+    const benchWhenNear = (s: Constellation, c: HTMLCanvasElement) => {
+      let started = false;
+      const check = () => {
+        const r = field.getBoundingClientRect();
+        const gap = r.top > innerHeight ? r.top - innerHeight : r.bottom < 0 ? -r.bottom : 0;
+        if (gap <= innerHeight || active) go();
+      };
+      const stop = () => {
+        removeEventListener("scroll", check);
+        benchGo = benchStop = null;
+      };
+      const go = () => {
+        if (started) return;
+        started = true;
+        stop();
+        c.style.visibility = "hidden";
+        void exclusive(() => s.bench())
+          .then((r) => {
+            if (process.env.NODE_ENV !== "production") console.info(`[audit] qualidade ${r.quality} · ${r.ms.toFixed(1)} ms/quadro`);
+          })
+          .catch(() => {})
+          .finally(() => {
+            /* entra com fade (se a seção já estava na tela, não "estala") */
+            c.style.opacity = "0";
+            c.style.visibility = "";
+            requestAnimationFrame(() => {
+              c.style.transition = "opacity 300ms ease-out";
+              c.style.opacity = "";
+            });
+            if (scene !== s) return;
+            ready = true;
+            sync();
+          });
+      };
+      benchGo = go;
+      benchStop = stop;
+      addEventListener("scroll", check, { passive: true });
+      check();
+    };
     /* preparação em pedaços: código e layout em paralelo (o layout num
      * Worker), contexto num idle, shaders e aquecimento em outros (warm).
      * Termina com o loop PARADO; quem liga é o gl-slot. */
@@ -154,9 +198,15 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
       /* testes automatizados (?auditdebug) */
       if (location.search.includes("auditdebug")) (window as unknown as { __audit?: Constellation }).__audit = scene;
       section.dataset.live = "";
-      sync();
+      if (made.needsBench()) benchWhenNear(made, c);
+      else {
+        ready = true;
+        sync();
+      }
     };
     const unmount = () => {
+      benchStop?.();
+      ready = false;
       cancelAnimationFrame(follow);
       scene?.destroy();
       scene = null;
@@ -184,13 +234,14 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
       },
       run(on) {
         active = on;
+        if (on) benchGo?.();
         sync();
       },
       priority: () => ("in" in section.dataset ? 1 : 0),
     });
 
-    /* revelação em círculo (AuditReveal marca data-in): resolução 0,5
-     * enquanto o círculo abre, e o render passa para esta seção */
+    /* revelação em círculo (AuditReveal marca data-in): a simulação congela
+     * enquanto o círculo abre (mesma resolução), e o render passa para esta seção */
     let wasIn = "in" in section.dataset;
     const mo = new MutationObserver(() => {
       const isIn = "in" in section.dataset;

@@ -23,7 +23,7 @@ export function HeroLayer({ variant, portrait, bg, alt }: { variant: "surface" |
     <div className={`hero-layer hero-layer--${variant}`} aria-hidden={under || undefined}>
       {/* Enigma (fundo, atrás do retrato): na superfície, o ASCII fino estático
           (fallback); na lente, a foto real em P&B. Caixa: .hero-enigma-box,
-          a mesma conta de enigmaRect() no shader. Decorativa (alt vazio). */}
+          fonte única: o shader mede esta caixa no DOM. Decorativa (alt vazio). */}
       {bg && (
         <div className={under ? "hero-enigma-box hero-photo" : "hero-enigma-box ascii-fallback ascii-fallback--bg"} style={{ "--ea": bg.aspect } as CSSProperties}>
           {under ? (

@@ -49,28 +49,12 @@ export const portraitBoxStyle = (aspect: number) =>
     translate: "-50% -50%",
   }) as const;
 /*
- * Enigma (fundo do hero): à esquerda e atrás do retrato, na faixa entre
- * FULL-STACK e DEVELOPER (centro vertical do hero), sem encostar nas bordas
- * (margem de 2% da largura). No celular, menor e no alto à esquerda (ao lado
- * da cabeça). Mesma regra no shader (enigmaRect, px) e no CSS
- * (.hero-enigma-box, com as mesmas constantes em cqw/cqh):
- *   altura = min(h·H, wMax·W / proporção)
- *   centro = (max(cx·W, 2%·W + largura/2), cy·H)
- * alpha: opacidade dos glifos (sempre abaixo do retrato, que é 100%).
+ * Enigma (fundo do hero): a caixa vem do CSS (.hero-enigma-box, atrás do
+ * retrato e no mesmo eixo, base logo acima de DEVELOPER); o shader mede
+ * essa caixa no DOM. Aqui só a opacidade dos glifos (~40%, sempre abaixo
+ * do retrato, que é 100%).
  */
-export const ENIGMA = {
-  wide: { h: 0.46, wMax: 0.38, cx: 0.19, cy: 0.5, alpha: 0.52 },
-  narrow: { h: 0.2, wMax: 0.55, cx: 0.3, cy: 0.4, alpha: 0.35 },
-} as const;
-export const NARROW = 640;
-const EDGE = 0.02;
-export function enigmaRect(W: number, H: number, aspect: number) {
-  const p = W < NARROW ? ENIGMA.narrow : ENIGMA.wide;
-  const h = Math.min(p.h * H, (p.wMax * W) / aspect);
-  const w = h * aspect;
-  const cx = Math.max(p.cx * W, EDGE * W + w / 2);
-  return { x: cx - w / 2, y: p.cy * H - h / 2, w, h, alpha: p.alpha };
-}
+export const ENIGMA_ALPHA = 0.4;
 /*
  * Tom da Enigma: a máquina é quase toda preta, e a curva do retrato a
  * transformaria num bloco denso. Aqui entra contraste LOCAL (luminância
@@ -82,7 +66,7 @@ export function enigmaRect(W: number, H: number, aspect: number) {
 /* grade da Enigma: células com 60% do tamanho das do retrato (mais detalhe
  * na máquina; o retrato, com glifos maiores e cor cheia, segue dominante) */
 export const BG_SUB = 0.6;
-export const TONE_BG = { sharpen: 1.0, curve: 0.6, gamma: 1.8, local: 0.55, gain: 3.2, cap: 0.9, white: 0.75 } as const;
+export const TONE_BG = { sharpen: 1.2, curve: 0.6, gamma: 1.0, local: 0.75, gain: 4.5, cap: 0.62, white: 0.9 } as const;
 export function bgGlyph(d: number) {
   if (d < MIN_DENSITY) return 0;
   return RAMP_IDX[1 + Math.min(8, Math.floor(((d - MIN_DENSITY) / (1 - MIN_DENSITY)) * 9))];

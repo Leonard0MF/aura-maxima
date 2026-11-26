@@ -216,6 +216,12 @@ html[data-intro="run"] .hero [data-intro-item] {
 html[data-intro="1"]:not([data-fx="static"]) .hero [data-intro-item] {
   animation: intro-safety-show 0s linear 2.5s forwards;
 }
+/* ?intro=1 (forçada): o canvas pode chegar depois de 2,5 s (dev, máquina
+ * lenta); a capa espera mais, mas nunca prende o texto se algo falhar */
+html[data-intro="1"][data-intro-force]:not([data-fx="static"]) .hero-intro-cover,
+html[data-intro="1"][data-intro-force]:not([data-fx="static"]) .hero [data-intro-item] {
+  animation-delay: 8s;
+}
 html[data-intro-meta] .hero [data-intro-item] {
   opacity: 1;
   translate: 0 0;
@@ -311,32 +317,45 @@ html[data-intro-skip] .lens-ring[data-wake] {
   -webkit-mask-repeat: no-repeat;
 }
 /* ---------- Enigma (fundo do hero) ----------
- * Caixa = enigmaRect() em core.ts (mesmas constantes, em unidades do .hero):
- * altura min(46cqh, 38cqw / proporção); centro em (max(19cqw, 2cqw +
- * largura/2), 50cqh): à esquerda do retrato, entre FULL-STACK e DEVELOPER.
- * Abaixo de 640px: min(20cqh, 55cqw / proporção), centro em (30cqw, 40cqh). */
+ * FONTE ÚNICA da caixa: este CSS (o shader mede a caixa no DOM). A máquina
+ * fica atrás do retrato, no mesmo eixo vertical, como se eu estivesse na
+ * frente dela: largura = 1,3× os ombros (ombros ≈ 60% da largura do
+ * retrato → 0,78 × largura do retrato) e a base logo acima do topo das
+ * letras de DEVELOPER. Para isso a caixa usa o MESMO font-size das linhas
+ * (.hl): o `em` daqui é o `em` delas. */
 .hero-enigma-box {
-  --eh: min(46cqh, 38cqw / var(--ea));
+  --pw: calc(min(var(--ph, 0.7) * 100cqh, 95cqw / var(--pa, 0.67)) * var(--pa, 0.67));
   position: absolute;
- left: max(19cqw, calc(2cqw + var(--eh) * var(--ea) / 2));
-  top: 50cqh;
-  height: var(--eh);
+  left: 50cqw;
+  width: calc(var(--pw) * 0.78);
   aspect-ratio: var(--ea);
-  translate: -50% -50%;
+  translate: -50% 0;
+  font-size: min(calc((100cqw - 2rem) / 6.95), 24cqh);
+  /* base de DEVELOPER + caixa da linha (0,8em) − topo das maiúsculas (0,03em) + folga */
+  bottom: calc(max(4.75rem, calc(50cqh - 42cqw - 0.7em)) + 0.77em + 0.5rem);
 }
-@container (width < 640px) {
+@media (min-width: 640px) {
   .hero-enigma-box {
-    --eh: min(20cqh, 55cqw / var(--ea));
-    left: max(30cqw, calc(2cqw + var(--eh) * var(--ea) / 2));
-    top: 40cqh;
-  }
-  .ascii-fallback--bg img {
-    opacity: 0.35;
+    font-size: min(calc((100cqw - 3rem) / 6.95), 24cqh);
   }
 }
-/* fallback estático: mesma opacidade do canvas (abaixo do retrato) */
+@media (max-height: 520px) and (orientation: landscape) {
+  .hero-enigma-box {
+    bottom: calc(3rem + 0.77em + 0.5rem);
+  }
+}
+/* celular em pé: DEVELOPER logo abaixo do retrato (mesma conta de .hl-bot) */
+@container (max-width: 639px) and (max-aspect-ratio: 5 / 6) {
+  .hero-layer .hero-enigma-box {
+    font-size: clamp(2rem, calc((100vw - 2rem) / 7.05), 5.5rem);
+    bottom: auto;
+    top: calc(50cqh + min(21cqh, 47.5cqw / var(--pa, 0.67)) + 0.1em - 0.35rem);
+    translate: -50% -100%;
+  }
+}
+/* fallback estático: mesma opacidade do canvas (~40%, abaixo do retrato) */
 .ascii-fallback--bg img {
-  opacity: 0.52;
+  opacity: 0.4;
 }
 /* legenda: canto inferior direito, só com a lente sobre a Enigma */
 .hero-enigma-cap {

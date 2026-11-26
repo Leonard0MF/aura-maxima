@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { BgImage } from "@/components/ascii/AsciiCanvas";
 import type { Levels } from "@/lib/ascii/core";
 import { claimGL } from "@/lib/gl-slot";
+import { introSkipped } from "@/lib/intro";
 
 /* WebGL + interação num chunk próprio, carregado só depois do primeiro paint. */
 const AsciiCanvas = dynamic(() => import("@/components/ascii/AsciiCanvas"), { ssr: false });
@@ -27,7 +28,11 @@ export function AsciiStage({ src, aspect, levels, bg }: { src: string; aspect: n
 
   useEffect(() => {
     const el = anchor.current?.closest("section");
-    if (!el || document.documentElement.dataset.fx === "static") return;
+    if (!el) return;
+    if (document.documentElement.dataset.fx === "static") {
+      introSkipped(document.documentElement.dataset.introWhy || "static"); // sem canvas, sem intro
+      return;
+    }
     let idle = false; // o primeiro paint já passou
     let owner = false; // o hero é o dono do WebGL
     const go = () => setReady(idle && owner && document.documentElement.dataset.fx !== "static");
