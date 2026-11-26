@@ -1,4 +1,4 @@
-import { GLYPHS, LEVELS, MIN_DENSITY, RAMP_IDX, RATIO, THIN_IDX, TOK2_IDX, TOK3_IDX } from "@/lib/ascii/core";
+import { BG_SUB, GLYPHS, LEVELS, MIN_DENSITY, RAMP_IDX, RATIO, TONE_BG, TOK2_IDX, TOK3_IDX } from "@/lib/ascii/core";
 
 /* Triângulo de tela cheia sem buffers. */
 export const VERT = `#version 300 es
@@ -44,7 +44,6 @@ const float NG = ${f(GLYPHS.length)};
 ${arr("RAMP", RAMP_IDX)}
 ${arr("TOK2", TOK2_IDX)}
 ${arr("TOK3", TOK3_IDX)}
-${arr("THIN", THIN_IDX)}
 
 const vec3 INK = vec3(0.078);
 const vec3 AMBER = vec3(0.80, 0.50, 0.06);
@@ -57,18 +56,41 @@ uint hash3(uint x, uint y, uint z) {
 }
 `;
 
-/* Mesma lógica de toneDensity / pickGlyph em src/lib/ascii/core.ts. */
-const GRID = `
-vec2 cellUV(ivec2 c) {
-  vec2 p = (vec2(c) + 0.5) * vec2(uCell, uCell * RATIO);
-  return (p - uRect.xy) / uRect.zw;
-}
+const COMMON = `
 /* uImg tem alpha PRÉ-multiplicado (subido assim de propósito: o mipmap faz
  * a média certa na borda da silhueta). "Sobre branco" = rgb + (1 - a):
  * transparente vira claro (vazio), nunca preto (glifo denso). */
 float lumOf(sampler2D img, vec2 uv, float lod) {
   vec4 t = textureLod(img, uv, lod);
   return dot(t.rgb + (1.0 - t.a), vec3(0.2126, 0.7152, 0.0722));
+}
+/* Enigma: bgDensity / bgGlyph de core.ts (contraste local, rampa completa),
+ * numa grade própria mais fina (BG_SUB × a célula do retrato), calculada
+ * por pixel no passe de frame. */
+float densBg(vec2 uv, float lod) {
+  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return 0.0;
+  if (textureLod(uImg2, uv, lod).a < 0.5) return 0.0;
+  float l = lumOf(uImg2, uv, lod);
+  float big = 0.5 * (lumOf(uImg2, uv, lod + 2.6) + l);
+  float x = l + ${f(TONE_BG.sharpen)} * (l - lumOf(uImg2, uv, lod + 1.6));
+  x = clamp((x - uLevels2.x) / (uLevels2.y - uLevels2.x), 0.0, 1.0);
+  x = mix(x, smoothstep(0.0, 1.0, x), ${f(TONE_BG.curve)});
+  x = pow(x, ${f(TONE_BG.gamma)});
+  x = mix(x, clamp(0.5 + ${f(TONE_BG.gain)} * (l - big), 0.0, 1.0), ${f(TONE_BG.local)});
+  float edge = smoothstep(0.0, 0.04, uv.x) * smoothstep(0.0, 0.04, 1.0 - uv.x) * smoothstep(0.0, 0.04, 1.0 - uv.y) * smoothstep(0.0, 0.02, uv.y);
+  return min(${f(TONE_BG.cap)}, 1.0 - x) * edge;
+}
+int pickBg(float d) {
+  if (d < MIN_D) return 0;
+  return RAMP[1 + min(8, int(floor((d - MIN_D) / (1.0 - MIN_D) * 9.0)))];
+}
+`;
+
+/* Mesma lógica de toneDensity / pickGlyph em src/lib/ascii/core.ts. */
+const GRID = `
+vec2 cellUV(ivec2 c) {
+  vec2 p = (vec2(c) + 0.5) * vec2(uCell, uCell * RATIO);
+  return (p - uRect.xy) / uRect.zw;
 }
 float alphaAt(vec2 uv) { return textureLod(uImg, uv, uImgLod).a; }
 /* toneDensity de core.ts para qualquer uma das duas imagens */
@@ -84,15 +106,6 @@ float densOf(sampler2D img, vec2 uv, float lod, vec2 lv) {
   return (1.0 - x) * edge;
 }
 float dens(ivec2 c) { return densOf(uImg, cellUV(c), uImgLod, uLevels); }
-vec2 cellUV2(ivec2 c) {
-  vec2 p = (vec2(c) + 0.5) * vec2(uCell, uCell * RATIO);
-  return (p - uRect2.xy) / uRect2.zw;
-}
-/* glifo fino da Enigma (thinGlyph de core.ts) */
-int pickThin(float d) {
-  if (d < MIN_D) return 0;
-  return THIN[1 + min(${THIN_IDX.length - 2}, int(floor((d - MIN_D) / (1.0 - MIN_D) * ${f(THIN_IDX.length - 1)})))];
-}
 int pick(ivec2 c, float d) {
   if (d < MIN_D) return 0;
   uint rs = hash3(uint(c.y), 0u, 7u);
@@ -125,7 +138,7 @@ float vnoise(vec2 p) {
  * Saída: r = glifo, g = máscara (0 = fora da silhueta, 0.5 = dentro, 1 = dentro
  * e em âmbar), b = célula opaca (cobre a tipografia), a = densidade.
  */
-export const GRID_FRAG = `${HEAD}${GRID}
+export const GRID_FRAG = `${HEAD}${COMMON}${GRID}
 void main() {
   ivec2 c = ivec2(gl_FragCoord.xy);
   vec2 uv = cellUV(c);
@@ -157,19 +170,7 @@ void main() {
       solid = 0.0;
     }
   }
-  if (!inMask) {
-    /* fora do retrato: a Enigma (g = 0.2 marca "célula da Enigma"; sem
-     * tremulação nem montagem, e o cursor não mexe nela) */
-    if (uHas2 > 0.5) {
-      float d2 = densOf(uImg2, cellUV2(c), uImg2Lod, uLevels2);
-      int g2 = pickThin(d2);
-      if (g2 != 0) {
-        o = vec4(float(g2) / 255.0, 0.2, 0.0, d2);
-        return;
-      }
-    }
-    g = 0;
-  }
+  if (!inMask) g = 0;
   o = vec4(float(g) / 255.0, inMask ? (amber > 0.5 ? 1.0 : 0.5) : 0.0, inMask ? solid : 0.0, d);
 }`;
 
@@ -180,7 +181,7 @@ void main() {
  * está fora da máscara não desenha nada, e o deslocamento nunca traz um
  * glifo de fora para dentro nem de dentro para fora.
  */
-export const FRAG = `${HEAD}
+export const FRAG = `${HEAD}${COMMON}
 void main() {
   vec2 p = gl_FragCoord.xy;
   vec2 cell = vec2(uCell, uCell * RATIO);
@@ -198,18 +199,26 @@ void main() {
   ivec2 c0 = ivec2(floor(p / cell));
   if (c0.x < 0 || c0.y < 0 || c0.x >= gs.x || c0.y >= gs.y) return;
   vec4 c0v = texelFetch(uGrid, c0, 0);
-  /* Enigma: glifo fino em tinta, opacidade baixa, parado (sem cursor) */
-  if (c0v.g > 0.1 && c0v.g < 0.25) {
-    int ge = int(c0v.r * 255.0 + 0.5);
-    vec2 fe = fract(p / cell);
+  /* fora do retrato: a Enigma, numa grade mais fina, em tinta, com opacidade
+   * abaixo do retrato e parada (sem cursor nem tremulação). O retrato,
+   * quando existe na célula, fica sempre por cima. */
+  if (c0v.g < 0.25) {
+    if (uHas2 < 0.5 || uAlpha2 <= 0.0) return;
+    vec2 cellE = cell * ${f(BG_SUB)};
+    vec2 pe = p / cellE;
+    vec2 ce = floor(pe);
+    vec2 uv2 = ((ce + 0.5) * cellE - uRect2.xy) / uRect2.zw;
+    if (uv2.x < 0.0 || uv2.x > 1.0 || uv2.y < 0.0 || uv2.y > 1.0) return;
+    float de = densBg(uv2, uImg2Lod + ${f(Math.log2(BG_SUB))});
+    int ge = pickBg(de);
+    if (ge == 0) return;
+    vec2 fe = fract(pe);
     vec2 euv = vec2((float(ge) + fe.x) / NG, 1.0 - fe.y);
-    vec2 pe = p / cell;
     vec2 ke = vec2(1.0 / NG, -1.0);
-    float ae = textureGrad(uAtlas, euv, dFdx(pe) * ke, dFdy(pe) * ke).a * uAlpha2 * mix(0.6, 1.0, smoothstep(MIN_D, 0.85, c0v.a));
+    float ae = textureGrad(uAtlas, euv, dFdx(pe) * ke, dFdy(pe) * ke).a * uAlpha2 * mix(0.55, 1.0, smoothstep(MIN_D, 0.8, de));
     o = vec4(INK * ae, ae);
     return;
   }
-  if (c0v.g < 0.25) return; // fora da silhueta: nada
 
   ivec2 c = ivec2(floor(gp));
   vec2 fr = fract(gp);

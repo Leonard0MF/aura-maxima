@@ -3,7 +3,7 @@ import path from "node:path";
 import { enigma } from "@/content/enigma";
 import { portrait } from "@/content/portrait";
 
-import { PRE_COLS, RATIO, autoLevels, renderText, toneDensity, type Levels } from "./core";
+import { PRE_COLS, RATIO, TONE_BG, autoLevels, bgDensity, renderText, toneDensity, type Levels } from "./core";
 
 /*
  * Roda só no build (a home é SSG). Converte uma imagem de public/ em: URL
@@ -33,7 +33,7 @@ export function getPortrait(cols = PRE_COLS) {
 /* Enigma do fundo do hero: mesmo pipeline, glifos finos (.:-=+) no SVG */
 let enigmaP: Promise<AsciiImageData> | null = null;
 export function getEnigma() {
-  return (enigmaP ??= buildImage(enigma.file, enigma.photo.src, 90, true, 828));
+  return (enigmaP ??= buildImage(enigma.file, enigma.photo.src, 110, true, 828));
 }
 
 function build(cols: number) {
@@ -57,7 +57,7 @@ async function buildImage(rel: string, photoSrc: string, cols: number, thin: boo
   const hasAlpha = (await sharp(file).metadata()).hasAlpha === true;
   const aspect = info.width / info.height;
   /* níveis só sobre a figura (o fundo transparente não conta no histograma) */
-  const levels = autoLevels(hasAlpha ? data.filter((_, i) => alpha[i] >= 128) : data);
+  const levels = autoLevels(hasAlpha ? data.filter((_, i) => alpha[i] >= 128) : data, thin ? TONE_BG.white : 0.97);
 
   const idx = (x: number, y: number) =>
     Math.min(info.height - 1, Math.max(0, Math.round(y))) * info.width + Math.min(info.width - 1, Math.max(0, Math.round(x)));
@@ -75,7 +75,12 @@ async function buildImage(rel: string, photoSrc: string, cols: number, thin: boo
     const l = at(x, y);
     const k = cellPx * 2;
     const blur = (at(x - k, y) + at(x + k, y) + at(x, y - k) + at(x, y + k)) / 4;
-    return toneDensity(l, blur, u, v, levels);
+    if (!thin) return toneDensity(l, blur, u, v, levels);
+    /* Enigma: média de ~6 células (≈ mip +2,6 do shader) */
+    const K = cellPx * 3;
+    let big = 0;
+    for (let i = 0; i < 8; i++) big += at(x + K * Math.cos((i * Math.PI) / 4), y + K * Math.sin((i * Math.PI) / 4));
+    return bgDensity(l, blur, (big / 8 + l) / 2, u, v, levels);
   }, thin);
 
   const mask = await figureMask(sharp, data, alpha, hasAlpha, info.width, info.height);
