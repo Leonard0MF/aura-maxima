@@ -17,7 +17,7 @@ export async function SiteFooter() {
         </p>
       </div>
       {/* crédito exigido pela licença da foto de fundo do hero (CREDITS.md) */}
-      <p className="px-4 pb-5 font-mono text-[10.5px] tracking-wide text-ink-soft sm:px-6">
+      <p className="footer-credit px-4 pb-5 font-mono text-[10.5px] tracking-wide text-ink-soft sm:px-6">
         {t("footer.enigmaCredit")}:{" "}
         <a href={c.source} target="_blank" rel="noopener noreferrer" className="ulink">
           {c.author}, Wikimedia Commons

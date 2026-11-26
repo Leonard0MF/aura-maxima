@@ -743,6 +743,19 @@ html[data-js] .stack-cat:not([data-open]) .stack-cat__items {
     min-width: 44px;
     min-height: 44px;
   }
+  /* crédito da foto no rodapé: links com 44 px de altura */
+  .footer-credit {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 0.4em;
+    padding-bottom: 0.5rem;
+  }
+  .footer-credit a {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+  }
   /* "(Scroll) ↓" do hero nos tablets (no celular ele some) */
   .hero-scroll {
     min-width: 44px;
