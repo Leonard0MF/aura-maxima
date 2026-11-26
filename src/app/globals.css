@@ -1258,6 +1258,10 @@ html[data-reveal] .audit {
   background: #0b0d10;
   clip-path: circle(var(--r) at var(--bhx) var(--bhy));
 }
+/* aberto: sem clip-path (nada recortando cada quadro do canvas) */
+html[data-reveal] .audit[data-done] {
+  clip-path: none;
+}
 /* anel âmbar fino girando no limite do círculo, só enquanto ele cresce */
 html[data-reveal] .audit-ring {
   display: block;
@@ -1298,6 +1302,12 @@ html[data-reveal] .audit-ring::after {
   inset: -7px;
   opacity: 0.45;
   mask: radial-gradient(farthest-side, transparent calc(100% - 14px), #000 calc(100% - 7px), transparent);
+}
+/* o anel só existe enquanto o círculo abre: antes e depois, display: none
+ * (sem a animação infinita nem a camada gigante com sombra) */
+html[data-reveal] .audit-wrap:not(:has(.audit[data-in])) .audit-ring,
+html[data-reveal] .audit-wrap:has(.audit[data-done]) .audit-ring {
+  display: none;
 }
 @keyframes ring-spin {
   to {
@@ -1475,6 +1485,12 @@ html[data-reveal] .audit-ring::after {
   border-radius: 50%;
   border: 2px solid var(--color-accent);
   animation: about-pulse 1.8s ease-out infinite;
+}
+/* fora da tela (OffscreenPause): nenhuma animação infinita rodando */
+.about-pulse[data-off]::after,
+.journey__item[data-next] .journey__dot[data-off]::after,
+.stack-ph[data-off] {
+  animation-play-state: paused;
 }
 @keyframes about-pulse {
   from {

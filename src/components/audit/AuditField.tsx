@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { AuditNode, CheckStatus } from "@/content/audit";
-import { claimGL, exclusive, schedule as nudgeGL } from "@/lib/gl-slot";
+import { claimGL, schedule as nudgeGL } from "@/lib/gl-slot";
+import { prewarm } from "@/lib/prewarm";
 
 import type { Layout } from "./layout";
 import type { Constellation } from "./scene";
@@ -103,7 +104,7 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
     }
 
     const mobile = matchMedia("(max-width: 639px)").matches;
-    /* sem o pass de lente: celular/toque (no resto, o benchmark escondido decide) */
+    /* sem o pass de lente: celular/toque (no resto, lib/gpu-perf decide) */
     const simple = mobile || matchMedia("(pointer: coarse)").matches;
     let scene: Constellation | null = null;
     let canvas: HTMLCanvasElement | null = null;
@@ -112,49 +113,34 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
     let pending: Promise<void> | null = null;
     let follow = 0;
     let ready = false; // nível de qualidade escolhido: pode renderizar
-    let benchGo: (() => void) | null = null;
-    let benchStop: (() => void) | null = null;
+    let chooseGo: (() => void) | null = null;
+    let chooseStop: (() => void) | null = null;
 
     const sync = () => scene?.run(ready && active && !document.hidden);
-    /* benchmark escondido: quando o campo chega a ~1 viewport (ou na hora, se
-     * a seção já precisa renderizar), com os outros loops parados e o canvas
-     * invisível; o 1º quadro visível já sai no nível escolhido */
-    const benchWhenNear = (s: Constellation, c: HTMLCanvasElement) => {
-      let started = false;
+    /* qualidade: escolhida quando o campo aparece (ou na hora, se a seção já
+     * precisa renderizar), com tudo o que a STACK mediu até ali. Não
+     * renderiza nada a mais (só ajusta resolução): o 1º quadro visível já sai
+     * no nível escolhido */
+    const chooseWhenNear = (s: Constellation) => {
       const check = () => {
         const r = field.getBoundingClientRect();
         const gap = r.top > innerHeight ? r.top - innerHeight : r.bottom < 0 ? -r.bottom : 0;
-        if (gap <= innerHeight || active) go();
+        if (gap <= 0 || active) go();
       };
       const stop = () => {
         removeEventListener("scroll", check);
-        benchGo = benchStop = null;
+        chooseGo = chooseStop = null;
       };
       const go = () => {
-        if (started) return;
-        started = true;
         stop();
-        c.style.visibility = "hidden";
-        void exclusive(() => s.bench())
-          .then((r) => {
-            if (process.env.NODE_ENV !== "production") console.info(`[audit] qualidade ${r.quality} · ${r.ms.toFixed(1)} ms/quadro`);
-          })
-          .catch(() => {})
-          .finally(() => {
-            /* entra com fade (se a seção já estava na tela, não "estala") */
-            c.style.opacity = "0";
-            c.style.visibility = "";
-            requestAnimationFrame(() => {
-              c.style.transition = "opacity 300ms ease-out";
-              c.style.opacity = "";
-            });
-            if (scene !== s) return;
-            ready = true;
-            sync();
-          });
+        if (scene !== s) return;
+        const r = s.choose();
+        if (process.env.NODE_ENV !== "production") console.info(`[audit] qualidade ${r.quality} · ${r.why}`);
+        ready = true;
+        sync();
       };
-      benchGo = go;
-      benchStop = stop;
+      chooseGo = go;
+      chooseStop = stop;
       addEventListener("scroll", check, { passive: true });
       check();
     };
@@ -198,14 +184,10 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
       /* testes automatizados (?auditdebug) */
       if (location.search.includes("auditdebug")) (window as unknown as { __audit?: Constellation }).__audit = scene;
       section.dataset.live = "";
-      if (made.needsBench()) benchWhenNear(made, c);
-      else {
-        ready = true;
-        sync();
-      }
+      chooseWhenNear(made);
     };
     const unmount = () => {
-      benchStop?.();
+      chooseStop?.();
       ready = false;
       cancelAnimationFrame(follow);
       scene?.destroy();
@@ -217,9 +199,24 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
       cardIdx.current = -1;
       setCard(-1);
     };
-    /* lib/gl-slot: prepara a ~1,5 viewport (parado), renderiza só quando é a
-     * vez desta seção (prioridade depois que a revelação começou) */
+    /* lib/gl-slot: nasce PARADA cedo — quando o usuário chega ao WORK, bem
+     * antes da STACK (desktop; no celular, a ~0,6 viewport) — para os shaders
+     * compilarem em idle longe do AUDIT. Renderiza só quando é a vez desta
+     * seção (prioridade depois que a revelação começou). Passou dela e está
+     * a mais de 1 viewport: libera tudo (geometrias, materiais, render
+     * target, contexto e canvas). */
+    const work = document.getElementById("findings");
+    const early = () => {
+      if (mobile || !work) return false;
+      const vh = innerHeight;
+      const f = field.getBoundingClientRect();
+      return f.top > vh && work.getBoundingClientRect().top < vh; // AUDIT abaixo e o WORK já na tela (ou passou)
+    };
+    const stopPrewarm = prewarm(() => Promise.all([import("./scene"), getLayout(Math.min(nodes.length, 12), count)]));
     const release = claimGL({
+      prepareAt: 0.6,
+      releaseAt: 1,
+      keep: early,
       el: field,
       prepare() {
         want = true;
@@ -234,7 +231,7 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
       },
       run(on) {
         active = on;
-        if (on) benchGo?.();
+        if (on) chooseGo?.();
         sync();
       },
       priority: () => ("in" in section.dataset ? 1 : 0),
@@ -405,6 +402,7 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
       field.removeEventListener("pointerup", onUp);
       field.removeEventListener("pointerleave", onLeave);
       field.removeEventListener("pointercancel", onCancel);
+      stopPrewarm();
       release();
       unmount();
       delete section.dataset.static;

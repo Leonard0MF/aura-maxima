@@ -14,6 +14,9 @@ import { holeCenter } from "./layout";
  * seção sai inteira da tela, volta ao início sem animar. O centro vem da
  * mesma conta da cena (layout.holeCenter) sobre a caixa real do campo.
  *
+ * Terminada a abertura (data-done), o anel sai do DOM renderizado
+ * (display: none, sem animação) e a seção perde o clip-path.
+ *
  * Com reduced-motion: fade de 300 ms. Sem JS: a seção aparece pronta.
  * O modo (data-reveal) é decidido no script de boot, antes da 1ª pintura.
  */
@@ -48,13 +51,23 @@ export function AuditReveal({ children }: { children: React.ReactNode }) {
      * chegar no mesmo lote, em qualquer ordem).
      *  - entra: o topo cruzou 60% da viewport e a seção ainda está na tela
      *  - saiu inteira: volta ao início sem animar, para a próxima entrada */
+    let doneT = 0;
     const sync = () => {
       const r = wrap.getBoundingClientRect(), vh = innerHeight;
       if (r.top <= vh * 0.6 && r.bottom > 0) {
-        if (!("in" in section.dataset)) section.dataset.in = "";
+        if (!("in" in section.dataset)) {
+          section.dataset.in = "";
+          /* fim da abertura (0,9 s + folga): anel fora e sem clip-path */
+          clearTimeout(doneT);
+          doneT = window.setTimeout(() => {
+            if ("in" in section.dataset) section.dataset.done = "";
+          }, 950);
+        }
       } else if ((r.bottom <= 0 || r.top >= vh) && "in" in section.dataset) {
+        clearTimeout(doneT);
         section.dataset.reset = "";
         delete section.dataset.in;
+        delete section.dataset.done;
         requestAnimationFrame(() => requestAnimationFrame(() => delete section.dataset.reset));
       }
     };
@@ -63,6 +76,7 @@ export function AuditReveal({ children }: { children: React.ReactNode }) {
     ioIn.observe(wrap);
     ioOut.observe(wrap);
     return () => {
+      clearTimeout(doneT);
       ro.disconnect();
       ioIn.disconnect();
       ioOut.disconnect();

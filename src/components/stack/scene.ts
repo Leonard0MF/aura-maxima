@@ -56,6 +56,8 @@ import {
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js";
 
+import { recordFrame } from "@/lib/gpu-perf";
+
 export type Token = { id: string; name: string; path: string; hex: string };
 export type SceneEvents = {
   hover: (name: string | null, x: number, y: number) => void;
@@ -203,6 +205,8 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
   const dpr = Math.min(window.devicePixelRatio || 1, lite ? 1.25 : 1.5);
   const renderer = new WebGLRenderer({ canvas, alpha: true, antialias: dpr < 1.3, powerPreference: "high-performance" });
   renderer.setPixelRatio(dpr);
+  /* produção: sem ler o log de cada shader (consultas síncronas à GPU) */
+  if (process.env.NODE_ENV === "production") renderer.debug.checkShaderErrors = false;
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = ACESFilmicToneMapping;
   renderer.toneMappingExposure = 0.95;
@@ -211,11 +215,29 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = PCFShadowMap;
 
+  /* contexto e mapa de ambiente em tarefas separadas: nenhuma passa de ~100 ms com CPU 4× */
+  await yieldMain();
   const scene = new Scene();
+  /* materiais da sala compilados em paralelo antes (o PMREM esperaria a
+   * compilação síncrona dentro de uma tarefa só) */
+  const room = new RoomEnvironment();
+  try {
+    await renderer.compileAsync(room, new PerspectiveCamera());
+  } catch {
+    /* sem suporte: compila no fromScene */
+  }
+  await yieldMain();
+  /* shaders internos do PMREM (desfoque, cubo): um PMREM minúsculo de uma
+   * cena vazia numa tarefa, o de verdade em outra (o cache de programas do
+   * three reaproveita a compilação enquanto o primeiro não é descartado) */
+  const warmP = new PMREMGenerator(renderer);
+  warmP.fromScene(new Scene(), 0.04, 0.1, 100, { size: 16 }).dispose();
+  await yieldMain();
   const pmrem = new PMREMGenerator(renderer);
-  const envRT = pmrem.fromScene(new RoomEnvironment(), 0.04);
+  const envRT = pmrem.fromScene(room, 0.04);
   scene.environment = envRT.texture;
   pmrem.dispose();
+  warmP.dispose();
   await yieldMain();
   const sun = new DirectionalLight(0xfff1dc, 1.4);
   sun.position.set(-5, 9, 6.5);
@@ -655,6 +677,7 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
   let paused = true; // o StackStage liga quando esta seção é a que renderiza (lib/gl-slot)
   let last = performance.now();
   let acc = 0;
+  let chained = false; // o quadro anterior pediu este (intervalo vale como medida)
 
   /* pose → matriz, com a deformação da geleia no eixo n */
   const pose = (p: Piece, yaw: number) => {
@@ -677,6 +700,8 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
 
   const frame = (now: number) => {
     raf = 0;
+    /* intervalo entre quadros seguidos: o AUDIT escolhe a qualidade com isso (lib/gpu-perf) */
+    if (chained) recordFrame(now - last);
     const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));
     last = now;
 
@@ -768,6 +793,7 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
     const busy = active || drag || press || now - lastInput < 400 || now < dropEnd;
     quiet = busy ? 0 : quiet + 1;
     if (quiet < 20) schedule();
+    chained = raf !== 0;
   };
 
   /* ---------- foco (popup) ---------- */
@@ -903,7 +929,10 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
   }
   function wake() {
     quiet = 0;
-    if (!raf) last = performance.now();
+    if (!raf) {
+      last = performance.now();
+      chained = false;
+    }
     schedule();
   }
 
@@ -968,18 +997,23 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
     /* posições das peças na mesa (para restore); as que ainda caem já têm
      * x/z/yaw finais */
     state: () => pieces.filter((p) => p.state !== "hidden").map((p) => ({ id: p.token.id, x: p.x, z: p.z, yaw: p.yaw })),
-    /* último frame, sem o véu do popup (para o snapshot estático ao desmontar) */
+    /* último frame, sem o véu do popup (para o snapshot estático ao
+     * desmontar). toBlob: a cópia do quadro é síncrona (o contexto pode ser
+     * destruído logo depois), mas a codificação WebP sai da main thread —
+     * com toDataURL ela era uma tarefa de ~60 ms (~240 ms com CPU 4×) */
     snapshot() {
-      if (!dropped) return null;
+      if (!dropped) return Promise.resolve(null);
       const v = veil.visible;
       veil.visible = false;
       renderer.render(scene, camera);
       veil.visible = v;
-      try {
-        return canvas.toDataURL("image/webp", 0.82);
-      } catch {
-        return null;
-      }
+      return new Promise<string | null>((res) => {
+        try {
+          canvas.toBlob((b) => res(b ? URL.createObjectURL(b) : null), "image/webp", 0.82);
+        } catch {
+          res(null);
+        }
+      });
     },
     focus: focusOn,
     unfocus: focusOff,
@@ -990,6 +1024,7 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
       if (on) {
         cancelAnimationFrame(raf);
         raf = 0;
+        chained = false;
       } else wake();
     },
     /* testes: estado da mesa (posições, velocidades, rotação) */

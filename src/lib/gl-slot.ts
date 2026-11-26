@@ -4,16 +4,16 @@
  * Dois estados separados:
  * - EXISTIR: a seção prepara o contexto (cena criada, shaders compilados,
  *   loop parado) quando chega a ~1,5 viewport de distância e o libera
- *   longe (> 2,5 viewports, em idle). Os dois contextos podem existir juntos.
+ *   longe (> 2,5 viewports, em idle). Cada seção pode trocar essas
+ *   distâncias (prepareAt/releaseAt) e pedir para existir antes (keep: o
+ *   AUDIT nasce quando o usuário chega ao WORK). Os contextos podem existir
+ *   juntos.
  * - RENDERIZAR: só UM loop por vez. Renderiza a seção visível com maior
  *   prioridade (o AUDIT, depois que a revelação começou) ou, empatando, a
  *   mais perto do centro da tela. Fora da tela, ninguém.
  *
  * Nunca desmonta e monta no mesmo frame: no máximo uma preparação ou
  * liberação por frame, e liberações têm a vez antes.
- *
- * exclusive(fn): para todos os loops enquanto fn roda (o benchmark do AUDIT
- * mede o tempo por quadro sem a STACK disputando a GPU) e devolve a vez.
  *
  * O hero participa só do "existir" (o canvas dele já pausa sozinho fora da
  * tela, e a WORK fica entre ele e a STACK: nunca divide a tela com elas).
@@ -28,6 +28,11 @@ type Owner = {
   run(on: boolean): void;
   /** maior = ganha o render quando as duas estão na tela */
   priority?(): number;
+  /** viewports de distância para preparar / liberar (padrão 1,5 / 2,5) */
+  prepareAt?: number;
+  releaseAt?: number;
+  /** true = deve existir já, mesmo longe (e não é liberada enquanto for true) */
+  keep?(): boolean;
 };
 type Slot = { o: Owner; state: "off" | "preparing" | "ready" | "releasing"; running: boolean };
 
@@ -38,7 +43,6 @@ const slots = new Map<Owner, Slot>();
 let raf = 0;
 let listening = false;
 let renderer: Slot | null = null;
-let held = 0; // exclusive() em andamento: ninguém renderiza
 
 /* distância (px) do retângulo até a viewport; 0 = visível */
 function gap(el: Element, vh: number) {
@@ -62,7 +66,7 @@ function arbitrate() {
   let best: Slot | null = null;
   let bk = [-Infinity, Infinity];
   for (const s of slots.values()) {
-    if (held || s.state !== "ready" || gap(s.o.el, vh) > 0) continue;
+    if (s.state !== "ready" || gap(s.o.el, vh) > 0) continue;
     const k = [s.o.priority?.() ?? 0, centerDist(s.o.el, vh)];
     if (k[0] > bk[0] || (k[0] === bk[0] && k[1] < bk[1])) {
       best = s;
@@ -91,7 +95,7 @@ function arbitrate() {
   let op = false;
   for (const s of slots.values()) {
     if (op) break;
-    if (s.state === "ready" && gap(s.o.el, vh) > RELEASE * vh) {
+    if (s.state === "ready" && gap(s.o.el, vh) > (s.o.releaseAt ?? RELEASE) * vh && !s.o.keep?.()) {
       op = true;
       s.state = "releasing";
       if (s.running) {
@@ -103,7 +107,7 @@ function arbitrate() {
   }
   for (const s of slots.values()) {
     if (op) break;
-    if (s.state === "off" && gap(s.o.el, vh) <= PREPARE * vh) {
+    if (s.state === "off" && (gap(s.o.el, vh) <= (s.o.prepareAt ?? PREPARE) * vh || s.o.keep?.())) {
       op = true;
       s.state = "preparing";
       void Promise.resolve(s.o.prepare())
@@ -122,23 +126,6 @@ function done(s: Slot, state: Slot["state"]) {
 /** reavalia no próximo frame (scroll, resize, mudança de prioridade) */
 export function schedule() {
   if (!raf) raf = requestAnimationFrame(arbitrate);
-}
-
-/** para todos os loops de render enquanto `fn` roda (ex.: benchmark) */
-export async function exclusive<T>(fn: () => Promise<T>): Promise<T> {
-  held++;
-  for (const s of slots.values())
-    if (s.running) {
-      s.running = false;
-      s.o.run(false);
-    }
-  renderer = null;
-  try {
-    return await fn();
-  } finally {
-    held--;
-    schedule();
-  }
 }
 
 export function claimGL(owner: Owner) {
