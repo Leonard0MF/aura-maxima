@@ -63,10 +63,9 @@ const fill = (s: string, v: Record<string, number>) => s.replace(/\{(\w+)\}/g, (
  * Camada interativa do AUDIT: buraco negro + constelação (WebGL) atrás do
  * texto da seção.
  * - hover/toque num nó brilhante: cartão com o dado
- * - arrastar: gira o sistema em volta do buraco negro (o scroll vertical nunca
- *   é capturado: touch-action pan-y, nenhum listener de wheel). No toque, o
- *   gesto só é nosso se começar horizontal (pan-y deixa o vertical para a
- *   página) ou sobre um nó (touchstart com preventDefault só nesse caso)
+ * - sem arraste: a constelação gira sozinha (bem devagar) e, no desktop,
+ *   inclina na direção do mouse (parallax, mesmo sem clicar). Nenhum gesto é
+ *   capturado: a página rola normalmente por cima do canvas
  * - toque (pointer: coarse): sem efeito de cursor na cena; no celular o
  *   cartão é um bottom sheet com botão de fechar (tocar fora ou rolar fecha)
  * - clique no vazio: onda de scan saindo do horizonte; os nós acendem em
@@ -363,19 +362,8 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
       if (!scene) return;
       const p = pos(e);
       if (down && down.id === e.pointerId) {
-        const dx = p.x - down.x;
-        const dy = p.y - down.y;
-        if (!down.drag && Math.hypot(dx, dy) > 6) {
-          down.drag = true;
-          field.setPointerCapture(e.pointerId);
-          show(-1);
-        }
-        if (down.drag) {
-          scene.dragBy(dx, dy);
-          down.x = p.x;
-          down.y = p.y;
-          return;
-        }
+        /* moveu: não é clique (nem toque) */
+        if (Math.hypot(p.x - down.x, p.y - down.y) > 6) down.drag = true;
       }
       if (e.pointerType === "mouse") {
         scene.pointer(p.x, p.y, true); // efeito de cursor: só com mouse
@@ -393,10 +381,7 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
       if (!scene || !down || down.id !== e.pointerId) return;
       const wasDrag = down.drag;
       down = null;
-      if (wasDrag) {
-        scene.release();
-        return;
-      }
+      if (wasDrag) return;
       const p = pos(e);
       const i = scene.hit(p.x, p.y);
       if (i >= 0) {
@@ -426,17 +411,15 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
     };
     const onCancel = () => {
       down = null;
-      scene?.release();
       scene?.pointer(0, 0, false);
     };
-    /* toque que começa num nó é nosso (sem rolar a página); fora dele, o
-     * navegador decide: vertical rola, horizontal vira arrasto (pan-y) */
-    const onTouch = (e: TouchEvent) => {
-      if (!scene || e.touches.length !== 1) return;
-      const r = field.getBoundingClientRect();
-      const t = e.touches[0];
-      if (scene.hit(t.clientX - r.left, t.clientY - r.top) >= 0) e.preventDefault();
+    /* parallax: o mouse em qualquer ponto da seção (também sobre os textos) */
+    const onTilt = (e: PointerEvent) => {
+      if (e.pointerType !== "mouse") return;
+      const r = section.getBoundingClientRect();
+      scene?.tilt(((e.clientX - r.left) / r.width) * 2 - 1, ((e.clientY - r.top) / r.height) * 2 - 1);
     };
+    const onTiltOut = () => scene?.tilt(null);
     /* bottom sheet: tocar fora fecha; rolar a página também */
     const onDocDown = (e: PointerEvent) => {
       if (cardIdx.current < 0 || !sheet.matches) return;
@@ -448,7 +431,8 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
       if (cardIdx.current >= 0 && sheet.matches && Math.abs(scrollY - openY) > 40) show(-1);
     };
     closeCard.current = () => show(-1);
-    field.addEventListener("touchstart", onTouch, { passive: false });
+    section.addEventListener("pointermove", onTilt);
+    section.addEventListener("pointerleave", onTiltOut);
     document.addEventListener("pointerdown", onDocDown);
     addEventListener("scroll", onScroll, { passive: true });
     field.addEventListener("pointermove", onMove);
@@ -461,7 +445,8 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
       ro.disconnect();
       mo.disconnect();
       document.removeEventListener("visibilitychange", sync);
-      field.removeEventListener("touchstart", onTouch);
+      section.removeEventListener("pointermove", onTilt);
+      section.removeEventListener("pointerleave", onTiltOut);
       document.removeEventListener("pointerdown", onDocDown);
       removeEventListener("scroll", onScroll);
       field.removeEventListener("pointermove", onMove);
