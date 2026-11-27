@@ -4,7 +4,9 @@
  * Dois estados separados:
  * - EXISTIR: a seção prepara o contexto (cena criada, shaders compilados,
  *   loop parado) quando chega a ~1,5 viewport de distância e o libera
- *   longe (> 2,5 viewports, em idle). Cada seção pode trocar essas
+ *   longe (> 2,5 viewports, em idle). Com persist (AUDIT e STACK), depois
+ *   de pronta ela NUNCA é liberada: ao sair só pausa, ao voltar só retoma
+ *   (nada é recompilado nem regenerado). Cada seção pode trocar essas
  *   distâncias (prepareAt/releaseAt) e pedir para existir antes (keep: o
  *   AUDIT nasce quando o usuário chega ao WORK). Os contextos podem existir
  *   juntos.
@@ -33,6 +35,8 @@ type Owner = {
   releaseAt?: number;
   /** true = deve existir já, mesmo longe (e não é liberada enquanto for true) */
   keep?(): boolean;
+  /** true = criada uma vez por carregamento: nunca liberada por distância */
+  persist?: boolean;
 };
 type Slot = { o: Owner; state: "off" | "preparing" | "ready" | "releasing"; running: boolean };
 
@@ -95,7 +99,7 @@ function arbitrate() {
   let op = false;
   for (const s of slots.values()) {
     if (op) break;
-    if (s.state === "ready" && gap(s.o.el, vh) > (s.o.releaseAt ?? RELEASE) * vh && !s.o.keep?.()) {
+    if (s.state === "ready" && !s.o.persist && gap(s.o.el, vh) > (s.o.releaseAt ?? RELEASE) * vh && !s.o.keep?.()) {
       op = true;
       s.state = "releasing";
       if (s.running) {

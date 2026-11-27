@@ -1023,10 +1023,8 @@ html[data-js] .stack-cat:not([data-open]) .stack-cat__items {
   width: 100%;
   height: 100%;
 }
-/* placeholder discreto enquanto o 3D carrega e snapshot do último frame
- * depois que ele desmonta: mesmo tamanho do canvas, nada salta */
-.stack-ph,
-.stack-snap {
+/* placeholder discreto enquanto o 3D carrega: mesmo tamanho do canvas */
+.stack-ph {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -1045,16 +1043,7 @@ html[data-js] .stack-cat:not([data-open]) .stack-cat__items {
     opacity: 0.45;
   }
 }
-.stack-snap {
-  object-fit: cover;
-  opacity: 0;
-}
-[data-stack][data-snap] .stack-snap {
-  opacity: 1;
-}
-[data-stack][data-snap] .stack-ph,
 [data-stack][data-live] .stack-ph,
-[data-stack][data-live] .stack-snap,
 [data-stack][data-static] .stack-ph,
 html:not([data-js]) .stack-ph {
   opacity: 0;
@@ -1404,98 +1393,38 @@ html:not([data-js]) .audit-list {
   font-size: 12px;
   line-height: 1.4;
 }
-/* ---- entrada do AUDIT (AuditReveal): animação de tempo, sem pin ----
- * Quando o topo da seção cruza ~60% da viewport (data-in), um círculo
- * escuro nasce no centro do buraco negro e cobre a seção em ~900 ms
- * (ease-out). Nada fica preso na tela. Tudo restrito ao .audit-wrap
- * (relative + isolation + overflow: clip): nem o círculo nem o anel vazam
- * para outras seções. Sem JS: a seção aparece pronta. */
-@property --k {
-  syntax: "<number>";
-  inherits: true;
-  initial-value: 1;
-}
+/* ---- entrada do AUDIT (AuditReveal): só na 1ª entrada da página ----
+ * Um círculo de cor sólida (100 px) cresce do centro do buraco negro SÓ com
+ * transform: scale() (Web Animations API) até cobrir a seção; ela fica com
+ * opacity 0 até o canvas desenhar o 1º quadro e então aparece em 300 ms.
+ * Restrito ao .audit-wrap (overflow: clip): o círculo não vaza. Sem JS ou
+ * com reduced-motion (sem data-reveal): a seção aparece pronta. */
 .audit-wrap {
   position: relative;
   isolation: isolate;
   overflow: clip;
-  --bhx: 25%;
-  --bhy: 50%;
-  --rmax: 150vmax;
 }
-.audit-ring {
+.audit-iris {
   display: none;
+  position: absolute;
+  z-index: 0;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: #0e0e10;
+  transform: scale(0.02);
+  will-change: transform;
+  pointer-events: none;
 }
-html[data-reveal] .audit-wrap {
-  --k: 0;
-  --r: calc(var(--k) * var(--rmax));
-  transition: --k 0.9s cubic-bezier(0.16, 1, 0.3, 1);
-}
-html[data-reveal] .audit-wrap:has(.audit[data-in]) {
-  --k: 1;
-}
-html[data-reveal] .audit-wrap:has(.audit[data-reset]) {
-  transition: none;
+.audit-wrap > .audit {
+  z-index: 1;
 }
 html[data-reveal] .audit {
-  background: #0b0d10;
-  clip-path: circle(var(--r) at var(--bhx) var(--bhy));
+  opacity: 0;
 }
-/* aberto: sem clip-path (nada recortando cada quadro do canvas) */
-html[data-reveal] .audit[data-done] {
-  clip-path: none;
-}
-/* anel âmbar fino girando no limite do círculo, só enquanto ele cresce */
-html[data-reveal] .audit-ring {
-  display: block;
-  position: absolute;
-  left: var(--bhx);
-  top: var(--bhy);
-  z-index: 2;
-  width: calc(2 * var(--r));
-  height: calc(2 * var(--r));
-  translate: -50% -50%;
-  border-radius: 50%;
-  pointer-events: none;
-  opacity: calc(min(1, var(--k) * 25) * min(1, (1 - var(--k)) * 6));
-  box-shadow:
-    0 0 70px 28px rgb(11 13 16 / 0.42),
-    inset 0 0 50px 14px rgb(11 13 16 / 0.75);
-}
-html[data-reveal] .audit-ring::before,
-html[data-reveal] .audit-ring::after {
-  content: "";
-  position: absolute;
-  inset: -1px;
-  border-radius: 50%;
-  background: conic-gradient(
-    from 0deg,
-    transparent 0 8%,
-    rgb(245 165 36 / 0.95) 18%,
-    transparent 30% 46%,
-    rgb(255 214 140 / 0.8) 58%,
-    transparent 70% 84%,
-    rgb(245 165 36 / 0.7) 92%,
-    transparent
-  );
-  mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
-  animation: ring-spin 7s linear infinite;
-}
-html[data-reveal] .audit-ring::after {
-  inset: -7px;
-  opacity: 0.45;
-  mask: radial-gradient(farthest-side, transparent calc(100% - 14px), #000 calc(100% - 7px), transparent);
-}
-/* o anel só existe enquanto o círculo abre: antes e depois, display: none
- * (sem a animação infinita nem a camada gigante com sombra) */
-html[data-reveal] .audit-wrap:not(:has(.audit[data-in])) .audit-ring,
-html[data-reveal] .audit-wrap:has(.audit[data-done]) .audit-ring {
-  display: none;
-}
-@keyframes ring-spin {
-  to {
-    rotate: 1turn;
-  }
+html[data-reveal] .audit[data-shown] {
+  opacity: 1;
+  transition: opacity 0.3s linear;
 }
 /* reduced-motion: fade simples de 300 ms ao entrar */
 @media (prefers-reduced-motion: reduce) {
