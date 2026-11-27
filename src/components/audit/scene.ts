@@ -947,7 +947,8 @@ export function createConstellation(
     m.vy += ay * dt;
     m.x += m.vx * dt;
     m.y += m.vy * dt;
-    const ap = 40 * (pk.t - pk.p) - 7 * pk.v;
+    /* arrastando: sem o "empurrão" da poeira em volta do cursor (viraria um anel no meio da rede) */
+    const ap = 40 * ((rot.mode === 1 ? 0 : pk.t) - pk.p) - 7 * pk.v;
     pk.v += ap * dt;
     pk.p += pk.v * dt;
 
