@@ -144,10 +144,12 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
     }
 
     const mobile = matchMedia("(max-width: 639px)").matches;
-    /* sem o pass de lente: celular/toque (no resto, lib/gpu-perf decide) */
-    const simple = mobile || matchMedia("(pointer: coarse)").matches;
+    const coarse = matchMedia("(pointer: coarse)").matches;
     /* aparelho fraco: menos partículas, nunca menos de 600 */
     const weak = (cap.cores > 0 && cap.cores <= 4) || (cap.mem > 0 && cap.mem <= 2);
+    /* qualidade pelo desempenho medido (lib/gpu-perf), no celular também; o
+     * modo simples só para aparelho fraco ou se o fps cair de verdade (a cena desce sozinha) */
+    const simple = weak;
     let scene: Constellation | null = null;
     let canvas: HTMLCanvasElement | null = null;
     let want = false; // o contexto deve existir (lib/gl-slot)
@@ -402,7 +404,9 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
           return;
         }
       }
-      scene.pointer(p.x, p.y, true);
+      /* efeito de cursor (empurrão da poeira, peso na lente): só com mouse;
+       * no toque não há cursor nenhum */
+      if (e.pointerType === "mouse" && !coarse) scene.pointer(p.x, p.y, true);
       if (e.pointerType === "mouse") {
         const i = scene.hit(p.x, p.y);
         field.style.cursor = i >= 0 ? "pointer" : "";

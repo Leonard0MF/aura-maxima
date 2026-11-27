@@ -41,6 +41,7 @@ import {
   ShaderMaterial,
   Vector2,
   Vector3,
+  Vector4,
   WebGLRenderer,
   WebGLRenderTarget,
 } from "three";
@@ -60,6 +61,9 @@ attribute float aSeed;
 attribute float aTone;
 attribute float aSize;
 uniform vec3 uNode[${MAX_NODES}];
+uniform float uFade[${MAX_NODES}]; // 0 = nó apagado (sobre texto ou perto da borda)
+uniform vec2 uRes2;     // campo (px CSS)
+uniform vec4 uKeep[4];  // caixas de texto (px, origem em cima: x0, y0, x1, y1)
 uniform float uTime;
 uniform float uPR;
 uniform float uAspect;
@@ -81,8 +85,10 @@ void main() {
   float fade = 1.0;
   if (aRef.x < 0.5) {
     p = uNode[int(aRef.y + 0.5)] + position;
+    fade = uFade[int(aRef.y + 0.5)]; // o aglomerado apaga com o nó
   } else if (aRef.x < 1.5) {
     p = mix(uNode[int(aRef.y + 0.5)], uNode[int(aRef.z + 0.5)], aRef.w) + position;
+    fade = min(uFade[int(aRef.y + 0.5)], uFade[int(aRef.z + 0.5)]); // o filamento, com a linha
   } else if (aRef.x < 2.5) {
     // órbita (Kepler: ω ∝ r^-1.5)
     float r0 = position.x;
@@ -118,6 +124,15 @@ void main() {
 
   clip.xy = ndc * clip.w;
   gl_Position = clip;
+  /* nenhuma partícula sobre os textos nem a menos de 48 px das bordas */
+  vec2 px = vec2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5) * uRes2;
+  float edge = min(min(px.y, uRes2.y - px.y), min(px.x, uRes2.x - px.x));
+  fade *= smoothstep(24.0, 48.0, edge);
+  for (int k = 0; k < 4; k++) {
+    vec4 b = uKeep[k];
+    float dk = max(max(b.x - px.x, px.x - b.z), max(b.y - px.y, px.y - b.w));
+    fade *= smoothstep(0.0, 14.0, dk);
+  }
   float tw = 0.75 + 0.25 * sin(uTime * 1.7 + aSeed * 40.0);
   vA = ((0.36 + 0.24 * aTone) * tw + abs(push) * 0.5) * fade;
   vTone = aTone;
@@ -145,8 +160,10 @@ uniform float uTime;
 uniform float uPR;
 uniform float uLit[${MAX_NODES}];
 uniform float uHover;
+uniform float uFade[${MAX_NODES}];
 varying float vLit;
 varying float vHover;
+varying float vFade;
 void main() {
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
   gl_Position = projectionMatrix * mv;
@@ -157,6 +174,7 @@ void main() {
   float pulse = 0.9 + 0.1 * sin(uTime * 2.2 + aIndex * 1.7);
   vLit = lit;
   vHover = hov;
+  vFade = uFade[i];
   gl_PointSize = uPR * (26.0 + 10.0 * lit + 14.0 * hov) * pulse * (${CAMERA_Z.toFixed(1)} / -mv.z);
 }`;
 
@@ -165,13 +183,14 @@ uniform vec3 uWhite;
 uniform vec3 uAmber;
 varying float vLit;
 varying float vHover;
+varying float vFade;
 void main() {
   float r = length(gl_PointCoord - 0.5);
   float halo = smoothstep(0.5, 0.0, r) * (0.28 + 0.3 * vLit + 0.25 * vHover);
   float core = smoothstep(0.13, 0.05, r);
   float ring = smoothstep(0.035, 0.0, abs(r - 0.21)) * (0.35 + 0.65 * max(vLit, vHover));
   vec3 c = mix(uAmber, uWhite, core * 0.7);
-  gl_FragColor = vec4(c, min(1.0, halo + core + ring));
+  gl_FragColor = vec4(c, min(1.0, halo + core + ring) * vFade);
 }`;
 
 /* ---------- buraco negro ---------- */
@@ -181,12 +200,10 @@ uniform vec2 uBH;      // centro em px do drawing buffer (origem embaixo)
 uniform float uScale;  // px por rs
 uniform float uTime;
 uniform float uIncl;   // elevação da câmera sobre o plano do disco (rad)
-uniform float uRoll;   // giro do disco no plano da tela (rad): acompanha o arraste
 uniform vec3 uWhite;
 uniform vec3 uAmber;
 const float RIN = 2.6;
 const float ROUT = 9.0;
-vec2 roll(vec2 p) { float c = cos(uRoll), s = sin(uRoll); return vec2(c * p.x - s * p.y, s * p.x + c * p.y); }
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float vnoise(vec2 p) {
   vec2 i = floor(p), f = fract(p);
@@ -230,12 +247,11 @@ void main() {
   vec3 bg = texture2D(tScene, (uBH + src * uScale) / uRes).rgb;
   vec3 col = uBg + bg;
   if (r < RMARCH) {
-    vec2 q = roll(p); // só o disco gira com o arraste; a lente da cena não
     float si = sin(uIncl), ci = cos(uIncl);
     vec3 cam = vec3(0.0, si, ci) * D;
     vec3 fwd = -normalize(cam);
     vec3 up = vec3(0.0, ci, -si);
-    vec3 dir = normalize(fwd + (q.x * vec3(1.0, 0.0, 0.0) + q.y * up) / D);
+    vec3 dir = normalize(fwd + (p.x * vec3(1.0, 0.0, 0.0) + p.y * up) / D);
     // linha reta até a esfera de raio 15 (fora dela a curvatura é desprezível)
     float b = dot(cam, dir);
     float tt = -b - sqrt(max(0.0, b * b - (dot(cam, cam) - 225.0)));
@@ -279,7 +295,7 @@ void main() {
 const SIMPLE_FS = /* glsl */ `
 ${BH_COMMON}
 void main() {
-  vec2 p = roll((gl_FragCoord.xy - uBH) / uScale);
+  vec2 p = (gl_FragCoord.xy - uBH) / uScale;
   float r = length(p);
   float si = max(0.08, sin(uIncl));
   vec3 col = vec3(0.0);
@@ -381,6 +397,9 @@ export function createConstellation(
     }
   };
   updateNodes(0);
+  /* apagamento por nó (0..1), suave (~300 ms): sobre texto ou perto da borda */
+  const fade = new Array(MAX_NODES).fill(1);
+  let fadeInit = false;
 
   /* partículas */
   const dustGeo = new BufferGeometry();
@@ -397,6 +416,9 @@ export function createConstellation(
     blending: AdditiveBlending,
     uniforms: {
       uNode: { value: nodeVec },
+      uFade: { value: fade },
+      uRes2: { value: new Vector2(1, 1) },
+      uKeep: { value: Array.from({ length: 4 }, () => new Vector4(-1e5, -1e5, -1e5, -1e5)) },
       uTime: { value: 0 },
       uPR: { value: dpr },
       uAspect: { value: 2 },
@@ -432,7 +454,7 @@ export function createConstellation(
       seg.set(nodePos.subarray(j * 3, j * 3 + 3), k * 6 + 3);
       const d = Math.hypot(nodePos[i * 3] - nodePos[j * 3], nodePos[i * 3 + 1] - nodePos[j * 3 + 1], nodePos[i * 3 + 2] - nodePos[j * 3 + 2]);
       const t = Math.max(0, Math.min(1, (2.0 - d) / 0.9));
-      const v = 0.22 * t * t * (3 - 2 * t);
+      const v = 0.22 * t * t * (3 - 2 * t) * Math.min(fade[i], fade[j]);
       segCol.set([amber.x * v, amber.y * v, amber.z * v, amber.x * v, amber.y * v, amber.z * v], k * 6);
     });
     lineGeo.attributes.position.needsUpdate = true;
@@ -455,6 +477,7 @@ export function createConstellation(
       uPR: { value: dpr },
       uLit: { value: lit },
       uHover: { value: -1 },
+      uFade: { value: fade },
       uWhite: { value: white },
       uAmber: { value: amber },
     },
@@ -471,7 +494,6 @@ export function createConstellation(
     uScale: { value: 20 },
     uTime: { value: 0 },
     uIncl: { value: 0.16 },
-    uRoll: { value: 0 },
     uCursor: { value: new Vector2(-1e4, -1e4) },
     uCM: { value: 0 },
     uE2: { value: 5.2 },
@@ -517,7 +539,7 @@ export function createConstellation(
   const ret = { t0: -1, x0: 0, y0: 0 }; // volta à pose original
   const SAFE = 48;
   const NODE_R = 12; // folga do halo do nó (px)
-  let keep = (opts.keep ?? []).slice();
+  let keep = (opts.keep ?? []).slice(0, 4);
   let waveT = -1;
   let waveMax = 0;
   let waveOrder: { i: number; d: number }[] = [];
@@ -539,7 +561,8 @@ export function createConstellation(
     canvas.dataset.quality = quality;
     const q = quality === "lens-0.75" ? 0.75 : quality === "lens-0.5" ? 0.5 : 1;
     renderer.setPixelRatio(dpr * q);
-    dustGeo.setDrawRange(0, level >= 2 ? Math.floor(L.count * 0.65) : L.count);
+    /* níveis baixos desenham menos, mas nunca menos de ~1.500 */
+    dustGeo.setDrawRange(0, level >= 2 ? Math.max(Math.min(L.count, 1500), Math.floor(L.count * 0.65)) : L.count);
     post.material = quality === "simple" ? simpleMat : lensMat;
     /* sem lente a cena vai direto para o canvas: fundo opaco (linhas aditivas não "furam" o fundo) */
     renderer.setClearColor(quality === "simple" ? 0x0b0d10 : 0x000000, quality === "simple" ? 1 : 0);
@@ -560,6 +583,7 @@ export function createConstellation(
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     dustMat.uniforms.uAspect.value = w / h;
+    dustMat.uniforms.uRes2.value.set(w, h);
     const asp = w / h;
     const narrow = asp < 0.9;
     /* desktop: buraco negro no terço esquerdo; telas estreitas: no topo, menor */
@@ -647,9 +671,12 @@ export function createConstellation(
 
   function frame(now: number) {
     raf = 0;
-    const dt = Math.min(0.05, (now - last) / 1000);
+    const real = Math.max(0, (now - last) / 1000);
+    const dt = Math.min(0.05, real); // molas e física: passo limitado
     last = now;
-    time += dt;
+    /* órbitas e rotação no ritmo do relógio, mesmo com poucos fps (celular):
+     * só uma pausa longa (aba em segundo plano) não conta */
+    time += Math.min(0.25, real);
 
     if (level < LADDER.length - 1) {
       const sec = now / 1000; // relógio real: o tempo da cena é limitado por quadro
@@ -707,7 +734,6 @@ export function createConstellation(
     }
     orient();
     nodeGeo.attributes.position.needsUpdate = true;
-    updateLines();
 
     let wa = 0;
     let wr = 0;
@@ -736,12 +762,8 @@ export function createConstellation(
     u.uWaveA.value = wa;
     nodeMat.uniforms.uTime.value = time;
 
-    /* buraco negro: o disco inclina junto com o arraste (até ±8° nos dois
-     * eixos), para os dois parecerem um sistema só; o cursor perto pesa na lente */
-    const TILT = (8 * Math.PI) / 180;
+    /* buraco negro: disco fixo (não inclina com o arraste); o cursor perto pesa na lente */
     bhUniforms.uTime.value = time;
-    bhUniforms.uIncl.value = 0.16 + Math.max(-TILT, Math.min(TILT, (rot.x / 0.5) * TILT));
-    bhUniforms.uRoll.value = Math.max(-TILT, Math.min(TILT, (rot.y / 0.9) * TILT));
     const pr = bhUniforms.uRes.value.x / W;
     const cx = (m.x * 0.5 + 0.5) * W, cy = (m.y * 0.5 + 0.5) * H;
     const bx = (bhNdc.x * 0.5 + 0.5) * W, by = (bhNdc.y * 0.5 + 0.5) * H;
@@ -751,9 +773,32 @@ export function createConstellation(
     bhUniforms.uCursor.value.set(cx * pr, cy * pr);
     bhUniforms.uCM.value = cm.v;
 
-    draw();
     project();
+    updateFade(dt);
+    updateLines();
+    draw();
     if (running) raf = requestAnimationFrame(frame);
+  }
+
+  /* nó sobre o título, a lede ou a coluna (caixas reais do DOM, com a folga
+   * do halo) ou a menos de 48 px das bordas: apaga em ~300 ms; ao sair, volta */
+  function updateFade(dt: number) {
+    for (let i = 0; i < n; i++) {
+      const x = screen[i * 2], y = screen[i * 2 + 1];
+      let hide = y < SAFE || y > H - SAFE || x < SAFE || x > W - SAFE;
+      for (const k of keep) if (x > k.x - NODE_R && x < k.x + k.w + NODE_R && y > k.y - NODE_R && y < k.y + k.h + NODE_R) hide = true;
+      const target = hide ? 0 : 1;
+      fade[i] = fadeInit ? (target > fade[i] ? Math.min(target, fade[i] + dt / 0.3) : Math.max(target, fade[i] - dt / 0.3)) : target;
+    }
+    fadeInit = true;
+  }
+  function keepUniforms() {
+    const kb = dustMat.uniforms.uKeep.value as Vector4[];
+    kb.forEach((b, i) => {
+      const r = keep[i];
+      if (r) b.set(r.x - 6, r.y - 6, r.x + r.w + 6, r.y + r.h + 6);
+      else b.set(-1e5, -1e5, -1e5, -1e5);
+    });
   }
 
   function draw() {
@@ -785,7 +830,10 @@ export function createConstellation(
 
   applyQuality();
   resize();
+  keepUniforms();
   project();
+  updateFade(0);
+  updateLines();
 
   const idle = () =>
     new Promise<void>((r) => ("requestIdleCallback" in window ? requestIdleCallback(() => r(), { timeout: 400 }) : setTimeout(r, 30)));
@@ -903,7 +951,8 @@ export function createConstellation(
       }, 60);
     },
     setKeepOut(rects) {
-      keep = rects.slice();
+      keep = rects.slice(0, 4);
+      keepUniforms();
     },
     debugDrag(dx, dy) {
       const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / 8));
