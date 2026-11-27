@@ -39,8 +39,8 @@ export type ServiceGroup = {
   state: "open" | "filtered"; // "filtered" = explorando
 };
 
-/* TODO: domínio final do site (usado em metadata, sitemap e no selo). */
-export const SITE_URL = "https://aura-maxima.vercel.app";
+/* domínio oficial do site (metadata, sitemap, robots, JSON-LD e o selo de headers) */
+export const SITE_URL = "https://leonardomachmann.vercel.app";
 
 export const profile = {
   name: "Léo Machmann",

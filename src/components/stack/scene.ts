@@ -31,7 +31,6 @@ import {
   ACESFilmicToneMapping,
   Color,
   DirectionalLight,
-  ExtrudeGeometry,
   Group,
   LatheGeometry,
   Matrix4,
@@ -54,10 +53,11 @@ import {
   type BufferGeometry,
 } from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
-import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js";
 
 import { glCensus } from "@/lib/gl-census";
 import { recordFrame } from "@/lib/gpu-perf";
+
+import { closeLogoWorker, logoGeometry } from "./logo-geo";
 
 export type Token = { id: string; name: string; path: string; hex: string };
 export type SceneEvents = {
@@ -114,26 +114,6 @@ function coinGeometry() {
 }
 
 /* SVG 24×24 → logo extrudado deitado no topo da ficha (y para cima) */
-function logoGeometry(path: string): BufferGeometry | null {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path transform="translate(-12 12) scale(1 -1)" d="${path}"/></svg>`;
-  const shapes = new SVGLoader().parse(svg).paths.flatMap((p) => p.toShapes());
-  if (!shapes.length) return null;
-  const g = new ExtrudeGeometry(shapes, {
-    depth: 1.1,
-    bevelEnabled: true,
-    bevelThickness: 0.35,
-    bevelSize: 0.22,
-    bevelSegments: 1,
-    curveSegments: 4,
-  });
-  g.rotateX(-Math.PI / 2);
-  const s = LOGO / 24;
-  g.scale(s, s, s);
-  g.translate(0, T / 2 - 0.01, 0);
-  g.computeVertexNormals();
-  return g;
-}
-
 /* cor da marca dessaturada e puxada para o quente */
 function tone(hex: string) {
   const c = new Color(`#${hex}`);
@@ -294,7 +274,7 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
     const hit = new Mesh(coin, bodyMat);
     hit.castShadow = true;
     group.add(hit);
-    const lg = logoGeometry(token.path);
+    const lg = geos.get(token.id) ?? null;
     if (lg) {
       const top = new Mesh(lg, logoMat);
       top.castShadow = true;
@@ -313,11 +293,18 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
     hit.userData.piece = piece;
     return piece;
   };
-  /* extrusão dos logos: 3 por vez, devolvendo a thread entre os blocos */
+  /* extrusão dos logos: uma por vez, devolvendo a thread entre elas */
+  /* geometria dos logos: extrudada num Worker (logo-geo), um logo por vez */
+  const geos = new Map<string, BufferGeometry | null>();
+  for (const t of tokens) {
+    geos.set(t.id, await logoGeometry(t.path, LOGO / 24, T / 2 - 0.01));
+    await yieldMain();
+  }
+  closeLogoWorker();
   const pieces: Piece[] = [];
   for (let i = 0; i < tokens.length; i++) {
     pieces.push(build(tokens[i]));
-    if (i % 3 === 2) await yieldMain();
+    await yieldMain(); // uma peça por vez: cada ExtrudeGeometry custa ~20 ms com CPU 4×
   }
 
   /* véu: plano de papel entre a mesa e a peça em foco (sem 2º contexto) */
@@ -952,8 +939,24 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
   } catch {
     /* sem suporte: compila no primeiro render */
   }
-  for (const p of pieces) p.group.visible = false;
   veil.visible = false;
+  /* esferas envolventes (o frustum culling as calcula no 1º render, ~20 ms
+   * com CPU 4× para todos os logos juntos) e subida dos buffers para a GPU:
+   * uma peça por vez, fora da tela (scissor vazio), devolvendo a thread */
+  renderer.setScissorTest(true);
+  renderer.setScissor(0, 0, 0, 0);
+  for (const p of pieces) p.group.visible = false;
+  for (const p of pieces) {
+    p.group.traverse((o) => {
+      const g = (o as Mesh).geometry;
+      if (g && !g.boundingSphere) g.computeBoundingSphere();
+    });
+    p.group.visible = true;
+    renderer.render(scene, camera);
+    p.group.visible = false;
+    await yieldMain();
+  }
+  renderer.setScissorTest(false);
 
   /* volta à seção: as peças reaparecem onde estavam, sem nova queda */
   const restore = (saved: { id: string; x: number; z: number; yaw: number }[]) => {

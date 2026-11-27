@@ -7,7 +7,7 @@ import { claimGL, schedule as nudgeGL } from "@/lib/gl-slot";
 import { prewarm } from "@/lib/prewarm";
 
 import { auditDebug, note, probe } from "./diag";
-import type { Layout, Rect } from "./layout";
+import type { Layout } from "./layout";
 import type { Constellation } from "./scene";
 
 const idle = () => new Promise<void>((r) => ("requestIdleCallback" in window ? requestIdleCallback(() => r(), { timeout: 400 }) : setTimeout(r, 30)));
@@ -17,13 +17,15 @@ const idle = () => new Promise<void>((r) => ("requestIdleCallback" in window ? r
  * por idle) e reaproveitadas a cada nova montagem */
 const layouts = new Map<string, Promise<Layout>>();
 function getLayout(n: number, count: number) {
-  const key = `${n}:${count}`;
+  /* em pé: fases iniciais espalhadas (a mesma consulta de layout.NARROW_QUERY) */
+  const narrow = matchMedia("(max-aspect-ratio: 9/10)").matches;
+  const key = `${n}:${count}:${narrow}`;
   let p = layouts.get(key);
   if (!p) {
     const local = (why: string) =>
       import("./layout").then((m) => {
         note("layout", `main thread em pedaços (${why})`);
-        return m.makeLayoutChunked(n, count, idle);
+        return idle().then(() => m.makeLayout(n, count, undefined, narrow));
       });
     p = new Promise<Layout>((res) => {
       if (typeof Worker === "undefined") return void local("sem Worker").then(res);
@@ -38,7 +40,7 @@ function getLayout(n: number, count: number) {
           w.terminate();
           void local("Worker falhou").then(res);
         };
-        w.postMessage({ n, count });
+        w.postMessage({ n, count, narrow });
       } catch {
         void local("Worker indisponível").then(res);
       }
@@ -63,10 +65,10 @@ const fill = (s: string, v: Record<string, number>) => s.replace(/\{(\w+)\}/g, (
  * Camada interativa do AUDIT: buraco negro + constelação (WebGL) atrás do
  * texto da seção.
  * - hover/toque num nó brilhante: cartão com o dado
- * - arrastar: gira o sistema em volta do buraco negro (o scroll vertical nunca
- *   é capturado: touch-action pan-y, nenhum listener de wheel). No toque, o
- *   gesto só é nosso se começar horizontal (pan-y deixa o vertical para a
- *   página) ou sobre um nó (touchstart com preventDefault só nesse caso)
+ * - arrastar: a rede orbita o buraco negro (como no commit 76d962c), só até
+ *   onde nenhum nó sai da área segura nem cobre os textos; solta, fica onde
+ *   parou e, 6 s depois, volta à pose original. O disco inclina junto (±8°).
+ *   O scroll vertical nunca é capturado (touch-action pan-y, nenhum wheel)
  * - toque (pointer: coarse): sem efeito de cursor na cena; no celular o
  *   cartão é um bottom sheet com botão de fechar (tocar fora ou rolar fecha)
  * - clique no vazio: onda de scan saindo do horizonte; os nós acendem em
@@ -77,6 +79,12 @@ const fill = (s: string, v: Record<string, number>) => s.replace(/\{(\w+)\}/g, (
  * Fallback (reduced-motion, sem WebGL2, erro de shader, contexto perdido
  * duas vezes): imagem estática da mesma cena + os nós como lista tocável
  * no celular (a lista em texto sempre existe para leitores de tela).
+ * Pronto (ready): three.js carregado, shaders compilados (compileAsync),
+ * buffers criados, um quadro desenhado fora da tela e o nível escolhido. A
+ * preparação começa cedo, em idle, logo depois do hero (lib/prewarm). Quem
+ * chega antes de ficar pronto vê o fundo escuro e o título; o canvas entra
+ * com fade de 300 ms quando fica pronto. Nada é criado nem compilado de
+ * forma síncrona na entrada.
  * Diagnóstico em aparelho real: ?auditdebug (diag.ts).
  */
 export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: AuditLabels }) {
@@ -98,7 +106,8 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
     const cap = probe(); // os contextos de teste são liberados na hora
     /* caixas de texto da seção por cima do campo (px do campo): o sistema
      * (nós e poeira) não as invade. No celular o campo já é só a faixa livre */
-    const keepOut = (): Rect[] => {
+    /* caixas de texto sobre o campo (px do campo): título, lede, coluna da direita */
+    const keepOut = () => {
       const f = field.getBoundingClientRect();
       return [...section.querySelectorAll(".sh-label, .sh-title, .sh-lede, .audit-copy, .audit-list")]
         .map((e) => e.getBoundingClientRect())
@@ -107,7 +116,7 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
     };
     let isStatic = false;
     let lay: typeof import("./layout") | null = null;
-    const drawStatic = () => lay && setSvg(staticSvg(lay, nodes.length, field.clientWidth, field.clientHeight, keepOut()));
+    const drawStatic = () => lay && setSvg(staticSvg(lay, nodes.length));
     const ro = new ResizeObserver(() => (isStatic ? drawStatic() : sceneRef.current?.setKeepOut(keepOut())));
     ro.observe(section);
     /* os textos mudam de lugar sem a seção mudar de tamanho (modo estático,
@@ -137,10 +146,12 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
     }
 
     const mobile = matchMedia("(max-width: 639px)").matches;
-    /* sem o pass de lente: celular/toque (no resto, lib/gpu-perf decide) */
-    const simple = mobile || matchMedia("(pointer: coarse)").matches;
+    const coarse = matchMedia("(pointer: coarse)").matches;
     /* aparelho fraco: menos partículas, nunca menos de 600 */
     const weak = (cap.cores > 0 && cap.cores <= 4) || (cap.mem > 0 && cap.mem <= 2);
+    /* qualidade pelo desempenho medido (lib/gpu-perf), no celular também; o
+     * modo simples só para aparelho fraco ou se o fps cair de verdade (a cena desce sozinha) */
+    const simple = weak;
     let scene: Constellation | null = null;
     let canvas: HTMLCanvasElement | null = null;
     let want = false; // o contexto deve existir (lib/gl-slot)
@@ -149,6 +160,7 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
     let follow = 0;
     let ready = false; // nível de qualidade escolhido: pode renderizar
     let chooseGo: (() => void) | null = null;
+    let chooseIdle: (() => void) | null = null;
     let chooseStop: (() => void) | null = null;
 
     /* durante o círculo da 1ª entrada (AuditReveal) o loop fica parado: só
@@ -161,7 +173,12 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
       /* 1º quadro desenhado (o rAF da cena roda antes deste): avisa o AuditReveal */
       if (on && !liveSent) {
         liveSent = true;
-        requestAnimationFrame(() => requestAnimationFrame(() => section.dispatchEvent(new Event("audit:live"))));
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            section.dataset.ready = ""; // CSS: o canvas entra com fade de 300 ms
+            section.dispatchEvent(new Event("audit:live"));
+          }),
+        );
       }
     };
     /* qualidade: escolhida meia viewport ANTES do campo aparecer (ou na hora,
@@ -172,12 +189,11 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
       const check = () => {
         const r = field.getBoundingClientRect();
         const gap = r.top > innerHeight ? r.top - innerHeight : r.bottom < 0 ? -r.bottom : 0;
-        if (gap <= innerHeight * 0.5) idleGo();
-        else if (active) go();
+        if (gap <= innerHeight * 0.5 || active) idleGo(); // sempre num idle, nunca na entrada
       };
       const stop = () => {
         removeEventListener("scroll", check);
-        chooseGo = chooseStop = null;
+        chooseGo = chooseIdle = chooseStop = null;
       };
       const go = () => {
         stop();
@@ -194,6 +210,7 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
         void idle().then(() => chooseGo === go && go());
       };
       chooseGo = go;
+      chooseIdle = idleGo;
       chooseStop = stop;
       addEventListener("scroll", check, { passive: true });
       check();
@@ -201,6 +218,7 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
     /* preparação em pedaços: código e layout em paralelo (o layout num
      * Worker), contexto num idle, shaders e aquecimento em outros (warm).
      * Termina com o loop PARADO; quem liga é o gl-slot. */
+    /* a densidade do commit 76d962c (aparelho fraco: 600, para não travar) */
     const count = weak ? 600 : mobile ? 1500 : 4500;
     note("partículas", `${count}${weak ? " (aparelho fraco)" : ""} · ${simple ? "simple (sem lente)" : "lente (nível decidido perto da seção)"}`);
     let losses = 0;
@@ -218,7 +236,7 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
         made = createConstellation(c, nodes.length, {
           count,
           simple,
-          layout: layout.n === Math.min(nodes.length, 12) ? layout : undefined,
+          layout: layout.orbits.length === Math.min(nodes.length, 12) ? layout : undefined,
           keep: keepOut(),
           /* contexto perdido (no celular: app em segundo plano, memória):
            * a 1ª vez recria; a 2ª vira imagem estática */
@@ -277,24 +295,24 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
       cardIdx.current = -1;
       setCard(-1);
     };
-    /* lib/gl-slot: nasce PARADA cedo — quando o usuário chega ao WORK, bem
-     * antes da STACK (desktop; no celular, a ~0,6 viewport) — para os shaders
-     * compilarem em idle longe do AUDIT. Renderiza só quando é a vez desta
-     * seção (prioridade depois que a revelação começou). Depois de criada,
-     * NUNCA é liberada (persist): fora da tela o loop só pausa; ao voltar,
-     * retoma sem recompilar nem regenerar nada. */
-    const work = document.getElementById("findings");
-    const early = () => {
-      if (mobile || !work) return false;
-      const vh = innerHeight;
-      const f = field.getBoundingClientRect();
-      return f.top > vh && work.getBoundingClientRect().top < vh; // AUDIT abaixo e o WORK já na tela (ou passou)
-    };
-    const stopPrewarm = prewarm(() => Promise.all([import("./scene"), getLayout(Math.min(nodes.length, 12), count)]));
+    /* lib/gl-slot: nasce PARADA, cedo — logo depois que o hero carrega e o
+     * código (three.js + cena + layout) termina de chegar em idle
+     * (lib/prewarm; no celular, depois da 1ª rolagem) — para tudo ficar
+     * pronto longe do AUDIT. Se a seção chegar antes, prepara a ~0,6
+     * viewport, do mesmo jeito (em idle). Renderiza só quando é a vez desta
+     * seção. Depois de criada, NUNCA é liberada (persist): fora da tela o
+     * loop só pausa; ao voltar, retoma sem recompilar nem regenerar nada. */
+    let early = false;
+    const stopPrewarm = prewarm(() =>
+      Promise.all([import("./scene"), getLayout(Math.min(nodes.length, 12), count)]).then(() => {
+        early = true;
+        nudgeGL();
+      }),
+    );
     const release = claimGL({
       prepareAt: 0.6,
       persist: true, // criada uma vez por página: fora da tela só pausa
-      keep: early,
+      keep: () => early,
       el: field,
       prepare() {
         want = true;
@@ -309,7 +327,7 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
       },
       run(on) {
         active = on;
-        if (on) chooseGo?.();
+        if (on) chooseIdle?.();
         sync();
       },
       priority: () => ("in" in section.dataset ? 1 : 0),
@@ -367,6 +385,8 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
       if (i >= 0) follow = requestAnimationFrame(place);
     };
 
+    /* a interação do commit 76d962c: arrastar (> 6 px) gira; clique/toque
+     * num nó abre o cartão; no vazio, escaneia */
     let down: { x: number; y: number; id: number; drag: boolean } | null = null;
     const onMove = (e: PointerEvent) => {
       if (!scene) return;
@@ -386,8 +406,10 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
           return;
         }
       }
+      /* efeito de cursor (empurrão da poeira, peso na lente): só com mouse;
+       * no toque não há cursor nenhum */
+      if (e.pointerType === "mouse" && !coarse) scene.pointer(p.x, p.y, true);
       if (e.pointerType === "mouse") {
-        scene.pointer(p.x, p.y, true); // efeito de cursor: só com mouse
         const i = scene.hit(p.x, p.y);
         field.style.cursor = i >= 0 ? "pointer" : "";
         show(i);
@@ -402,10 +424,7 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
       if (!scene || !down || down.id !== e.pointerId) return;
       const wasDrag = down.drag;
       down = null;
-      if (wasDrag) {
-        scene.release();
-        return;
-      }
+      if (wasDrag) return;
       const p = pos(e);
       const i = scene.hit(p.x, p.y);
       if (i >= 0) {
@@ -435,16 +454,7 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
     };
     const onCancel = () => {
       down = null;
-      scene?.release();
       scene?.pointer(0, 0, false);
-    };
-    /* toque que começa num nó é nosso (sem rolar a página); fora dele, o
-     * navegador decide: vertical rola, horizontal vira arrasto (pan-y) */
-    const onTouch = (e: TouchEvent) => {
-      if (!scene || e.touches.length !== 1) return;
-      const r = field.getBoundingClientRect();
-      const t = e.touches[0];
-      if (scene.hit(t.clientX - r.left, t.clientY - r.top) >= 0) e.preventDefault();
     };
     /* bottom sheet: tocar fora fecha; rolar a página também */
     const onDocDown = (e: PointerEvent) => {
@@ -457,7 +467,6 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
       if (cardIdx.current >= 0 && sheet.matches && Math.abs(scrollY - openY) > 40) show(-1);
     };
     closeCard.current = () => show(-1);
-    field.addEventListener("touchstart", onTouch, { passive: false });
     document.addEventListener("pointerdown", onDocDown);
     addEventListener("scroll", onScroll, { passive: true });
     field.addEventListener("pointermove", onMove);
@@ -470,7 +479,6 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
       ro.disconnect();
       mo.disconnect();
       document.removeEventListener("visibilitychange", sync);
-      field.removeEventListener("touchstart", onTouch);
       document.removeEventListener("pointerdown", onDocDown);
       removeEventListener("scroll", onScroll);
       field.removeEventListener("pointermove", onMove);
@@ -533,50 +541,49 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
   );
 }
 
-/* imagem estática: o mesmo sistema em repouso (buraco negro + anel + nós),
- * em SVG, no tamanho do campo e com as mesmas caixas de texto evitadas */
-function staticSvg(lay: typeof import("./layout"), n: number, fw: number, fh: number, keep: Rect[]) {
-  const { makeLayout, region, DUST_TILT } = lay;
-  const W = Math.max(320, Math.round(fw)), H = Math.max(240, Math.round(fh));
+/* imagem estática: a mesma cena no instante 0 (buraco negro + rede), em SVG */
+function staticSvg(lay: typeof import("./layout"), n: number) {
+  const { makeLayout, orbitPos, projectStatic, HALF_H, DUST_TILT } = lay;
+  const W = 1600;
+  const H = 800;
   const L = makeLayout(n, 1400);
-  const R = region(W, H, keep, n);
-  const { hc } = R;
-  const homes = R.homes;
-  const sq = Math.cos(DUST_TILT); // o anel visto inclinado
-  const spread = 0.38 * R.rin * 0.55;
-  const g = (k: number) => Math.sin(k * 12.9898) * 43758.5453 % 1; // desvio determinístico
+  const bx = -0.5 * HALF_H * (W / H); // buraco negro no terço esquerdo
+  const P = (x: number, y: number, z: number) => projectStatic(x + bx, y, z, W, H);
+  const nodes = L.orbits.map((o) => orbitPos(o, 0));
+  const c = Math.cos(DUST_TILT), s = Math.sin(DUST_TILT);
   let dots = "";
   for (let i = 0; i < L.count; i++) {
     const [px, py, pz] = L.points.subarray(i * 3, i * 3 + 3);
     const [kind, a, b, t] = L.ref.subarray(i * 4, i * 4 + 4);
-    let x: number, y: number;
-    if (kind === 0) {
-      x = homes[a].x + px * spread;
-      y = homes[a].y + py * spread;
-    } else if (kind === 1) {
-      x = homes[a].x + (homes[b].x - homes[a].x) * t + px * spread;
-      y = homes[a].y + (homes[b].y - homes[a].y) * t + py * spread;
-    } else {
-      const u = kind === 2 ? px : px * (1 - Math.abs(g(i)));
-      const rr = R.rin + (R.rout - R.rin) * u;
-      x = hc.x + Math.cos(py) * rr;
-      y = hc.y - Math.sin(py) * rr * sq + pz * rr * 0.3;
+    let q: number[];
+    if (kind === 0) q = [nodes[a][0] + px, nodes[a][1] + py, nodes[a][2] + pz];
+    else if (kind === 1) q = [0, 1, 2].map((k) => nodes[a][k] + (nodes[b][k] - nodes[a][k]) * t + [px, py, pz][k]);
+    else {
+      const r0 = kind === 2 ? px : px * Math.sqrt(1 - L.seeds[i]);
+      const h = kind === 2 ? pz : 0;
+      q = [Math.cos(py) * r0, Math.sin(py) * r0 * c - h * s, Math.sin(py) * r0 * s + h * c];
+      if (Math.hypot(q[0], q[1]) < 0.5) continue; // dentro da sombra
     }
-    /* nunca sobre o disco nem sobre um texto (o mesmo corte do shader) */
-    if (((x - hc.x) / R.ex) ** 2 + ((y - hc.y) / R.ey) ** 2 < 1.2 || keep.some((k) => x > k.x - 8 && x < k.x + k.w + 8 && y > k.y - 8 && y < k.y + k.h + 8)) continue;
+    const p = P(q[0], q[1], q[2]);
     const col = L.tones[i] > 0.5 ? "#f5a524" : "#ece9e0";
-    dots += `<circle cx="${x.toFixed(0)}" cy="${y.toFixed(0)}" r="${(L.sizes[i] * 1.1).toFixed(1)}" fill="${col}" fill-opacity="${L.tones[i] > 0.5 ? 0.55 : 0.4}"/>`;
+    dots += `<circle cx="${p.x.toFixed(0)}" cy="${p.y.toFixed(0)}" r="${(L.sizes[i] * 1.1 * p.s).toFixed(1)}" fill="${col}" fill-opacity="${L.tones[i] > 0.5 ? 0.55 : 0.4}"/>`;
   }
   const lines = L.pairs
-    .filter(([a, b]) => Math.hypot((homes[a].x + homes[b].x) / 2 - hc.x, (homes[a].y + homes[b].y) / 2 - hc.y) > R.rin * 0.9)
-    .map(([a, b]) => `<line x1="${homes[a].x.toFixed(0)}" y1="${homes[a].y.toFixed(0)}" x2="${homes[b].x.toFixed(0)}" y2="${homes[b].y.toFixed(0)}"/>`)
+    .map(([a, b]) => {
+      const p = P(nodes[a][0], nodes[a][1], nodes[a][2]);
+      const q = P(nodes[b][0], nodes[b][1], nodes[b][2]);
+      return `<line x1="${p.x.toFixed(0)}" y1="${p.y.toFixed(0)}" x2="${q.x.toFixed(0)}" y2="${q.y.toFixed(0)}"/>`;
+    })
     .join("");
-  const nodeDots = homes
-    .map((p) => `<circle cx="${p.x.toFixed(0)}" cy="${p.y.toFixed(0)}" r="14" fill="#f5a524" fill-opacity=".18"/><circle cx="${p.x.toFixed(0)}" cy="${p.y.toFixed(0)}" r="4" fill="#fff3d6"/>`)
+  const nodeDots = nodes
+    .map(([x, y, z]) => {
+      const p = P(x, y, z);
+      return `<circle cx="${p.x.toFixed(0)}" cy="${p.y.toFixed(0)}" r="14" fill="#f5a524" fill-opacity=".18"/><circle cx="${p.x.toFixed(0)}" cy="${p.y.toFixed(0)}" r="4" fill="#fff3d6"/>`;
+    })
     .join("");
   /* buraco negro: arco de trás (imagem curvada do disco), horizonte, anel de fótons, frente do disco */
-  const o = { x: hc.x, y: hc.y };
-  const rs = hc.rs;
+  const o = P(0, 0, 0);
+  const rs = H * 0.026;
   const sh = 2.6 * rs;
   const hole = `<defs>
 <radialGradient id="bh-arc" cx="${o.x}" cy="${o.y}" r="${(7.7 * rs).toFixed(0)}" gradientUnits="userSpaceOnUse"><stop offset="${(sh / (7.7 * rs)).toFixed(2)}" stop-color="#fff3d6"/><stop offset=".5" stop-color="#f5a524" stop-opacity=".7"/><stop offset="1" stop-color="#f5a524" stop-opacity="0"/></radialGradient>
