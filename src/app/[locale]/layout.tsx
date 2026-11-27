@@ -31,7 +31,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     title: { default: title, template: `%s · ${profile.name}` },
     description,
     applicationName: profile.name,
-    authors: [{ name: profile.fullName, url: profile.contact.github }],
+    authors: [{ name: profile.fullName, url: profile.contact.linkedin }],
     creator: profile.fullName,
     keywords: t.raw("keywords") as string[],
     alternates: alt,

@@ -48,14 +48,17 @@ export const profile = {
   lastScan: "2026-11", // atualize quando mexer no conteúdo
 
   contact: {
-    email: "TODO@exemplo.com", // TODO: e-mail público de contato
+    email: "leonardomachmann@gmail.com",
     github: "https://github.com/Leonard0MF",
     githubHandle: "Leonard0MF",
-    linkedin: "https://www.linkedin.com/in/TODO", // TODO: URL do LinkedIn
+    linkedin: "https://www.linkedin.com/in/leonardo-machmann-francisco/",
   },
 
   aegisUrl: "https://aegis-ten-zeta.vercel.app/",
 } as const;
+
+/* perfis públicos: JSON-LD (sameAs), metadata e rodapé */
+export const sameAs = [profile.contact.linkedin, profile.contact.github];
 
 export const services: ServiceGroup[] = [
   { id: "frontend", port: "443/tcp", state: "open" },
@@ -90,6 +93,7 @@ export const stackIndex: StackCategory[] = [
       { id: "typescript", name: "TypeScript", level: "practice" },
       { id: "html5", name: "HTML5", level: "practice" },
       { id: "css3", name: "CSS3", level: "practice" },
+      { id: "python", name: "Python", level: "familiar" },
       { id: "cpp", name: "C++", level: "contact" },
       { id: "java", name: "Java", level: "contact" },
     ],
@@ -176,6 +180,7 @@ export const stackCoins: { id: string; name: string }[] = [
   { id: "nextjs", name: "Next.js" },
   { id: "typescript", name: "TypeScript" },
   { id: "javascript", name: "JavaScript" },
+  { id: "python", name: "Python" },
   { id: "html5", name: "HTML5" },
   { id: "css3", name: "CSS3" },
   { id: "tailwind", name: "Tailwind CSS" },
