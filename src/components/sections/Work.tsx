@@ -106,7 +106,7 @@ function WorkItem({ p, i, total, t, locale }: { p: Project; i: number; total: nu
 
           <p className="text-[15px] leading-relaxed xl:text-base">{t(`${k}.summary`)}</p>
 
-          <ol className="space-y-1.5 border-t border-ink/15 pt-3 text-sm leading-snug xl:text-[15px]">
+          <ol className="work-hl space-y-1.5 border-t border-ink/15 pt-3 text-sm leading-snug xl:text-[15px]">
             {(t.raw(`${k}.highlights`) as string[]).map((h, j) => (
               <li key={j} className="flex gap-3">
                 <span aria-hidden="true" className="font-mono text-xs leading-5 text-accent-ink">
@@ -129,7 +129,7 @@ function WorkItem({ p, i, total, t, locale }: { p: Project; i: number; total: nu
             <p className={`${meta} text-ink-soft`}>{t("work.stackNone")}</p>
           )}
 
-          <div className={`${meta} flex flex-wrap items-center gap-x-6 gap-y-2`}>
+          <div className={`work-links ${meta} flex flex-wrap items-center gap-x-6 gap-y-2`}>
             {p.private && (
               <span className="inline-flex items-center gap-2 border border-ink/30 px-2 py-1">
                 <span aria-hidden="true" className="size-1.5 rounded-full bg-ink" />
@@ -137,17 +137,17 @@ function WorkItem({ p, i, total, t, locale }: { p: Project; i: number; total: nu
               </span>
             )}
             <Link href={caseHref} className="tap ulink">
-              {t("common.caseStudy")} <span aria-hidden="true">→</span>
+              {t("common.caseStudy")} <span aria-hidden="true" className="work-arrow">→</span>
             </Link>
             {p.links.demo && (
               <a href={p.links.demo} target="_blank" rel="noreferrer" className="tap ulink">
-                {t("common.demo")} <span aria-hidden="true">↗</span>
+                {t("common.demo")} <span aria-hidden="true" className="work-arrow">↗</span>
                 <span className="sr-only">{newTab}</span>
               </a>
             )}
             {p.links.repo && (
               <a href={p.links.repo} target="_blank" rel="noreferrer" className="tap ulink">
-                {t("common.repo")} <span aria-hidden="true">↗</span>
+                {t("common.repo")} <span aria-hidden="true" className="work-arrow">↗</span>
                 <span className="sr-only">{newTab}</span>
               </a>
             )}

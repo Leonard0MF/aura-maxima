@@ -14,7 +14,9 @@ const NOISE = "#%@*+=<>/{}[]01$&?!";
  * sem JS ou com reduced-motion, o texto aparece direto.
  *
  * trigger="event": não roda ao entrar na tela; roda a cada evento "decrypt"
- * disparado no elemento (data-decrypt), p.ex. o hover do print no WORK.
+ * disparado no elemento (data-decrypt), p.ex. o hover do projeto no WORK.
+ * Um novo "decrypt" cancela o anterior e recomeça do zero; "decrypt-stop"
+ * cancela e mostra o texto certo na hora (saída rápida do hover).
  * dur: duração total em ms (padrão 800).
  */
 export function Decrypt({ text, className, trigger = "view", dur = 800 }: { text: string; className?: string; trigger?: "view" | "event"; dur?: number }) {
@@ -51,10 +53,17 @@ export function Decrypt({ text, className, trigger = "view", dur = 800 }: { text
       start = 0;
       raf = requestAnimationFrame(tick);
     };
+    const stop = () => {
+      cancelAnimationFrame(raf);
+      raf = 0;
+      chars.forEach((c) => delete c.dataset.s);
+    };
     if (trigger === "event") {
       el.addEventListener("decrypt", play);
+      el.addEventListener("decrypt-stop", stop);
       return () => {
         el.removeEventListener("decrypt", play);
+        el.removeEventListener("decrypt-stop", stop);
         cancelAnimationFrame(raf);
         chars.forEach((c) => delete c.dataset.s);
       };
