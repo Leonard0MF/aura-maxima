@@ -6,7 +6,7 @@
  */
 import { ExtrudeGeometry, Path, Shape, Vector2 } from "three";
 
-import { EXTRUDE, type LogoJob, type LogoOut } from "./logo-geo";
+import { EXTRUDE, type LogoJob, type LogoOut } from "./logo-shared";
 
 const ctx = self as unknown as {
   onmessage: ((e: MessageEvent<LogoJob>) => void) | null;

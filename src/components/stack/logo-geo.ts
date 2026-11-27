@@ -6,13 +6,9 @@
 import { BufferAttribute, BufferGeometry, ExtrudeGeometry, type Shape } from "three";
 import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js";
 
-export const EXTRUDE = { depth: 1.1, bevelEnabled: true, bevelThickness: 0.35, bevelSize: 0.22, bevelSegments: 1, curveSegments: 4 };
-const CURVE = EXTRUDE.curveSegments;
+import { EXTRUDE, type LogoJob, type LogoOut } from "./logo-shared";
 
-export type LogoJob = { id: number; shapes: { outer: Float32Array; holes: Float32Array[] }[]; s: number; y: number };
-export type LogoOut =
-  | { id: number; pos: Float32Array; nor: Float32Array; uv: Float32Array; groups: { start: number; count: number; mi: number }[]; err?: undefined }
-  | { id: number; err: true };
+const CURVE = EXTRUDE.curveSegments;
 
 function shapesOf(path: string): Shape[] {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path transform="translate(-12 12) scale(1 -1)" d="${path}"/></svg>`;
