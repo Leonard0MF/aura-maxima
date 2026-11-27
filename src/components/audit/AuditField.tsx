@@ -63,9 +63,10 @@ const fill = (s: string, v: Record<string, number>) => s.replace(/\{(\w+)\}/g, (
  * Camada interativa do AUDIT: buraco negro + constelação (WebGL) atrás do
  * texto da seção.
  * - hover/toque num nó brilhante: cartão com o dado
- * - arrastar: gira a rede em volta do próprio centróide, com os limites e a
- *   volta ao repouso do commit 76d962c (o scroll vertical nunca é
- *   capturado: touch-action pan-y, nenhum listener de wheel)
+ * - arrastar: a rede orbita o buraco negro (como no commit 76d962c), só até
+ *   onde nenhum nó sai da área segura nem cobre os textos; solta, fica onde
+ *   parou e, 6 s depois, volta à pose original. O disco inclina junto (±8°).
+ *   O scroll vertical nunca é capturado (touch-action pan-y, nenhum wheel)
  * - toque (pointer: coarse): sem efeito de cursor na cena; no celular o
  *   cartão é um bottom sheet com botão de fechar (tocar fora ou rolar fecha)
  * - clique no vazio: onda de scan saindo do horizonte; os nós acendem em
@@ -103,10 +104,18 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
     const cap = probe(); // os contextos de teste são liberados na hora
     /* caixas de texto da seção por cima do campo (px do campo): o sistema
      * (nós e poeira) não as invade. No celular o campo já é só a faixa livre */
+    /* caixas de texto sobre o campo (px do campo): título, lede, coluna da direita */
+    const keepOut = () => {
+      const f = field.getBoundingClientRect();
+      return [...section.querySelectorAll(".sh-label, .sh-title, .sh-lede, .audit-copy, .audit-list")]
+        .map((e) => e.getBoundingClientRect())
+        .filter((r) => r.width > 2 && r.height > 2 && r.bottom > f.top && r.top < f.bottom && r.right > f.left && r.left < f.right)
+        .map((r) => ({ x: r.left - f.left, y: r.top - f.top, w: r.width, h: r.height }));
+    };
     let isStatic = false;
     let lay: typeof import("./layout") | null = null;
     const drawStatic = () => lay && setSvg(staticSvg(lay, nodes.length));
-    const ro = new ResizeObserver(() => isStatic && drawStatic());
+    const ro = new ResizeObserver(() => (isStatic ? drawStatic() : sceneRef.current?.setKeepOut(keepOut())));
     ro.observe(section);
     /* os textos mudam de lugar sem a seção mudar de tamanho (modo estático,
      * fontes): observa também o rodapé e a lista */
@@ -224,6 +233,7 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
           count,
           simple,
           layout: layout.orbits.length === Math.min(nodes.length, 12) ? layout : undefined,
+          keep: keepOut(),
           /* contexto perdido (no celular: app em segundo plano, memória):
            * a 1ª vez recria; a 2ª vira imagem estática */
           onLost: () => {

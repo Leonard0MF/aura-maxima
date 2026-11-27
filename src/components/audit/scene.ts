@@ -38,7 +38,6 @@ import {
   PlaneGeometry,
   Points,
   Scene,
-  Euler,
   ShaderMaterial,
   Vector2,
   Vector3,
@@ -182,10 +181,12 @@ uniform vec2 uBH;      // centro em px do drawing buffer (origem embaixo)
 uniform float uScale;  // px por rs
 uniform float uTime;
 uniform float uIncl;   // elevação da câmera sobre o plano do disco (rad)
+uniform float uRoll;   // giro do disco no plano da tela (rad): acompanha o arraste
 uniform vec3 uWhite;
 uniform vec3 uAmber;
 const float RIN = 2.6;
 const float ROUT = 9.0;
+vec2 roll(vec2 p) { float c = cos(uRoll), s = sin(uRoll); return vec2(c * p.x - s * p.y, s * p.x + c * p.y); }
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float vnoise(vec2 p) {
   vec2 i = floor(p), f = fract(p);
@@ -229,11 +230,12 @@ void main() {
   vec3 bg = texture2D(tScene, (uBH + src * uScale) / uRes).rgb;
   vec3 col = uBg + bg;
   if (r < RMARCH) {
+    vec2 q = roll(p); // só o disco gira com o arraste; a lente da cena não
     float si = sin(uIncl), ci = cos(uIncl);
     vec3 cam = vec3(0.0, si, ci) * D;
     vec3 fwd = -normalize(cam);
     vec3 up = vec3(0.0, ci, -si);
-    vec3 dir = normalize(fwd + (p.x * vec3(1.0, 0.0, 0.0) + p.y * up) / D);
+    vec3 dir = normalize(fwd + (q.x * vec3(1.0, 0.0, 0.0) + q.y * up) / D);
     // linha reta até a esfera de raio 15 (fora dela a curvatura é desprezível)
     float b = dot(cam, dir);
     float tt = -b - sqrt(max(0.0, b * b - (dot(cam, cam) - 225.0)));
@@ -277,7 +279,7 @@ void main() {
 const SIMPLE_FS = /* glsl */ `
 ${BH_COMMON}
 void main() {
-  vec2 p = (gl_FragCoord.xy - uBH) / uScale;
+  vec2 p = roll((gl_FragCoord.xy - uBH) / uScale);
   float r = length(p);
   float si = max(0.08, sin(uIncl));
   vec3 col = vec3(0.0);
@@ -322,6 +324,8 @@ export type Constellation = {
   run(on: boolean): void;
   pointer(x: number, y: number, inside: boolean): void;
   dragBy(dx: number, dy: number): void;
+  /** caixas de texto por cima do campo (px do campo): o giro não leva nenhum nó para cima delas */
+  setKeepOut(rects: { x: number; y: number; w: number; h: number }[]): void;
   hit(x: number, y: number): number;
   nodeAt(i: number): { x: number; y: number };
   hover(i: number): void;
@@ -332,14 +336,16 @@ export type Constellation = {
   /** escolhe o nível de qualidade (uma vez por sessão; ajusta o buffer e desenha um quadro nele) */
   choose(): { quality: string; why: string };
   /** testes (?auditdebug): buraco negro, nós na tela, centróide da rede e rotação */
-  debug(): { hole: { x: number; y: number }; nodes: { x: number; y: number }[]; centroid: { x: number; y: number }; rot: { x: number; y: number }; w: number; h: number };
+  debug(): { hole: { x: number; y: number }; nodes: { x: number; y: number }[]; rot: { x: number; y: number }; keep: { x: number; y: number; w: number; h: number }[]; margin: number; bad: number; badRest: number; w: number; h: number };
+  /** testes: arrasta como o mouse arrastaria (dx, dy em px) e solta */
+  debugDrag(dx: number, dy: number): void;
   destroy(): void;
 };
 
 export function createConstellation(
   canvas: HTMLCanvasElement,
   nNodes: number,
-  opts: { count: number; simple: boolean; layout?: Layout; onLost(): void },
+  opts: { count: number; simple: boolean; layout?: Layout; keep?: { x: number; y: number; w: number; h: number }[]; onLost(): void },
 ): Constellation {
   const n = Math.min(nNodes, MAX_NODES);
   /* posições prontas do Worker (layout.worker); sem ele, o mesmo cálculo aqui */
@@ -465,6 +471,7 @@ export function createConstellation(
     uScale: { value: 20 },
     uTime: { value: 0 },
     uIncl: { value: 0.16 },
+    uRoll: { value: 0 },
     uCursor: { value: new Vector2(-1e4, -1e4) },
     uCM: { value: 0 },
     uE2: { value: 5.2 },
@@ -495,9 +502,22 @@ export function createConstellation(
   const m = { x: 9, y: 9, vx: 0, vy: 0, tx: 9, ty: 9 };
   const pk = { v: 0, p: 0, t: 0 };
   const cm = { v: 0 };
-  const rot = { x: 0, y: 0, vx: 0, vy: 0, z: 0 };
+  /*
+   * Giro (o do commit 76d962c: em volta do buraco negro, a rede orbita ao
+   * arrastar, com a mesma sensibilidade e os mesmos tetos ±0,9 / ±0,5 rad).
+   * Mais: o arraste só vai até onde nenhum nó sai da área segura (SAFE px
+   * das bordas) nem entra nas caixas de texto — calculado com as posições
+   * reais dos nós. Sem mola: solto, fica onde parou; 6 s sem interação →
+   * volta à pose original em ~2 s.
+   */
+  const rot = { x: 0, y: 0, z: 0 };
   let dragging = 0;
   let dragTimer = 0;
+  let lastDrag = -1e9; // performance.now() do último arraste
+  const ret = { t0: -1, x0: 0, y0: 0 }; // volta à pose original
+  const SAFE = 48;
+  const NODE_R = 12; // folga do halo do nó (px)
+  let keep = (opts.keep ?? []).slice();
   let waveT = -1;
   let waveMax = 0;
   let waveOrder: { i: number; d: number }[] = [];
@@ -547,7 +567,6 @@ export function createConstellation(
     bhNdc.y = narrow ? 0.42 : 0;
     pxPerRs = narrow ? w * 0.026 : Math.min(h * 0.026, w * 0.018);
     base.set(bhNdc.x * HALF_H * asp, bhNdc.y * HALF_H, 0);
-    group.position.copy(base);
     rot.z = narrow ? -Math.PI / 2 : 0;
     /* a constelação abre para o lado livre: cabe na largura (desktop) ou na altura (celular) */
     const room = narrow ? (bhNdc.y + 0.55) * HALF_H : 1.45 * HALF_H * asp;
@@ -568,30 +587,54 @@ export function createConstellation(
     }
   }
 
-  /*
-   * Giro em volta do CENTRÓIDE da rede (não do buraco negro): em repouso, o
-   * mesmo lugar de sempre; arrastando, a rede gira no lugar em vez de ir
-   * parar longe. O centróide é recalculado a cada quadro a partir das
-   * posições atuais dos nós (que seguem as órbitas): nada se acumula.
-   *   repouso:    mundo = base + k·Rz·p
-   *   arrastando: mundo = base + k·Rz·c + k·Rd·Rz·(p − c)   (Rd = giro do arraste)
-   */
-  const cLocal = new Vector3();
-  const cRest = new Vector3();
-  const eRest = new Euler();
-  const eFull = new Euler();
-  function orient() {
-    cLocal.set(0, 0, 0);
-    for (let i = 0; i < n; i++) cLocal.set(cLocal.x + nodePos[i * 3] / n, cLocal.y + nodePos[i * 3 + 1] / n, cLocal.z + nodePos[i * 3 + 2] / n);
-    const k = group.scale.x;
-    eRest.set(0, 0, rot.z);
-    cRest.copy(cLocal).applyEuler(eRest).multiplyScalar(k); // Rz·c (escala k)
-    eFull.set(rot.x, rot.y, rot.z);
-    group.rotation.copy(eFull);
-    /* posição = base + k·Rz·c − k·Rd·Rz·c, com Rd·Rz = a rotação inteira */
-    group.position.copy(base).add(cRest).sub(cLocal.applyEuler(eFull).multiplyScalar(k));
-  }
   const base = new Vector3();
+  function orient() {
+    group.position.copy(base);
+    group.rotation.set(rot.x, rot.y, rot.z);
+  }
+  /* quanto (px) os nós invadem a área proibida na pose (rx, ry), com as
+   * posições ATUAIS dos nós: bordas (SAFE px) e caixas de texto */
+  function badness(rx: number, ry: number) {
+    group.position.copy(base);
+    group.rotation.set(rx, ry, rot.z);
+    group.updateMatrixWorld();
+    let bad = 0;
+    for (let i = 0; i < n; i++) {
+      v.set(nodePos[i * 3], nodePos[i * 3 + 1], nodePos[i * 3 + 2]).applyMatrix4(group.matrixWorld).project(camera);
+      const x = (v.x * 0.5 + 0.5) * W, y = (-v.y * 0.5 + 0.5) * H;
+      const m0 = SAFE + NODE_R;
+      bad += Math.max(0, m0 - x) + Math.max(0, x - (W - m0)) + Math.max(0, m0 - y) + Math.max(0, y - (H - m0));
+      for (const k of keep) {
+        const inX = Math.min(x - (k.x - NODE_R), k.x + k.w + NODE_R - x);
+        const inY = Math.min(y - (k.y - NODE_R), k.y + k.h + NODE_R - y);
+        if (inX > 0 && inY > 0) bad += Math.min(inX, inY);
+      }
+    }
+    orient();
+    group.updateMatrixWorld();
+    return bad;
+  }
+  /* uma pose vale se não piora em relação à atual nem à original (se a pose
+   * original já encosta em algo, o arraste não pode piorar isso) */
+  const okPose = (rx: number, ry: number, limit: number) => badness(rx, ry) <= limit + 0.5;
+  /* move de (rot.x, rot.y) para (tx, ty) até onde a pose continua valendo:
+   * tenta o passo inteiro, depois cada eixo, depois a maior fração (bissecção) */
+  function stepTo(tx: number, ty: number) {
+    const limit = Math.max(badness(rot.x, rot.y), badness(0, 0));
+    if (okPose(tx, ty, limit)) return void ((rot.x = tx), (rot.y = ty));
+    if (okPose(rot.x, ty, limit)) rot.y = ty;
+    else if (okPose(tx, rot.y, limit)) rot.x = tx;
+    else {
+      let lo = 0, hi = 1;
+      for (let k = 0; k < 6; k++) {
+        const mid = (lo + hi) / 2;
+        if (okPose(rot.x + (tx - rot.x) * mid, rot.y + (ty - rot.y) * mid, limit)) lo = mid;
+        else hi = mid;
+      }
+      rot.x += (tx - rot.x) * lo;
+      rot.y += (ty - rot.y) * lo;
+    }
+  }
 
   function project() {
     group.updateMatrixWorld();
@@ -640,17 +683,28 @@ export function createConstellation(
     pk.v += ap * dt;
     pk.p += pk.v * dt;
 
-    /* arrastar gira o sistema em volta do buraco negro; solto, volta devagar ao repouso */
-    if (!dragging) {
-      rot.vx *= Math.pow(0.04, dt);
-      rot.vy *= Math.pow(0.04, dt);
-      rot.x += (0 - rot.x) * Math.min(1, dt * 0.5);
-      rot.y += (0 - rot.y) * Math.min(1, dt * 0.5);
-    }
-    rot.y = Math.max(-0.9, Math.min(0.9, rot.y + rot.vy * dt));
-    rot.x = Math.max(-0.5, Math.min(0.5, rot.x + rot.vx * dt));
-
     updateNodes(time);
+    /* solto: fica onde parou; depois de 6 s sem interação, volta à pose
+     * original em ~2 s (suave nas duas pontas) */
+    if (!dragging && (rot.x || rot.y)) {
+      if (ret.t0 < 0 && now - lastDrag > 6000) {
+        ret.t0 = now;
+        ret.x0 = rot.x;
+        ret.y0 = rot.y;
+      }
+      if (ret.t0 >= 0) {
+        const e = Math.min(1, (now - ret.t0) / 2000);
+        const s = 1 - e * e * (3 - 2 * e);
+        rot.x = ret.x0 * s;
+        rot.y = ret.y0 * s;
+        if (e >= 1) ret.t0 = -1;
+      } else if (badness(rot.x, rot.y) > badness(0, 0) + 0.5) {
+        /* parada fora da pose original, as órbitas levaram um nó para a área
+         * proibida: recua um pouco para a pose original até sair dela */
+        rot.x *= 0.96;
+        rot.y *= 0.96;
+      }
+    }
     orient();
     nodeGeo.attributes.position.needsUpdate = true;
     updateLines();
@@ -682,9 +736,12 @@ export function createConstellation(
     u.uWaveA.value = wa;
     nodeMat.uniforms.uTime.value = time;
 
-    /* buraco negro: inclinação acompanha o arrasto vertical; o cursor perto dele pesa na lente */
+    /* buraco negro: o disco inclina junto com o arraste (até ±8° nos dois
+     * eixos), para os dois parecerem um sistema só; o cursor perto pesa na lente */
+    const TILT = (8 * Math.PI) / 180;
     bhUniforms.uTime.value = time;
-    bhUniforms.uIncl.value = Math.max(0.06, Math.min(0.5, 0.16 + rot.x * 0.6));
+    bhUniforms.uIncl.value = 0.16 + Math.max(-TILT, Math.min(TILT, (rot.x / 0.5) * TILT));
+    bhUniforms.uRoll.value = Math.max(-TILT, Math.min(TILT, (rot.y / 0.9) * TILT));
     const pr = bhUniforms.uRes.value.x / W;
     const cx = (m.x * 0.5 + 0.5) * W, cy = (m.y * 0.5 + 0.5) * H;
     const bx = (bhNdc.x * 0.5 + 0.5) * W, by = (bhNdc.y * 0.5 + 0.5) * H;
@@ -789,14 +846,14 @@ export function createConstellation(
     },
     debug() {
       project();
-      v.set(0, 0, 0);
-      for (let i = 0; i < n; i++) v.set(v.x + nodePos[i * 3] / n, v.y + nodePos[i * 3 + 1] / n, v.z + nodePos[i * 3 + 2] / n);
-      v.applyMatrix4(group.matrixWorld).project(camera);
       return {
         hole: { x: (bhNdc.x * 0.5 + 0.5) * W, y: (-bhNdc.y * 0.5 + 0.5) * H },
         nodes: Array.from({ length: n }, (_, i) => ({ x: screen[i * 2], y: screen[i * 2 + 1] })),
-        centroid: { x: (v.x * 0.5 + 0.5) * W, y: (-v.y * 0.5 + 0.5) * H },
         rot: { x: rot.x, y: rot.y },
+        keep: keep.map((k) => ({ ...k })),
+        margin: SAFE,
+        bad: badness(rot.x, rot.y),
+        badRest: badness(0, 0),
         w: W,
         h: H,
       };
@@ -830,12 +887,27 @@ export function createConstellation(
     },
     dragBy(dx, dy) {
       dragging = 1;
-      rot.vy = (dx / Math.max(1, W)) * 36;
-      rot.vx = (dy / Math.max(1, H)) * 18;
-      rot.y = Math.max(-0.9, Math.min(0.9, rot.y + (dx / Math.max(1, W)) * 3));
-      rot.x = Math.max(-0.5, Math.min(0.5, rot.x + (dy / Math.max(1, H)) * 1.5));
+      lastDrag = performance.now();
+      ret.t0 = -1; // mexeu: cancela a volta
+      /* a mesma sensibilidade e os mesmos tetos do commit 76d962c; o resto
+       * do limite vem das posições reais dos nós (stepTo) */
+      const ty = Math.max(-0.9, Math.min(0.9, rot.y + (dx / Math.max(1, W)) * 3));
+      const tx = Math.max(-0.5, Math.min(0.5, rot.x + (dy / Math.max(1, H)) * 1.5));
+      stepTo(tx, ty);
+      orient();
+      project();
       clearTimeout(dragTimer);
-      dragTimer = window.setTimeout(() => (dragging = 0), 60);
+      dragTimer = window.setTimeout(() => {
+        dragging = 0;
+        lastDrag = performance.now();
+      }, 60);
+    },
+    setKeepOut(rects) {
+      keep = rects.slice();
+    },
+    debugDrag(dx, dy) {
+      const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / 8));
+      for (let k = 0; k < steps; k++) this.dragBy(dx / steps, dy / steps);
     },
     hit(x, y) {
       let best = -1;
