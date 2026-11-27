@@ -762,8 +762,9 @@ export function createConstellation(
     u.uWaveA.value = wa;
     nodeMat.uniforms.uTime.value = time;
 
-    /* buraco negro: disco fixo (não inclina com o arraste); o cursor perto pesa na lente */
+    /* buraco negro: inclinação acompanha o arrasto vertical; o cursor perto dele pesa na lente */
     bhUniforms.uTime.value = time;
+    bhUniforms.uIncl.value = Math.max(0.06, Math.min(0.5, 0.16 + rot.x * 0.6));
     const pr = bhUniforms.uRes.value.x / W;
     const cx = (m.x * 0.5 + 0.5) * W, cy = (m.y * 0.5 + 0.5) * H;
     const bx = (bhNdc.x * 0.5 + 0.5) * W, by = (bhNdc.y * 0.5 + 0.5) * H;
