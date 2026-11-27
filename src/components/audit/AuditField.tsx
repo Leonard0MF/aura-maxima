@@ -100,17 +100,28 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
      * (nós e poeira) não as invade. No celular o campo já é só a faixa livre */
     const keepOut = (): Rect[] => {
       const f = field.getBoundingClientRect();
-      return [...section.querySelectorAll(".sh-label, .sh-title, .sh-lede, .audit-copy")]
+      return [...section.querySelectorAll(".sh-label, .sh-title, .sh-lede, .audit-copy, .audit-list")]
         .map((e) => e.getBoundingClientRect())
-        .filter((r) => r.width > 0 && r.bottom > f.top && r.top < f.bottom && r.right > f.left && r.left < f.right)
+        .filter((r) => r.width > 2 && r.height > 2 && r.bottom > f.top && r.top < f.bottom && r.right > f.left && r.left < f.right)
         .map((r) => ({ x: r.left - f.left, y: r.top - f.top, w: r.width, h: r.height }));
     };
-    const ro = new ResizeObserver(() => sceneRef.current?.setKeepOut(keepOut()));
+    let isStatic = false;
+    let lay: typeof import("./layout") | null = null;
+    const drawStatic = () => lay && setSvg(staticSvg(lay, nodes.length, field.clientWidth, field.clientHeight, keepOut()));
+    const ro = new ResizeObserver(() => (isStatic ? drawStatic() : sceneRef.current?.setKeepOut(keepOut())));
     ro.observe(section);
+    /* os textos mudam de lugar sem a seção mudar de tamanho (modo estático,
+     * fontes): observa também o rodapé e a lista */
+    section.querySelectorAll(".audit-foot, .audit-list, .sh").forEach((e) => ro.observe(e));
     const fallback = (why: string) => {
       note("fallback", `imagem estática + lista (${why})`);
       section.dataset.static = "";
-      void import("./layout").then((lay) => setSvg(staticSvg(lay, nodes.length, field.clientWidth, field.clientHeight, keepOut())));
+      isStatic = true;
+      /* mede depois de o layout do modo estático (data-static) assentar */
+      void import("./layout").then((m) => {
+        lay = m;
+        requestAnimationFrame(() => requestAnimationFrame(drawStatic));
+      });
     };
     /* só reduced-motion (escolha do usuário) ou falta de WebGL2 viram imagem
      * estática. O data-fx="static" do boot (≤ 4 núcleos) vale para o hero; a
