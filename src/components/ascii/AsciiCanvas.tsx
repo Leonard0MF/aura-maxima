@@ -602,12 +602,48 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
       if (!alive) return;
       if (!ok) return onFail();
 
+      /* uploads em passos, devolvendo a thread entre eles (sem tarefa longa
+       * se a página já estiver rolando). As fotos sobem como ImageBitmap já
+       * virado e pré-multiplicado (decodificado fora da main thread): o
+       * texImage2D vira uma cópia. Sem createImageBitmap: o caminho antigo */
+      const pass = () => new Promise<void>((r) => setTimeout(r, 0));
+      const upload = async (unit: number, im: HTMLImageElement) => {
+        let bmp: ImageBitmap | null = null;
+        try {
+          /* a partir do Blob (cache HTTP): a decodificação roda fora da main
+           * thread; a partir do <img> o Chrome decodifica de novo nela */
+          const blob = await (await fetch(im.currentSrc || im.src)).blob();
+          bmp = await createImageBitmap(blob, { imageOrientation: "flipY", premultiplyAlpha: "premultiply" });
+        } catch {}
+        if (!alive) return bmp?.close();
+        if (bmp) {
+          texture(gl, unit, bmp, false, false); // flip/premultiply já vêm no bitmap (o WebGL ignora o pixelStorei para ImageBitmap)
+          bmp.close();
+        } else texture(gl, unit, im, true, true);
+      };
+      /* quem já rolou para longe do hero não paga os uploads agora (seriam
+       * tarefas no meio da rolagem): esperam o hero voltar à tela */
+      await new Promise<void>((on) => {
+        const o = new IntersectionObserver((es) => {
+          if (!alive || es.some((e) => e.isIntersecting)) {
+            o.disconnect();
+            on();
+          }
+        });
+        o.observe(box);
+      });
+      if (!alive) return;
       texture(gl, 0, buildAtlas(family), false);
+      await pass();
+      if (!alive) return;
       sil = silhouette(img);
-      texture(gl, 1, img, true, true);
+      await upload(1, img);
+      if (!alive) return;
       imgW = img.naturalWidth;
       if (img2 && ok2) {
-        texture(gl, 3, img2, true, true);
+        await pass();
+        await upload(3, img2);
+        if (!alive) return;
         sil2 = silhouette(img2);
         img2W = img2.naturalWidth;
         has2 = true;
