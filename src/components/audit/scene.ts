@@ -49,7 +49,7 @@ import {
 import { glCensus } from "@/lib/gl-census";
 import { pickLevel } from "@/lib/gpu-perf";
 
-import { CAMERA_Z, DUST_TILT, FOV, HALF_H, makeLayout, orbitPos, type Layout } from "./layout";
+import { CAMERA_Z, DUST_TILT, FOV, HALF_H, isNarrow, makeLayout, narrowFit, orbitPos, type Layout } from "./layout";
 
 const MAX_NODES = 12;
 /* raio da sombra em rs (≈ 2,6 rs: 3√3/2) */
@@ -64,6 +64,7 @@ uniform vec3 uNode[${MAX_NODES}];
 uniform float uFade[${MAX_NODES}]; // 0 = nó apagado (sobre texto ou perto da borda)
 uniform vec2 uRes2;     // campo (px CSS)
 uniform vec4 uKeep[4];  // caixas de texto (px, origem em cima: x0, y0, x1, y1)
+uniform float uSide;    // folga extra nas laterais (px): 0 no desktop; em pé a rede vai quase até a borda
 uniform float uTime;
 uniform float uPR;
 uniform float uAspect;
@@ -126,7 +127,7 @@ void main() {
   gl_Position = clip;
   /* nenhuma partícula sobre os textos nem a menos de 48 px das bordas */
   vec2 px = vec2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5) * uRes2;
-  float edge = min(min(px.y, uRes2.y - px.y), min(px.x, uRes2.x - px.x));
+  float edge = min(min(px.y, uRes2.y - px.y), min(px.x, uRes2.x - px.x) + uSide);
   fade *= smoothstep(24.0, 48.0, edge);
   for (int k = 0; k < 4; k++) {
     vec4 b = uKeep[k];
@@ -152,6 +153,50 @@ void main() {
   vec3 c = mix(uWhite, uAmber, vTone);
   c = mix(c, uAmber, min(vGlow, 1.0));
   gl_FragColor = vec4(c, a * min(1.0, vA + vGlow));
+}`;
+
+/* estrelas de fundo em telas em pé: volume de verdade (distância à câmera de
+ * 4 a 40), espalhadas pelo campo de visão inteiro em cada profundidade;
+ * tamanho e brilho caem com a distância. Ficam na cena (a lente as curva) e
+ * fora do grupo (não giram com a rede, só um leve paralaxe no arraste). */
+const STAR_VS = /* glsl */ `
+attribute vec3 aStar;  // u, v em [-1, 1] (fração do campo de visão), d = distância à câmera
+attribute float aSeed;
+attribute float aTone;
+uniform vec2 uTan;     // tan(meio FOV) horizontal e vertical
+uniform float uTime;
+uniform float uPR;
+uniform vec2 uRes2;
+uniform vec4 uKeep[4];
+varying float vA;
+varying float vTone;
+void main() {
+  float d = aStar.z;
+  vec3 p = vec3(aStar.x * uTan.x * d * 1.2, aStar.y * uTan.y * d * 1.2, ${CAMERA_Z.toFixed(1)} - d);
+  vec4 clip = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+  gl_Position = clip;
+  vec2 ndc = clip.xy / clip.w;
+  vec2 px = vec2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5) * uRes2;
+  float near = 7.0 / d; // 1 na distância da rede
+  float fade = smoothstep(0.0, 48.0, px.y) * smoothstep(0.0, 64.0, uRes2.y - px.y);
+  for (int k = 0; k < 4; k++) {
+    vec4 b = uKeep[k];
+    fade *= smoothstep(0.0, 10.0, max(max(b.x - px.x, px.x - b.z), max(b.y - px.y, px.y - b.w)));
+  }
+  float tw = 0.7 + 0.3 * sin(uTime * (0.8 + aSeed * 1.6) + aSeed * 40.0);
+  vA = clamp(pow(near, 0.9), 0.1, 1.0) * (0.35 + 0.4 * aSeed) * tw * fade;
+  vTone = aTone;
+  gl_PointSize = uPR * clamp((1.1 + 1.6 * aSeed * aSeed) * near * 1.4, 0.7, 4.0);
+}`;
+const STAR_FS = /* glsl */ `
+uniform vec3 uWhite;
+uniform vec3 uAmber;
+varying float vA;
+varying float vTone;
+void main() {
+  float r = length(gl_PointCoord - 0.5);
+  vec3 c = mix(uWhite, uAmber, vTone * 0.6);
+  gl_FragColor = vec4(c, smoothstep(0.5, 0.05, r) * vA);
 }`;
 
 const NODE_VS = /* glsl */ `
@@ -419,6 +464,7 @@ export function createConstellation(
       uFade: { value: fade },
       uRes2: { value: new Vector2(1, 1) },
       uKeep: { value: Array.from({ length: 4 }, () => new Vector4(-1e5, -1e5, -1e5, -1e5)) },
+      uSide: { value: 0 },
       uTime: { value: 0 },
       uPR: { value: dpr },
       uAspect: { value: 2 },
@@ -435,6 +481,45 @@ export function createConstellation(
   const dust = new Points(dustGeo, dustMat);
   dust.frustumCulled = false; // posições saem do shader
   group.add(dust);
+
+  /* estrelas (só em telas em pé): semente fixa; quantas desenhar sai da área */
+  const MAX_STARS = 2000;
+  const starGeo = new BufferGeometry();
+  {
+    let sd = 0x5eed;
+    const rnd = () => ((sd = (Math.imul(sd, 1664525) + 1013904223) >>> 0) / 4294967296);
+    const a = new Float32Array(MAX_STARS * 3), seed = new Float32Array(MAX_STARS), tone = new Float32Array(MAX_STARS);
+    for (let i = 0; i < MAX_STARS; i++) {
+      /* mais estrelas longe (pequenas e fracas), poucas perto */
+      a.set([rnd() * 2 - 1, rnd() * 2 - 1, 4 + 36 * Math.sqrt(rnd())], i * 3);
+      seed[i] = rnd();
+      tone[i] = rnd() < 0.18 ? 1 : 0;
+    }
+    starGeo.setAttribute("position", new BufferAttribute(new Float32Array(MAX_STARS * 3), 3));
+    starGeo.setAttribute("aStar", new BufferAttribute(a, 3));
+    starGeo.setAttribute("aSeed", new BufferAttribute(seed, 1));
+    starGeo.setAttribute("aTone", new BufferAttribute(tone, 1));
+  }
+  const starMat = new ShaderMaterial({
+    vertexShader: STAR_VS,
+    fragmentShader: STAR_FS,
+    transparent: true,
+    depthWrite: false,
+    blending: AdditiveBlending,
+    uniforms: {
+      uTan: { value: new Vector2(1, 1) },
+      uTime: dustMat.uniforms.uTime,
+      uPR: { value: dpr },
+      uRes2: dustMat.uniforms.uRes2,
+      uKeep: dustMat.uniforms.uKeep,
+      uWhite: { value: white },
+      uAmber: { value: amber },
+    },
+  });
+  const stars = new Points(starGeo, starMat);
+  stars.frustumCulled = false;
+  stars.visible = false;
+  scene.add(stars);
 
   /* linhas: todos os pares, brilho pela distância (sem trocas bruscas enquanto orbitam) */
   const pairs: [number, number][] = [];
@@ -540,6 +625,9 @@ export function createConstellation(
   const SAFE = 48;
   const NODE_R = 12; // folga do halo do nó (px)
   let keep = (opts.keep ?? []).slice(0, 4);
+  let sideM = SAFE; // margem lateral dos nós (em pé: 16 px, a rede vai quase até a borda)
+  let narrowFitKey = "";
+  let fit: ReturnType<typeof narrowFit> | null = null;
   let waveT = -1;
   let waveMax = 0;
   let waveOrder: { i: number; d: number }[] = [];
@@ -581,23 +669,43 @@ export function createConstellation(
     H = h;
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
+    /* em pé (aspecto da JANELA < 0,9, o mesmo critério do CSS): FOV vertical
+     * a partir do horizontal do desktop, buraco negro com ~55% da largura,
+     * rede com ~85% (escala por eixo, layout.narrowFit) */
+    const narrow = isNarrow(window.innerWidth, window.innerHeight);
+    if (narrow) {
+      const key = `${w}x${h}`;
+      if (key !== narrowFitKey || !fit) {
+        fit = narrowFit(L.orbits, w, h, SAFE);
+        narrowFitKey = key;
+      }
+      camera.fov = (fit.vfov * 180) / Math.PI;
+    } else camera.fov = FOV;
     camera.updateProjectionMatrix();
+    const halfH = narrow && fit ? fit.halfH : HALF_H;
     dustMat.uniforms.uAspect.value = w / h;
     dustMat.uniforms.uRes2.value.set(w, h);
     const asp = w / h;
-    const narrow = asp < 0.9;
     /* desktop: buraco negro no terço esquerdo; telas estreitas: no topo, menor */
     bhNdc.x = narrow ? 0 : -0.5;
     bhNdc.y = narrow ? 0.42 : 0;
-    pxPerRs = narrow ? w * 0.026 : Math.min(h * 0.026, w * 0.018);
-    base.set(bhNdc.x * HALF_H * asp, bhNdc.y * HALF_H, 0);
+    pxPerRs = narrow && fit ? fit.pxPerRs : Math.min(h * 0.026, w * 0.018);
+    base.set(bhNdc.x * halfH * asp, bhNdc.y * halfH, 0);
     rot.z = narrow ? -Math.PI / 2 : 0;
     /* a constelação abre para o lado livre: cabe na largura (desktop) ou na altura (celular) */
-    const room = narrow ? (bhNdc.y + 0.55) * HALF_H : 1.45 * HALF_H * asp;
-    const k = Math.min(1, room / 5.4);
-    group.scale.setScalar(k);
+    let k = Math.min(1, (1.45 * HALF_H * asp) / 5.4);
+    if (narrow && fit) {
+      group.scale.set(fit.kx, fit.ky, fit.ky);
+      k = Math.min(fit.kx, fit.ky);
+    } else group.scale.setScalar(k);
+    sideM = narrow ? 16 : SAFE;
+    dustMat.uniforms.uSide.value = SAFE - sideM;
+    stars.visible = narrow;
+    starMat.uniforms.uTan.value.set(Math.tan(((camera.fov / 2) * Math.PI) / 180) * asp, Math.tan(((camera.fov / 2) * Math.PI) / 180));
+    /* densidade parecida com a do desktop por área (~0,0035 por px²); aparelho fraco: metade */
+    starGeo.setDrawRange(0, Math.min(MAX_STARS, Math.round(w * h * 0.0035 * (opts.count <= 600 ? 0.5 : 1))));
     orient();
-    const worldPerPx = (2 * HALF_H) / h;
+    const worldPerPx = (2 * halfH) / h;
     dustMat.uniforms.uHz.value = (SHADOW * pxPerRs * worldPerPx) / k;
     renderer.getDrawingBufferSize(buf);
     const pr = buf.x / w;
@@ -626,8 +734,8 @@ export function createConstellation(
     for (let i = 0; i < n; i++) {
       v.set(nodePos[i * 3], nodePos[i * 3 + 1], nodePos[i * 3 + 2]).applyMatrix4(group.matrixWorld).project(camera);
       const x = (v.x * 0.5 + 0.5) * W, y = (-v.y * 0.5 + 0.5) * H;
-      const m0 = SAFE + NODE_R;
-      bad += Math.max(0, m0 - x) + Math.max(0, x - (W - m0)) + Math.max(0, m0 - y) + Math.max(0, y - (H - m0));
+      const m0 = SAFE + NODE_R, mx = sideM + NODE_R;
+      bad += Math.max(0, mx - x) + Math.max(0, x - (W - mx)) + Math.max(0, m0 - y) + Math.max(0, y - (H - m0));
       for (const k of keep) {
         const inX = Math.min(x - (k.x - NODE_R), k.x + k.w + NODE_R - x);
         const inY = Math.min(y - (k.y - NODE_R), k.y + k.h + NODE_R - y);
@@ -711,6 +819,7 @@ export function createConstellation(
     pk.p += pk.v * dt;
 
     updateNodes(time);
+    if (stars.visible) stars.rotation.set(rot.x * 0.12, rot.y * 0.12, 0);
     /* solto: fica onde parou; depois de 6 s sem interação, volta à pose
      * original em ~2 s (suave nas duas pontas) */
     if (!dragging && (rot.x || rot.y)) {
@@ -786,7 +895,7 @@ export function createConstellation(
   function updateFade(dt: number) {
     for (let i = 0; i < n; i++) {
       const x = screen[i * 2], y = screen[i * 2 + 1];
-      let hide = y < SAFE || y > H - SAFE || x < SAFE || x > W - SAFE;
+      let hide = y < SAFE || y > H - SAFE || x < sideM || x > W - sideM;
       for (const k of keep) if (x > k.x - NODE_R && x < k.x + k.w + NODE_R && y > k.y - NODE_R && y < k.y + k.h + NODE_R) hide = true;
       const target = hide ? 0 : 1;
       fade[i] = fadeInit ? (target > fade[i] ? Math.min(target, fade[i] + dt / 0.3) : Math.max(target, fade[i] - dt / 0.3)) : target;
@@ -843,15 +952,18 @@ export function createConstellation(
     async warm() {
       /* 1. um programa por idle (poeira, linhas, nós): cada envio de shader
        *    custa ~15–25 ms com CPU 4× */
-      for (const obj of group.children) {
+      for (const obj of [...group.children, stars]) {
         await idle();
         if (destroyed) return;
         resize();
+        const vis = obj.visible;
+        obj.visible = true; // as estrelas ficam escondidas no desktop, mas compilam igual
         try {
           await renderer.compileAsync(obj, camera, scene);
         } catch {
           /* sem suporte: compila no render de aquecimento */
         }
+        obj.visible = vis;
       }
       /* 2. os dois passes finais (lente e simple): a queda de qualidade pode trocar */
       for (const mat of opts.simple ? [simpleMat] : [lensMat, simpleMat]) {
@@ -998,7 +1110,7 @@ export function createConstellation(
       cancelAnimationFrame(raf);
       clearTimeout(dragTimer);
       canvas.removeEventListener("webglcontextlost", onLost);
-      for (const d of [dustGeo, dustMat, lineGeo, lineMat, nodeGeo, nodeMat, quad, lensMat, simpleMat]) d.dispose();
+      for (const d of [starGeo, starMat, dustGeo, dustMat, lineGeo, lineMat, nodeGeo, nodeMat, quad, lensMat, simpleMat]) d.dispose();
       rt?.dispose();
       renderer.dispose();
       renderer.forceContextLoss();

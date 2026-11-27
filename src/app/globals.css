@@ -1239,6 +1239,32 @@ html[data-js] [data-stack]:not([data-static]) .stack-grid {
   z-index: 0;
   overflow: hidden;
 }
+/* em pé (aspecto da janela < 0,9: celular e tablet; o mesmo critério da cena,
+ * layout.NARROW_QUERY): o canvas tem ~70svh, com o buraco negro em cima e a
+ * rede embaixo; o texto do rodapé vem logo depois, fora da constelação */
+@media (max-aspect-ratio: 9/10) {
+  .audit:not([data-static]) {
+    height: auto;
+    min-height: max(100svh, 600px);
+  }
+  .audit:not([data-static]) .audit-field {
+    bottom: auto;
+    height: 70svh;
+  }
+  .audit:not([data-static]) .audit-body {
+    display: grid;
+    grid-template-rows: 70svh 1fr;
+    height: auto;
+    min-height: max(100svh, 600px);
+  }
+  .audit:not([data-static]) .audit-body > .sh {
+    align-self: start;
+  }
+  .audit:not([data-static]) .audit-foot {
+    align-self: end;
+    padding-top: 1.5rem;
+  }
+}
 /* o canvas só aparece pronto (shaders compilados, 1º quadro desenhado): fade de 300 ms */
 .audit-canvas {
   opacity: 0;

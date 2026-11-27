@@ -144,9 +144,59 @@ export function projectStatic(x: number, y: number, z: number, w: number, h: num
 }
 
 /* centro do buraco negro em px dentro do campo (w × h), a mesma regra da
- * cena: terço esquerdo no meio da altura; em tela estreita (aspecto < 0,9),
- * centralizado a 29% do topo. Usado pela entrada do AUDIT (AuditReveal). */
+ * cena: terço esquerdo no meio da altura; em pé (aspecto da janela < 0,9),
+ * centralizado a 29% do topo do canvas. Usado pela entrada do AUDIT (AuditReveal). */
 export function holeCenter(w: number, h: number) {
-  const narrow = w / h < 0.9;
+  const narrow = isNarrow(w, h);
   return narrow ? { narrow, x: w / 2, y: h * 0.29 } : { narrow, x: w * 0.25, y: h * 0.5 };
+}
+
+/* ---------- telas em pé (aspecto da janela < 0,9: celular e tablet em pé) ---------- */
+export const NARROW_QUERY = "(max-aspect-ratio: 9/10)";
+/** o mesmo critério do CSS (a janela, não o canvas, que no celular tem só ~70svh) */
+export const isNarrow = (w: number, h: number) =>
+  typeof matchMedia === "function" ? matchMedia(NARROW_QUERY).matches : w / h < 0.9;
+/** FOV horizontal do desktop (1440×900): o celular vê a mesma largura de cena */
+export const REF_HFOV = 2 * Math.atan(Math.tan(((FOV / 2) * Math.PI) / 180) * 1.6);
+/** buraco negro em pé: centro em NDC y (29% do topo do canvas) e Ø do disco (9 rs) ≈ 55% da largura */
+export const NARROW_BH_Y = 0.42;
+export const NARROW_BH_W = 0.55;
+const DISK_RS = 18;
+
+/*
+ * Enquadramento em pé: FOV vertical a partir do horizontal do desktop; escala
+ * da rede separada por eixo (largura e comprimento), calculada sobre o
+ * envelope das órbitas reais em projeção perspectiva, para a rede ocupar
+ * ~85% da largura na metade de baixo, a qualquer momento das órbitas.
+ * Grupo girado −90° (rot.z): x local (apoastro) → para baixo na tela, y local → largura.
+ */
+export function narrowFit(orbits: Orbit[], w: number, h: number, safe = 48) {
+  const asp = w / h;
+  const vfov = 2 * Math.atan(Math.tan(REF_HFOV / 2) / asp);
+  const f = 1 / Math.tan(vfov / 2);
+  const halfH = CAMERA_Z / f;
+  const pxPerRs = (NARROW_BH_W * w) / DISK_RS;
+  const bhPx = ((1 - NARROW_BH_Y) / 2) * h;
+  const by = NARROW_BH_Y * halfH;
+  /* posições reais dos nós ao longo de 10 min (os nós andam em grupo: o
+   * envelope de todos os tempos deixaria a rede estreita a cada instante) */
+  const pts: number[][] = [];
+  const tmp = [0, 0, 0];
+  for (let t = 0; t < 600; t += 4) for (const o of orbits) pts.push(orbitPos(o, t, tmp).slice());
+  const pct = (a: number[], p: number) => a.sort((x, y) => x - y)[Math.floor(p * (a.length - 1))];
+  let kx = 1, ky = 1;
+  for (let it = 0; it < 6; it++) {
+    const half: number[] = [], down: number[] = [];
+    for (const [x, y, z] of pts) {
+      const X = ky * y, Y = by - kx * x, Z = ky * z;
+      const d = CAMERA_Z - Z;
+      half.push(Math.abs(((X * f) / d) * (h / 2)));
+      down.push(h / 2 - ((Y * f) / d) * (h / 2) - bhPx);
+    }
+    /* 90% das posições dentro de 85% da largura e 97% acima da margem de
+     * baixo; as raras passagens além disso apagam no fade das bordas */
+    ky *= (0.425 * w) / pct(half, 0.9);
+    kx *= (h - safe - 12 - bhPx) / pct(down, 0.97);
+  }
+  return { vfov, halfH, pxPerRs, kx, ky, bhPx };
 }
