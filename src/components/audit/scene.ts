@@ -678,7 +678,7 @@ export function createConstellation(
     const worldPerPx = (2 * HALF_H) / h;
     cloud.on = narrow;
     if (narrow) placeCloud(w, h, hc, worldPerPx);
-    else fit(w, h, k, worldPerPx);
+    else fit(w, h);
     osc = (4.5 * worldPerPx) / (narrow ? 1 : k);
     fitted = true;
     autoOn = narrow || matchMedia("(pointer: coarse)").matches;
@@ -757,7 +757,7 @@ export function createConstellation(
    * projeção é quase linear), depois convertida para o espaço local.
    */
   let fitted = false;
-  function fit(w: number, h: number, k: number, wpp: number) {
+  function fit(w: number, h: number) {
     camera.updateMatrixWorld(); // a matriz da câmera só é atualizada no 1º render
     const scr = base.map((q) => {
       v.set(q[0], q[1], q[2]).applyMatrix4(group.matrixWorld).project(camera);
@@ -782,11 +782,20 @@ export function createConstellation(
         break search;
       }
     }
-    /* centro e pose de origem no espaço local do grupo (escala k, sem rotação no desktop) */
-    const c = base.reduce((a, q) => [a[0] + q[0] / n, a[1] + q[1] / n, a[2] + q[2] / n], [0, 0, 0]);
-    const tx = (best.dx * wpp) / k, ty = (-best.dy * wpp) / k;
-    pivot.set(c[0] + tx, c[1] + ty, c[2]);
-    base.forEach((q, i) => home[i].set(pivot.x + (q[0] - c[0]) * best.s, pivot.y + (q[1] - c[1]) * best.s, c[2] + (q[2] - c[2]) * best.s));
+    /* cada nó vai para o px escolhido NA SUA PRÓPRIA profundidade (os nós
+     * têm z bem diferentes: um deslocamento em 3D deformaria a rede na tela) */
+    const asp = w / h;
+    base.forEach((q, i) => {
+      v.set(q[0], q[1], q[2]).applyMatrix4(group.matrixWorld); // mundo
+      const zw = v.z;
+      const sx = cx + (scr[i].x - cx) * best.s + best.dx, sy = cy + (scr[i].y - cy) * best.s + best.dy;
+      const kz = (CAMERA_Z - zw) / CAMERA_Z;
+      v.set(((sx / w) * 2 - 1) * asp * HALF_H * kz, (1 - (sy / h) * 2) * HALF_H * kz, zw);
+      group.worldToLocal(v);
+      home[i].copy(v);
+    });
+    pivot.set(0, 0, 0);
+    home.forEach((q) => pivot.addScaledVector(q, 1 / n));
     fitInfo = best;
   }
   let fitInfo = { s: 1, dx: 0, dy: 0 };
