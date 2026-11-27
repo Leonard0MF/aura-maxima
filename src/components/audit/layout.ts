@@ -29,7 +29,16 @@ function rng(seed: number) {
   };
 }
 
-export type Orbit = { a: number; e: number; w: number; tilt: number; M0: number; T: number };
+export type Orbit = {
+  a: number;
+  e: number;
+  w: number;
+  tilt: number;
+  M0: number;
+  T: number;
+  /** fase original (desktop), quando M0 foi espalhada para telas em pé */
+  M0base?: number;
+};
 
 export type Layout = {
   orbits: Orbit[];
@@ -60,7 +69,7 @@ export function orbitPos(o: Orbit, t: number, out: number[] = [0, 0, 0]) {
   return out;
 }
 
-export function makeLayout(nNodes: number, count: number, seed = 7): Layout {
+export function makeLayout(nNodes: number, count: number, seed = 7, narrow = false): Layout {
   const r = rng(seed);
   const g = () => {
     const u = Math.max(1e-6, r());
@@ -82,6 +91,9 @@ export function makeLayout(nNodes: number, count: number, seed = 7): Layout {
       T: 200 * Math.pow(a / 2.6, 1.5) * (0.9 + r() * 0.2),
     });
   }
+  /* em pé: mesmas órbitas, só as fases iniciais espalhadas (a rede chega
+   * aberta); o sorteio das partículas continua na mesma ordem */
+  if (narrow) spreadPhases(orbits);
   const at = orbits.map((o) => orbitPos(o, 0));
 
   /* filamentos: cada nó com os 2 vizinhos mais próximos (sem repetir) */
@@ -151,6 +163,90 @@ export function holeCenter(w: number, h: number) {
   return narrow ? { narrow, x: w / 2, y: h * 0.29 } : { narrow, x: w * 0.25, y: h * 0.5 };
 }
 
+/* direção média dos nós no plano das órbitas (10 min, fases originais) */
+function meanDir(orbits: Orbit[]) {
+  let mx = 0, my = 0;
+  const tmp = [0, 0, 0];
+  for (let t = 0; t < 600; t += 4)
+    for (const o of orbits) {
+      orbitPos(o.M0base === undefined ? o : { ...o, M0: o.M0base }, t, tmp);
+      mx += tmp[0];
+      my += tmp[1];
+    }
+  return Math.atan2(my, mx);
+}
+
+/*
+ * Fases iniciais para telas em pé (só M0 muda: tamanho, forma, inclinação e
+ * período das órbitas ficam iguais). Busca, com semente fixa, a combinação
+ * em que nos primeiros 40 s a rede fica centralizada, com ~75–90% da largura,
+ * a maior parte dos nós na metade de baixo e nenhum apagado nas bordas.
+ * Avaliado na tela de referência 390×490 (canvas de 58svh em 390×844) com o
+ * enquadramento real (narrowFit, calibrado nas fases originais: a escala
+ * não muda; a largura em % é a mesma em qualquer tela em pé).
+ */
+function spreadPhases(orbits: Orbit[]) {
+  orbits.forEach((o) => (o.M0base = o.M0));
+  const W = 390, H = 490, fit = narrowFit(orbits, W, H);
+  const f = 1 / Math.tan(fit.vfov / 2), by = NARROW_BH_Y * fit.halfH;
+  const c = Math.cos(-fit.phi), sn = Math.sin(-fit.phi);
+  const r = rng(11);
+  const tmp = [0, 0, 0];
+  const n = orbits.length;
+  const score = (M: number[]) => {
+    let worst = Infinity;
+    for (let t = 0; t <= 40; t += 5) {
+      let lo = Infinity, hi = -Infinity, below = 0, vis = 0, sum = 0;
+      for (let i = 0; i < n; i++) {
+        orbitPos({ ...orbits[i], M0: M[i] }, t, tmp);
+        const x = tmp[0] * c - tmp[1] * sn, y = tmp[0] * sn + tmp[1] * c;
+        const X = fit.ky * y, Y = by - fit.kx * x, Z = fit.ky * tmp[2], d = CAMERA_Z - Z;
+        const sx = W / 2 + ((X * f) / d) * (H / 2), sy = H / 2 - ((Y * f) / d) * (H / 2);
+        if (sx < 22 || sx > W - 22 || sy < 54 || sy > H - 54) continue; // apagaria na borda
+        vis++;
+        sum += sx;
+        lo = Math.min(lo, sx);
+        hi = Math.max(hi, sx);
+        if (sy > H / 2) below++;
+      }
+      if (!vis) return 0;
+      const wd = (hi - lo) / W;
+      const ws = wd < 0.75 ? (wd / 0.75) ** 4 : wd > 0.9 ? 0 : 1;
+      const center = 1 - (2 * Math.abs(sum / vis - W / 2)) / W;
+      worst = Math.min(worst, (0.5 * ws + 0.3 * (below / n) + 0.2 * center) * (vis / n) ** 2);
+    }
+    return worst;
+  };
+  let best = orbits.map((o) => o.M0);
+  let bestS = score(best);
+  for (let k = 0; k < 800; k++) {
+    const M = orbits.map(() => r() * Math.PI * 2);
+    const s0 = score(M);
+    if (s0 > bestS) {
+      bestS = s0;
+      best = M;
+    }
+  }
+  /* refino: um nó por vez, 48 fases cada, até não melhorar */
+  for (let pass = 0; pass < 4; pass++) {
+    let improved = false;
+    for (let i = 0; i < n; i++) {
+      for (let k = 0; k < 48; k++) {
+        const M = best.slice();
+        M[i] = (k / 48) * Math.PI * 2;
+        const s0 = score(M);
+        if (s0 > bestS + 1e-9) {
+          bestS = s0;
+          best = M;
+          improved = true;
+        }
+      }
+    }
+    if (!improved) break;
+  }
+  orbits.forEach((o, i) => (o.M0 = best[i]));
+}
+
 /* ---------- telas em pé (aspecto da janela < 0,9: celular e tablet em pé) ---------- */
 export const NARROW_QUERY = "(max-aspect-ratio: 9/10)";
 /** o mesmo critério do CSS (a janela, não o canvas, que no celular tem só ~70svh) */
@@ -180,18 +276,15 @@ export function narrowFit(orbits: Orbit[], w: number, h: number, safe = 48) {
   const by = NARROW_BH_Y * halfH;
   /* posições reais dos nós ao longo de 10 min (os nós andam em grupo: o
    * envelope de todos os tempos deixaria a rede estreita a cada instante) */
-  const STEP = 4;
+  /* calibrado com as fases ORIGINAIS: espalhar as fases (spreadPhases)
+   * abre a rede sem mudar a escala */
+  const base = orbits.map((o) => (o.M0base === undefined ? o : { ...o, M0: o.M0base }));
   const raw: number[][] = [];
   const tmp = [0, 0, 0];
-  for (let t = 0; t < 600; t += STEP) for (const o of orbits) raw.push(orbitPos(o, t, tmp).slice());
-  /* direção média dos nós (no plano das órbitas): a rede é girada para que
-   * ela aponte reto para baixo, centralizada sob o buraco negro */
-  let mx = 0, my = 0;
-  for (const [x, y] of raw) {
-    mx += x;
-    my += y;
-  }
-  const phi = Math.atan2(my, mx);
+  for (let t = 0; t < 600; t += 4) for (const o of base) raw.push(orbitPos(o, t, tmp).slice());
+  /* direção média dos nós: a rede é girada para que ela aponte reto para
+   * baixo, centralizada sob o buraco negro */
+  const phi = meanDir(orbits);
   const c = Math.cos(-phi), sn = Math.sin(-phi);
   const pts = raw.map(([x, y, z]) => [x * c - y * sn, x * sn + y * c, z]);
   const n = orbits.length;

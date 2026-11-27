@@ -17,13 +17,15 @@ const idle = () => new Promise<void>((r) => ("requestIdleCallback" in window ? r
  * por idle) e reaproveitadas a cada nova montagem */
 const layouts = new Map<string, Promise<Layout>>();
 function getLayout(n: number, count: number) {
-  const key = `${n}:${count}`;
+  /* em pé: fases iniciais espalhadas (a mesma consulta de layout.NARROW_QUERY) */
+  const narrow = matchMedia("(max-aspect-ratio: 9/10)").matches;
+  const key = `${n}:${count}:${narrow}`;
   let p = layouts.get(key);
   if (!p) {
     const local = (why: string) =>
       import("./layout").then((m) => {
         note("layout", `main thread em pedaços (${why})`);
-        return idle().then(() => m.makeLayout(n, count));
+        return idle().then(() => m.makeLayout(n, count, undefined, narrow));
       });
     p = new Promise<Layout>((res) => {
       if (typeof Worker === "undefined") return void local("sem Worker").then(res);
@@ -38,7 +40,7 @@ function getLayout(n: number, count: number) {
           w.terminate();
           void local("Worker falhou").then(res);
         };
-        w.postMessage({ n, count });
+        w.postMessage({ n, count, narrow });
       } catch {
         void local("Worker indisponível").then(res);
       }
