@@ -4,89 +4,125 @@ import { useEffect, useRef } from "react";
 
 import { holeCenter } from "./layout";
 
+/* a abertura roda UMA vez por carregamento de página (sobrevive a remontagens) */
+let opened = false;
+
 /*
- * Entrada do AUDIT: animação de TEMPO, não de rolagem (nada fica preso na
- * tela; a página rola sempre).
+ * Entrada do AUDIT: animação de TEMPO, não de rolagem (a página rola sempre).
  *
- * Quando o topo da seção cruza ~60% da viewport, um círculo escuro nasce no
- * centro do buraco negro e se expande até cobrir a seção em ~900 ms
- * (ease-out), com um anel âmbar fino na borda. Uma vez por entrada: quando a
- * seção sai inteira da tela, volta ao início sem animar. O centro vem da
- * mesma conta da cena (layout.holeCenter) sobre a caixa real do campo.
+ * 1ª entrada da página: quando o topo da seção cruza ~60% da viewport, um
+ * círculo de cor sólida nasce no centro do buraco negro e cresce até cobrir a
+ * seção em ~900 ms. Ele é um <div> de 100 px animado SÓ com transform: scale()
+ * (Web Animations API, no compositor). Durante o círculo nada mais muda: a
+ * seção está com opacity 0, o loop do WebGL parado, nenhum decrypt.
+ * Coberta a seção (data-done), o AuditField liga o loop do canvas já aquecido
+ * e avisa ("audit:live") depois do 1º quadro desenhado; aí a seção aparece com
+ * fade de 300 ms (opacity) e, terminado o fade, o título faz o decrypt.
  *
- * Terminada a abertura (data-done), o anel sai do DOM renderizado
- * (display: none, sem animação) e a seção perde o clip-path.
+ * Entradas seguintes: nada de círculo; a seção já está visível e o canvas só
+ * retoma o loop (lib/gl-slot, persist).
  *
- * Com reduced-motion: fade de 300 ms. Sem JS: a seção aparece pronta.
- * O modo (data-reveal) é decidido no script de boot, antes da 1ª pintura.
+ * Reduced-motion: sem data-reveal (script de boot), a seção aparece pronta.
  */
 export function AuditReveal({ children }: { children: React.ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
+  const iris = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const wrap = ref.current!;
     const section = wrap.querySelector<HTMLElement>("section")!;
     const field = section.querySelector<HTMLElement>(".audit-field");
+    const dot = iris.current!;
+    const title = () => section.querySelector(".sh-title [data-decrypt]")?.dispatchEvent(new Event("decrypt"));
 
-    const center = () => {
-      if (!field) return;
-      const s = section.getBoundingClientRect(), f = field.getBoundingClientRect();
-      if (!f.width || !f.height) return;
-      const c = holeCenter(f.width, f.height);
-      const x = f.left - s.left + c.x, y = f.top - s.top + c.y;
-      wrap.style.setProperty("--bhx", `${x.toFixed(1)}px`);
-      wrap.style.setProperty("--bhy", `${y.toFixed(1)}px`);
-      /* raio que cobre a seção inteira: até o canto mais distante */
-      wrap.style.setProperty("--rmax", `${Math.ceil(Math.hypot(Math.max(x, s.width - x), Math.max(y, s.height - y)) + 2)}px`);
-    };
-    const ro = new ResizeObserver(center);
-    ro.observe(section);
-    if (field) ro.observe(field);
-    center();
+    if (opened || !document.documentElement.dataset.reveal) {
+      section.dataset.in = "";
+      section.dataset.done = "";
+      section.dataset.shown = "";
+      if (!opened) title();
+      opened = true;
+      return;
+    }
 
-    /* Os observers olham o .audit-wrap, NUNCA a seção: o Chromium aplica o
-     * clip-path do próprio alvo no cálculo, e com o círculo em raio 0 a
-     * seção conta como invisível mesmo no meio da tela. Eles só avisam; a
-     * decisão lê a geometria de agora (callbacks dos dois observers podem
-     * chegar no mesmo lote, em qualquer ordem).
-     *  - entra: o topo cruzou 60% da viewport e a seção ainda está na tela
-     *  - saiu inteira: volta ao início sem animar, para a próxima entrada */
-    let doneT = 0;
-    const sync = () => {
-      const r = wrap.getBoundingClientRect(), vh = innerHeight;
-      if (r.top <= vh * 0.6 && r.bottom > 0) {
-        if (!("in" in section.dataset)) {
-          section.dataset.in = "";
-          /* fim da abertura (0,9 s + folga): anel fora e sem clip-path */
-          clearTimeout(doneT);
-          doneT = window.setTimeout(() => {
-            if ("in" in section.dataset) section.dataset.done = "";
-          }, 950);
-        }
-      } else if ((r.bottom <= 0 || r.top >= vh) && "in" in section.dataset) {
-        clearTimeout(doneT);
-        section.dataset.reset = "";
-        delete section.dataset.in;
-        delete section.dataset.done;
-        requestAnimationFrame(() => requestAnimationFrame(() => delete section.dataset.reset));
+    let geo = { x: 0, y: 0, r: 0 };
+    const measure = () => {
+      const s = section.getBoundingClientRect();
+      const f = field?.getBoundingClientRect();
+      let x = s.width * 0.25, y = s.height / 2;
+      if (f?.width && f.height) {
+        const c = holeCenter(f.width, f.height);
+        x = f.left - s.left + c.x;
+        y = f.top - s.top + c.y;
       }
+      geo = { x, y, r: Math.hypot(Math.max(x, s.width - x), Math.max(y, s.height - y)) + 2 };
     };
-    const ioIn = new IntersectionObserver(sync, { rootMargin: "0px 0px -40% 0px" });
-    const ioOut = new IntersectionObserver(sync);
-    ioIn.observe(wrap);
-    ioOut.observe(wrap);
+
+    let timers: number[] = [];
+    const later = (fn: () => void, ms: number) => timers.push(window.setTimeout(fn, ms));
+    let anim: Animation | null = null;
+
+    const show = () => {
+      if ("shown" in section.dataset) return;
+      section.dataset.shown = ""; // CSS: opacity 0 → 1 em 300 ms
+      later(() => {
+        dot.style.display = "none";
+        title();
+      }, 320);
+    };
+    const onLive = () => {
+      if ("done" in section.dataset) show();
+    };
+    section.addEventListener("audit:live", onLive);
+
+    const start = () => {
+      opened = true;
+      io.disconnect();
+      measure(); // geometria lida ANTES do primeiro quadro da animação
+      /* 100 px de diâmetro → escala que cobre a seção inteira */
+      const end = (2 * geo.r) / 100;
+      Object.assign(dot.style, { left: `${(geo.x - 50).toFixed(1)}px`, top: `${(geo.y - 50).toFixed(1)}px`, display: "block" });
+      section.dataset.in = "";
+      anim = dot.animate([{ transform: "scale(0.02)" }, { transform: `scale(${end.toFixed(3)})` }], {
+        duration: 900,
+        easing: "cubic-bezier(0.16, 1, 0.3, 1)",
+        fill: "forwards",
+      });
+      void anim.finished.then(
+        () => {
+          section.dataset.done = ""; // AuditField: liga o loop → "audit:live"
+          later(show, 400); // sem canvas (estático/sem WebGL): aparece assim mesmo
+        },
+        () => {},
+      );
+    };
+
+    const io = new IntersectionObserver(
+      () => {
+        const r = wrap.getBoundingClientRect();
+        if (r.top <= innerHeight * 0.6 && r.bottom > 0) start();
+      },
+      { rootMargin: "0px 0px -40% 0px" },
+    );
+    io.observe(wrap);
+
     return () => {
-      clearTimeout(doneT);
-      ro.disconnect();
-      ioIn.disconnect();
-      ioOut.disconnect();
+      io.disconnect();
+      anim?.cancel();
+      timers.forEach(clearTimeout);
+      timers = [];
+      section.removeEventListener("audit:live", onLive);
+      /* desmontou no meio: a próxima montagem mostra direto */
+      if (opened) {
+        section.dataset.in = section.dataset.done = section.dataset.shown = "";
+        dot.style.display = "none";
+      }
     };
   }, []);
 
   return (
     <div ref={ref} className="audit-wrap">
+      <div ref={iris} className="audit-iris" aria-hidden="true" />
       {children}
-      <div className="audit-ring" aria-hidden="true" />
     </div>
   );
 }

@@ -35,7 +35,7 @@ export async function Audit() {
         <AuditField nodes={nodes} labels={labels} />
 
         <div className="audit-body text-fg">
-          <SectionHead n="03" label={tn("audit")} title={t("title")} id="audit-title" meta={`aegis · ${audit.target}`}>
+          <SectionHead n="03" label={tn("audit")} title={t("title")} id="audit-title" meta={`aegis · ${audit.target}`} decrypt="event">
             {/* mouse x toque: as duas versões no HTML, o CSS mostra uma pela media
                 query (pointer: coarse); sem troca depois da hidratação */}
             <span className="on-fine text-muted">{t("lede")}</span>
