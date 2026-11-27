@@ -55,6 +55,7 @@ import {
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 
 import { glCensus } from "@/lib/gl-census";
+import { report } from "@/lib/diag";
 import { recordFrame } from "@/lib/gpu-perf";
 
 import { closeLogoWorker, logoGeometry } from "./logo-geo";
@@ -181,9 +182,11 @@ function bounce(t: number) {
 
 export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[], on: SceneEvents) {
   const box = canvas.parentElement!;
-  /* aparelho mais modesto (celular, poucos núcleos): DPR e shadow map menores */
-  const lite = matchMedia("(max-width: 639px)").matches || (navigator.hardwareConcurrency || 8) <= 6;
-  const dpr = Math.min(window.devicePixelRatio || 1, lite ? 1.25 : 1.5);
+  /* tela pequena: shadow map menor. DPR até 2; se a medição de quadros
+   * mostrar que não aguenta, cai para 1,25 (nunca pelo nº de núcleos: o
+   * Safari do iPhone informa 4 mesmo em aparelhos potentes) */
+  const lite = matchMedia("(max-width: 639px)").matches;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const renderer = new WebGLRenderer({ canvas, alpha: true, antialias: dpr < 1.3, powerPreference: "high-performance" });
   renderer.setPixelRatio(dpr);
   /* produção: sem ler o log de cada shader (consultas síncronas à GPU) */
@@ -686,10 +689,30 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
     p.group.matrixWorldNeedsUpdate = true;
   };
 
+  /* fps medido: 90 quadros seguidos com mediana > 24 ms (< ~42 fps) → DPR 1,25 (uma vez) */
+  const fpsBuf: number[] = [];
+  let lowered = dpr <= 1.25;
+  report("stack", "modo", `3D · DPR ${dpr.toFixed(2)}${lite ? " · sombra 512" : ""}`);
+  const watchFps = (ms: number) => {
+    if (lowered || !(ms > 2 && ms < 250)) return;
+    fpsBuf.push(ms);
+    if (fpsBuf.length < 90) return;
+    const med = [...fpsBuf].sort((a, b) => a - b)[45];
+    fpsBuf.length = 0;
+    if (med > 24) {
+      lowered = true;
+      renderer.setPixelRatio(1.25);
+      report("stack", "modo", `3D · DPR 1.25 (fps medido baixo: mediana ${med.toFixed(1)} ms/quadro)`);
+    }
+  };
+
   const frame = (now: number) => {
     raf = 0;
     /* intervalo entre quadros seguidos: o AUDIT escolhe a qualidade com isso (lib/gpu-perf) */
-    if (chained) recordFrame(now - last);
+    if (chained) {
+      recordFrame(now - last);
+      watchFps(now - last);
+    }
     const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));
     last = now;
 

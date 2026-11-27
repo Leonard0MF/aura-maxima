@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { BgImage } from "@/components/ascii/AsciiCanvas";
 import type { Levels } from "@/lib/ascii/core";
+import { report } from "@/lib/diag";
 import { claimGL } from "@/lib/gl-slot";
 import { introSkipped } from "@/lib/intro";
 
@@ -12,8 +13,8 @@ import { introSkipped } from "@/lib/intro";
 const AsciiCanvas = dynamic(() => import("@/components/ascii/AsciiCanvas"), { ssr: false });
 
 /*
- * O script de boot marca data-fx="static" com reduced-motion ou
- * hardwareConcurrency ≤ 4: aí fica só o <pre> gerado no build. Se o WebGL2
+ * O script de boot marca data-fx="static" só com reduced-motion: aí fica o
+ * <pre> gerado no build. Se o WebGL2
  * (ou a foto) falhar, voltamos para ele também.
  * lib/gl-slot: o hero só tem o canvas perto da tela (≤ 1,5 viewport); longe
  * (> 2,5), o canvas é desmontado (contexto liberado) e volta ao chegar perto.
@@ -30,6 +31,7 @@ export function AsciiStage({ src, aspect, levels, bg }: { src: string; aspect: n
     const el = anchor.current?.closest("section");
     if (!el) return;
     if (document.documentElement.dataset.fx === "static") {
+      report("hero", "modo", `estático (${document.documentElement.dataset.introWhy || "reduced-motion"})`);
       introSkipped(document.documentElement.dataset.introWhy || "static"); // sem canvas, sem intro
       return;
     }

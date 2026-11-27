@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 
 import { BG_SUB, ENIGMA_ALPHA, GLYPHS, RATIO, cellWidth, portraitRect, type Levels } from "@/lib/ascii/core";
-
+import { report } from "@/lib/diag";
 import { introSkipped } from "@/lib/intro";
 
 import { createIntroWords } from "./introWords";
@@ -114,6 +114,7 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
     /* por que a intro não rodou (lib/intro: data-intro-why e console no dev) */
     const skipped = introSkipped;
     const fail = (why: string) => {
+      report("hero", "modo", `estático (fallback: ${why})`);
       skipped(why);
       onFail();
     };
@@ -256,8 +257,10 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
     const resize = () => {
       W = box.clientWidth;
       H = box.clientHeight;
-      /* DPR ≤ 1.5 e no máximo ~2,4 Mpx de framebuffer (telas grandes / 4K) */
-      dpr = Math.min(window.devicePixelRatio || 1, 1.5, Math.sqrt(2.4e6 / Math.max(1, W * H)));
+      /* DPR ≤ 2 e no máximo ~2,4 Mpx de framebuffer (telas grandes / 4K); se
+       * os quadros ficarem caros, o próprio loop cai para ~16 fps */
+      dpr = Math.min(window.devicePixelRatio || 1, 2, Math.sqrt(2.4e6 / Math.max(1, W * H)));
+      report("hero", "modo", `WebGL · DPR ${dpr.toFixed(2)} · ${W}×${H}`);
       const br = box.getBoundingClientRect();
       boxTop = br.top + scrollY;
       boxLeft = br.left + scrollX;
@@ -392,8 +395,14 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
       inside = false;
       schedule();
     };
-    box.addEventListener("pointermove", onMove, { passive: true });
-    box.addEventListener("pointerdown", onMove, { passive: true });
+    /* toque: Pointer Events na seção inteira (o texto do hero fica por cima
+     * do canvas e pegaria o dedo antes dele); com touch-action: pan-y no
+     * hero (globals.css), o Safari entrega pointerdown/pointermove enquanto o
+     * dedo arrasta na horizontal ou fica parado; rolar na vertical continua
+     * rolando a página (pointercancel) e a lente fica onde o dedo saiu */
+    const surface = box.closest("section") ?? box;
+    surface.addEventListener("pointermove", onMove, { passive: true });
+    surface.addEventListener("pointerdown", onMove, { passive: true });
     box.addEventListener("pointerenter", onEnter, { passive: true });
     box.addEventListener("pointerleave", onLeave, { passive: true });
 
@@ -536,6 +545,7 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
       if (gap > limit && ++slow > 40) {
         alive = false;
         if (intro) skipped("slow");
+        report("hero", "modo", `estático (fallback: quadros lentos, ${Math.round(gap)} ms)`);
         return onFail();
       }
       if (gap < limit) slow = 0;
@@ -561,6 +571,7 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
     const onLost = (e: Event) => {
       e.preventDefault();
       alive = false;
+      report("hero", "modo", "estático (fallback: contexto WebGL perdido)");
       onFail();
     };
     canvas.addEventListener("webglcontextlost", onLost);
@@ -600,7 +611,10 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
         img2 ? img2.decode().then(() => true, () => false) : false,
       ]);
       if (!alive) return;
-      if (!ok) return onFail();
+      if (!ok) {
+        report("hero", "modo", "estático (fallback: foto não decodificou)");
+        return onFail();
+      }
 
       /* uploads em passos, devolvendo a thread entre eles (sem tarefa longa
        * se a página já estiver rolando). As fotos sobem como ImageBitmap já
@@ -717,8 +731,8 @@ export default function AsciiCanvas({ src, aspect, levels, bg, onFail }: Props) 
       cancelAnimationFrame(raf);
       ro.disconnect();
       io.disconnect();
-      box.removeEventListener("pointermove", onMove);
-      box.removeEventListener("pointerdown", onMove);
+      surface.removeEventListener("pointermove", onMove);
+      surface.removeEventListener("pointerdown", onMove);
       box.removeEventListener("pointerenter", onEnter);
       box.removeEventListener("pointerleave", onLeave);
       canvas.removeEventListener("webglcontextlost", onLost);

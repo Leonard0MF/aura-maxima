@@ -133,8 +133,7 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
       });
     };
     /* só reduced-motion (escolha do usuário) ou falta de WebGL2 viram imagem
-     * estática. O data-fx="static" do boot (≤ 4 núcleos) vale para o hero; a
-     * constelação roda nesses aparelhos, só mais leve. O three.js (r163+) não
+     * estática. O three.js (r163+) não
      * suporta WebGL1: aí a versão simplificada é a imagem + lista */
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
       fallback("reduced-motion");
@@ -147,8 +146,11 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
 
     const mobile = matchMedia("(max-width: 639px)").matches;
     const coarse = matchMedia("(pointer: coarse)").matches;
-    /* aparelho fraco: menos partículas, nunca menos de 600 */
-    const weak = (cap.cores > 0 && cap.cores <= 4) || (cap.mem > 0 && cap.mem <= 2);
+    /* aparelho fraco: só com deviceMemory INFORMADO ≤ 2 GB (o Safari não
+     * informa: ausente não conta; núcleos sozinhos não rebaixam — o iPhone
+     * informa 4). Menos partículas, nunca menos de 600; o resto da
+     * qualidade sai da medição de fps (lib/gpu-perf + vigia da cena) */
+    const weak = cap.mem > 0 && cap.mem <= 2;
     /* qualidade pelo desempenho medido (lib/gpu-perf), no celular também; o
      * modo simples só para aparelho fraco ou se o fps cair de verdade (a cena desce sozinha) */
     const simple = weak;

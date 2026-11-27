@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { report } from "@/lib/diag";
 import { claimGL } from "@/lib/gl-slot";
 import { prewarm } from "@/lib/prewarm";
 
@@ -222,7 +223,6 @@ export function StackStage({ tokens, mobile: mobileIds, cats }: { tokens: { id: 
       document.removeEventListener("pointerdown", onDown);
     };
 
-    const html = document.documentElement;
     const gl2 = (() => {
       try {
         /* contexto de teste liberado na hora (celular tem poucos contextos) */
@@ -233,7 +233,11 @@ export function StackStage({ tokens, mobile: mobileIds, cats }: { tokens: { id: 
         return false;
       }
     })();
-    if (html.dataset.fx === "static" || !gl2) {
+    /* grade estática SÓ sem WebGL2 ou com reduced-motion (escolha do
+     * usuário); nunca por heurística de aparelho (núcleos, memória) */
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced || !gl2) {
+      report("stack", "modo", `grade estática (${reduced ? "prefers-reduced-motion" : "sem WebGL2"})`);
       section.dataset.static = "";
       return () => {
         delete section.dataset.static;
@@ -277,7 +281,8 @@ export function StackStage({ tokens, mobile: mobileIds, cats }: { tokens: { id: 
       try {
         const full = list.filter((t) => STACK_ICONS[t.id]).map((t) => ({ ...t, ...STACK_ICONS[t.id] }));
         made = await createStackScene(mine, full, { hover, select: open, close });
-      } catch {
+      } catch (e) {
+        report("stack", "erro na montagem", String((e as Error)?.message || e).slice(0, 160));
         mine.remove();
         if (canvas === mine) canvas = null;
         loading = false;
