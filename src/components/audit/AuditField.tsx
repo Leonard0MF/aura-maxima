@@ -129,16 +129,29 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
     let chooseGo: (() => void) | null = null;
     let chooseStop: (() => void) | null = null;
 
-    const sync = () => scene?.run(ready && active && !document.hidden);
-    /* qualidade: escolhida quando o campo aparece (ou na hora, se a seção já
-     * precisa renderizar), com tudo o que a STACK mediu até ali. Não
-     * renderiza nada a mais (só ajusta resolução): o 1º quadro visível já sai
-     * no nível escolhido */
+    /* durante o círculo da 1ª entrada (AuditReveal) o loop fica parado: só
+     * liga quando a seção está coberta (data-done) */
+    const opened = () => "done" in section.dataset || !document.documentElement.dataset.reveal;
+    let liveSent = false;
+    const sync = () => {
+      const on = ready && active && opened() && !document.hidden;
+      scene?.run(on);
+      /* 1º quadro desenhado (o rAF da cena roda antes deste): avisa o AuditReveal */
+      if (on && !liveSent) {
+        liveSent = true;
+        requestAnimationFrame(() => requestAnimationFrame(() => section.dispatchEvent(new Event("audit:live"))));
+      }
+    };
+    /* qualidade: escolhida meia viewport ANTES do campo aparecer (ou na hora,
+     * se a seção já precisa renderizar), num idle, com tudo o que a STACK
+     * mediu até ali. A cena já ajusta o buffer e desenha um quadro nesse
+     * nível: a entrada não realoca nada */
     const chooseWhenNear = (s: Constellation) => {
       const check = () => {
         const r = field.getBoundingClientRect();
         const gap = r.top > innerHeight ? r.top - innerHeight : r.bottom < 0 ? -r.bottom : 0;
-        if (gap <= 0 || active) go();
+        if (gap <= innerHeight * 0.5) idleGo();
+        else if (active) go();
       };
       const stop = () => {
         removeEventListener("scroll", check);
@@ -151,6 +164,12 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
         note("qualidade", `${r.quality} · ${r.why}`);
         ready = true;
         sync();
+      };
+      let idleId = 0;
+      const idleGo = () => {
+        if (idleId) return;
+        idleId = 1;
+        void idle().then(() => chooseGo === go && go());
       };
       chooseGo = go;
       chooseStop = stop;
@@ -238,9 +257,9 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
     /* lib/gl-slot: nasce PARADA cedo — quando o usuário chega ao WORK, bem
      * antes da STACK (desktop; no celular, a ~0,6 viewport) — para os shaders
      * compilarem em idle longe do AUDIT. Renderiza só quando é a vez desta
-     * seção (prioridade depois que a revelação começou). Passou dela e está
-     * a mais de 1 viewport: libera tudo (geometrias, materiais, render
-     * target, contexto e canvas). */
+     * seção (prioridade depois que a revelação começou). Depois de criada,
+     * NUNCA é liberada (persist): fora da tela o loop só pausa; ao voltar,
+     * retoma sem recompilar nem regenerar nada. */
     const work = document.getElementById("findings");
     const early = () => {
       if (mobile || !work) return false;
@@ -251,7 +270,7 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
     const stopPrewarm = prewarm(() => Promise.all([import("./scene"), getLayout(Math.min(nodes.length, 12), count)]));
     const release = claimGL({
       prepareAt: 0.6,
-      releaseAt: 1,
+      persist: true, // criada uma vez por página: fora da tela só pausa
       keep: early,
       el: field,
       prepare() {
@@ -273,16 +292,13 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
       priority: () => ("in" in section.dataset ? 1 : 0),
     });
 
-    /* revelação em círculo (AuditReveal marca data-in): a simulação congela
-     * enquanto o círculo abre (mesma resolução), e o render passa para esta seção */
-    let wasIn = "in" in section.dataset;
+    /* AuditReveal: data-in (o círculo começou: prioridade de render) e
+     * data-done (seção coberta: o loop pode ligar) */
     const mo = new MutationObserver(() => {
-      const isIn = "in" in section.dataset;
-      if (isIn && !wasIn) scene?.transition(900);
-      wasIn = isIn;
       nudgeGL();
+      sync();
     });
-    mo.observe(section, { attributes: true, attributeFilter: ["data-in"] });
+    mo.observe(section, { attributes: true, attributeFilter: ["data-in", "data-done"] });
     document.addEventListener("visibilitychange", sync);
 
     /* ---------- interação ---------- */

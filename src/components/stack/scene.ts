@@ -56,6 +56,7 @@ import {
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js";
 
+import { glCensus } from "@/lib/gl-census";
 import { recordFrame } from "@/lib/gpu-perf";
 
 export type Token = { id: string; name: string; path: string; hex: string };
@@ -997,24 +998,6 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
     /* posições das peças na mesa (para restore); as que ainda caem já têm
      * x/z/yaw finais */
     state: () => pieces.filter((p) => p.state !== "hidden").map((p) => ({ id: p.token.id, x: p.x, z: p.z, yaw: p.yaw })),
-    /* último frame, sem o véu do popup (para o snapshot estático ao
-     * desmontar). toBlob: a cópia do quadro é síncrona (o contexto pode ser
-     * destruído logo depois), mas a codificação WebP sai da main thread —
-     * com toDataURL ela era uma tarefa de ~60 ms (~240 ms com CPU 4×) */
-    snapshot() {
-      if (!dropped) return Promise.resolve(null);
-      const v = veil.visible;
-      veil.visible = false;
-      renderer.render(scene, camera);
-      veil.visible = v;
-      return new Promise<string | null>((res) => {
-        try {
-          canvas.toBlob((b) => res(b ? URL.createObjectURL(b) : null), "image/webp", 0.82);
-        } catch {
-          res(null);
-        }
-      });
-    },
     focus: focusOn,
     unfocus: focusOff,
     /* liga/desliga o loop (só uma seção 3D renderiza por vez) */
@@ -1025,7 +1008,10 @@ export async function createStackScene(canvas: HTMLCanvasElement, tokens: Token[
         cancelAnimationFrame(raf);
         raf = 0;
         chained = false;
-      } else wake();
+      } else {
+        glCensus(renderer, "stack");
+        wake();
+      }
     },
     /* testes: estado da mesa (posições, velocidades, rotação) */
     debug: () =>

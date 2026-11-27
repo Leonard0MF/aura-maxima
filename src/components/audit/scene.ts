@@ -26,10 +26,10 @@
  * núcleos, memória e o nome da GPU como desempate (lib/gpu-perf), antes de
  * a seção aparecer: lente 1,0 / 0,75 / 0,5 (65% das partículas) ou simple.
  * Vale para a sessão inteira. Depois de visível só desce: fps < 40 por mais
- * de 2 s → um degrau abaixo (até "simple"), com crossfade de 300 ms.
+ * de 2 s → um degrau abaixo (até "simple"), aplicado direto.
  * "simple" (sem lente) é fixo no celular/toque.
- * Durante a revelação em círculo (transition) a simulação congela no último
- * quadro (nada é redesenhado), sem baixar a resolução.
+ * Durante a revelação em círculo o loop fica parado (AuditField); a cena é
+ * criada uma vez por página e depois só pausa/retoma.
  *
  * Movimento: tudo no vertex shader (a CPU nunca reescreve partículas). Por
  * frame a CPU resolve Kepler para os ~10 nós, integra 2 molas e a rotação e
@@ -58,6 +58,7 @@ import {
   WebGLRenderTarget,
 } from "three";
 
+import { glCensus } from "@/lib/gl-census";
 import { pickLevel } from "@/lib/gpu-perf";
 
 import { CAMERA_Z, DISK_RS, DISK_VISIBLE_RS, DUST_TILT, FOV, HALF_H, holeCenter, makeLayout, orbitPos, type Layout } from "./layout";
@@ -350,8 +351,6 @@ export type Constellation = {
   warm(): Promise<void>;
   /** escolhe o nível (uma vez por sessão; sem renderizar nada a mais) */
   choose(): { quality: string; why: string };
-  /** revelação em andamento: congela a simulação por `ms` (último quadro na tela) */
-  transition(ms: number): void;
   /** onda de scan saindo do horizonte; acende os nós na ordem em que o anel os alcança */
   wave(onLit: (i: number) => void, onEnd: () => void): void;
   /** testes: centro e raio do disco (px) e os nós na tela */
@@ -558,35 +557,10 @@ export function createConstellation(
   let quality: Quality = LADDER[level];
   /* queda automática: janelas de 0,5 s; slow = desde quando o fps está < 40 */
   const watch = { t0: -1, frames: 0, slow: -1 };
-  /* revelação: até freezeUntil (ms) nada se move nem é redesenhado */
-  let freezeUntil = 0;
   function res() {
     const q = quality === "lens-0.75" ? 0.75 : quality === "lens-0.5" ? 0.5 : 1;
     renderer.setPixelRatio(dpr * q);
     W = H = -1; // força o resize
-  }
-  /* troca de nível na frente do usuário: o quadro atual vira uma imagem por
-   * cima do canvas e some em 300 ms enquanto o novo nível já desenha */
-  function crossfade(apply: () => void) {
-    const snap = document.createElement("canvas");
-    snap.width = canvas.width;
-    snap.height = canvas.height;
-    snap.setAttribute("aria-hidden", "true");
-    draw();
-    snap.getContext("2d")?.drawImage(canvas, 0, 0); // mesmo frame: o buffer ainda vale
-    Object.assign(snap.style, {
-      position: "absolute",
-      left: `${canvas.offsetLeft}px`,
-      top: `${canvas.offsetTop}px`,
-      width: `${canvas.clientWidth}px`,
-      height: `${canvas.clientHeight}px`,
-      pointerEvents: "none",
-      transition: "opacity 300ms linear",
-    });
-    canvas.after(snap);
-    apply();
-    requestAnimationFrame(() => requestAnimationFrame(() => (snap.style.opacity = "0")));
-    setTimeout(() => snap.remove(), 360);
   }
   function applyQuality() {
     quality = LADDER[level];
@@ -705,16 +679,6 @@ export function createConstellation(
     last = now;
     time += dt;
 
-    /* revelação em círculo: simulação parada, o último quadro fica na tela */
-    if (now < freezeUntil) {
-      time -= dt; // o relógio da cena também para (sem salto ao retomar)
-      if (canvas.clientWidth !== W || canvas.clientHeight !== H) {
-        resize();
-        draw(); // o resize limpa o buffer: redesenha o mesmo instante
-      }
-      if (running) raf = requestAnimationFrame(frame);
-      return;
-    }
     /* só para baixo: fps < 40 por mais de 2 s (janelas de 0,5 s) → um degrau */
     if (level < LADDER.length - 1) {
       const sec = now / 1000; // relógio real: o tempo da cena é limitado por quadro
@@ -726,13 +690,13 @@ export function createConstellation(
           if (fps >= 40) watch.slow = -1;
           else if (watch.slow < 0) watch.slow = watch.t0;
           else if (sec - watch.slow > 2) {
-            crossfade(() => {
-              level++;
-              applyQuality();
-              resize();
-              updateLines();
-              draw();
-            });
+            /* troca direta (sem capturar o quadro atual: ler o canvas de
+             * volta custaria mais que o salto de resolução) */
+            level++;
+            applyQuality();
+            resize();
+            updateLines();
+            draw();
             if (chosen) chosen.level = level;
             watch.slow = -1;
             watch.t0 = sec + 0.4; // depois da troca, nova janela
@@ -912,20 +876,19 @@ export function createConstellation(
       if (chosen.level !== level) {
         level = chosen.level;
         applyQuality();
+        /* buffer e render target já no tamanho do nível, e um quadro nele:
+         * ao retomar o loop nada é realocado */
+        resize();
+        updateLines();
+        draw();
       }
       canvas.dataset.qualityWhy = chosen.why;
       return { quality, why: chosen.why };
     },
-    transition(ms) {
-      freezeUntil = performance.now() + ms;
-      resize();
-      draw(); // o instante congelado, já no nível escolhido
-      watch.t0 = -1;
-      watch.slow = -1;
-    },
     run(on) {
       if (on === running) return;
       running = on;
+      if (on) glCensus(renderer, "audit");
       if (on) {
         last = performance.now();
         watch.t0 = -1; // recomeça a vigia depois de uma pausa

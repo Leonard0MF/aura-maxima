@@ -11,7 +11,6 @@ type Scene = {
   highlight(ids: string[] | null): void;
   bump(id: string): boolean;
   state(): Saved;
-  snapshot(): Promise<string | null>;
   focus(id: string): void;
   unfocus(): void;
   pause(on: boolean): void;
@@ -22,9 +21,9 @@ type Scene = {
 /*
  * Controla a seção STACK sem estado React por evento:
  * - baixa o código da cena a ~1,5 viewport de distância e monta a cena 3D
- *   quando a seção é a dona do WebGL (lib/gl-slot); ao se afastar, desmonta
- *   (libera o contexto) e deixa no lugar um snapshot do último frame; ao
- *   voltar, as peças reaparecem onde estavam (sem nova queda)
+ *   quando a seção chega perto (lib/gl-slot). Criada UMA vez por página
+ *   (persist): ao se afastar o loop só pausa; ao voltar, retoma de onde
+ *   parou, sem recompilar nem recriar nada
  * - enquanto nada está pronto, a área mostra só um placeholder do mesmo
  *   tamanho; a lista em texto fica sr-only (visível só no modo estático)
  * - as peças caem quando ~25% da seção aparece
@@ -251,7 +250,6 @@ export function StackStage({ tokens, mobile: mobileIds, cats }: { tokens: { id: 
     let active = false; // esta seção é a que renderiza agora
     let canvas: HTMLCanvasElement | null = null;
     let saved: Saved | null = null;
-    const snap = stage.querySelector<HTMLImageElement>(".stack-snap")!;
 
     /* pré-carga do código (three + física + ícones) em idle logo depois do
      * hero (lib/prewarm), nunca no meio da rolagem; se a pessoa chegar antes
@@ -316,12 +314,6 @@ export function StackStage({ tokens, mobile: mobileIds, cats }: { tokens: { id: 
       if (scene) {
         const st = scene.state();
         if (st.length) saved = st;
-        void scene.snapshot().then((url) => {
-          if (!url) return;
-          if (snap.src.startsWith("blob:")) URL.revokeObjectURL(snap.src);
-          snap.src = url;
-          section.dataset.snap = "";
-        });
       }
       scene?.destroy();
       scene = null;
@@ -335,6 +327,7 @@ export function StackStage({ tokens, mobile: mobileIds, cats }: { tokens: { id: 
      * longe; o loop só roda quando esta seção é a que renderiza */
     const releaseGL = claimGL({
       el: stage,
+      persist: true, // nunca liberada por distância: fora da tela só pausa
       prepare() {
         near = true;
         pending = mount().finally(() => (pending = null));
@@ -374,8 +367,6 @@ export function StackStage({ tokens, mobile: mobileIds, cats }: { tokens: { id: 
   return (
     <div ref={ref} className="stack-stage">
       <div className="stack-ph" aria-hidden="true" />
-      {/* eslint-disable-next-line @next/next/no-img-element -- blob: URL gerada no cliente */}
-      <img className="stack-snap" alt="" aria-hidden="true" />
     </div>
   );
 }
