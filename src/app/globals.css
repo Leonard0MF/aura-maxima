@@ -1239,32 +1239,6 @@ html[data-js] [data-stack]:not([data-static]) .stack-grid {
   z-index: 0;
   overflow: hidden;
 }
-/* em pé (aspecto da janela < 0,9: celular e tablet; o mesmo critério da cena,
- * layout.NARROW_QUERY): o canvas tem ~70svh, com o buraco negro em cima e a
- * rede embaixo; o texto do rodapé vem logo depois, fora da constelação */
-@media (max-aspect-ratio: 9/10) {
-  .audit:not([data-static]) {
-    height: auto;
-    min-height: max(100svh, 600px);
-  }
-  .audit:not([data-static]) .audit-field {
-    bottom: auto;
-    height: 70svh;
-  }
-  .audit:not([data-static]) .audit-body {
-    display: grid;
-    grid-template-rows: 70svh 1fr;
-    height: auto;
-    min-height: max(100svh, 600px);
-  }
-  .audit:not([data-static]) .audit-body > .sh {
-    align-self: start;
-  }
-  .audit:not([data-static]) .audit-foot {
-    align-self: end;
-    padding-top: 1.5rem;
-  }
-}
 /* o canvas só aparece pronto (shaders compilados, 1º quadro desenhado): fade de 300 ms */
 .audit-canvas {
   opacity: 0;
@@ -2031,18 +2005,17 @@ html:not([data-js]) .menu-btn {
   }
 }
 
-/* AUDIT no celular em pé: cabeçalho (título + frase) → campo (~55svh:
- * buraco negro no topo, constelação abaixo) → bloco de texto (nota,
- * trade-off, CTA). Tudo em 100svh e nada por cima da constelação: nota,
- * progresso do scan e cartão saem do canvas. */
-@media (max-width: 639px) {
+/* AUDIT em pé (aspecto da janela < 0,9: celular e tablet; o mesmo critério
+ * da cena, layout.NARROW_QUERY): pilha vertical sem sobreposição —
+ * cabeçalho (rótulo, título, lede) → canvas com 70svh (buraco negro no
+ * topo, constelação abaixo) → bloco de texto (nota, trade-off, CTA, ajuda).
+ * Nenhum texto por cima do canvas. */
+@media (max-aspect-ratio: 9/10) {
   .audit {
     display: grid;
     grid-template-areas: "head" "field" "foot";
-    grid-template-rows: auto minmax(0, 1fr) auto;
-    /* a seção é exatamente a tela: o campo fica com o que sobra (≥ ~55svh) */
-    height: 100svh;
-    min-height: 560px;
+    grid-template-rows: auto 70svh auto;
+    height: auto;
   }
   .audit-body {
     display: contents;
@@ -2053,9 +2026,6 @@ html:not([data-js]) .menu-btn {
     z-index: 1;
     padding-top: 0.75rem;
     padding-bottom: 0.25rem;
-  }
-  .audit-body > .sh h2 {
-    font-size: clamp(2.25rem, 11vw, 3rem);
   }
   .audit-field {
     grid-area: field;
@@ -2070,8 +2040,13 @@ html:not([data-js]) .menu-btn {
     position: relative;
     z-index: 1;
     gap: 0.75rem;
-    padding-top: 0;
-    padding-bottom: max(0.85rem, var(--safe-b));
+    padding-top: 0.75rem;
+    padding-bottom: max(1.25rem, var(--safe-b));
+  }
+}
+@media (max-width: 639px) {
+  .audit-body > .sh h2 {
+    font-size: clamp(2.25rem, 11vw, 3rem);
   }
   .audit-foot .mt-4 {
     margin-top: 0.5rem;
