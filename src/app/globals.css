@@ -2007,15 +2007,16 @@ html:not([data-js]) .menu-btn {
 
 /* AUDIT em pé (aspecto da janela < 0,9: celular e tablet; o mesmo critério
  * da cena, layout.NARROW_QUERY): pilha vertical sem sobreposição —
- * cabeçalho (rótulo, título, lede) → canvas com 70svh (buraco negro no
+ * cabeçalho (rótulo, título, lede) → canvas com 58svh (buraco negro no
  * topo, constelação abaixo) → bloco de texto (nota, trade-off, CTA, ajuda).
- * Nenhum texto por cima do canvas. */
+ * Altura automática: tudo cabe inteiro. Nenhum texto por cima do canvas. */
 @media (max-aspect-ratio: 9/10) {
   .audit {
     display: grid;
     grid-template-areas: "head" "field" "foot";
-    grid-template-rows: auto 70svh auto;
+    grid-template-rows: auto 58svh 1fr;
     height: auto;
+    min-height: 100svh;
   }
   .audit-body {
     display: contents;
@@ -2037,6 +2038,7 @@ html:not([data-js]) .menu-btn {
   }
   .audit-foot {
     grid-area: foot;
+    align-self: start;
     position: relative;
     z-index: 1;
     gap: 0.75rem;

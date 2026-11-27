@@ -426,6 +426,11 @@ export function createConstellation(
   camera.position.set(0, 0, CAMERA_Z);
   const group = new Group();
   scene.add(group);
+  /* em pé: gira a rede no próprio plano para a direção média dos nós apontar
+   * reto para baixo (centralizada sob o buraco negro) antes da escala por
+   * eixo; no desktop fica parado (rotação 0) */
+  const inner = new Group();
+  group.add(inner);
 
   const white = new Vector3(0.93, 0.92, 0.88);
   const amber = new Vector3(0.96, 0.65, 0.14);
@@ -480,7 +485,7 @@ export function createConstellation(
   });
   const dust = new Points(dustGeo, dustMat);
   dust.frustumCulled = false; // posições saem do shader
-  group.add(dust);
+  inner.add(dust);
 
   /* estrelas (só em telas em pé): semente fixa; quantas desenhar sai da área */
   const MAX_STARS = 2000;
@@ -532,7 +537,7 @@ export function createConstellation(
   const lineMat = new LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, blending: AdditiveBlending });
   const lines = new LineSegments(lineGeo, lineMat);
   lines.frustumCulled = false;
-  group.add(lines);
+  inner.add(lines);
   const updateLines = () => {
     pairs.forEach(([i, j], k) => {
       seg.set(nodePos.subarray(i * 3, i * 3 + 3), k * 6);
@@ -569,7 +574,7 @@ export function createConstellation(
   });
   const nodesPts = new Points(nodeGeo, nodeMat);
   nodesPts.frustumCulled = false;
-  group.add(nodesPts);
+  inner.add(nodesPts);
 
   /* ---------- buraco negro (pass em tela cheia) ---------- */
   const bhUniforms = {
@@ -696,8 +701,12 @@ export function createConstellation(
     let k = Math.min(1, (1.45 * HALF_H * asp) / 5.4);
     if (narrow && fit) {
       group.scale.set(fit.kx, fit.ky, fit.ky);
+      inner.rotation.z = -fit.phi;
       k = Math.min(fit.kx, fit.ky);
-    } else group.scale.setScalar(k);
+    } else {
+      group.scale.setScalar(k);
+      inner.rotation.z = 0;
+    }
     sideM = narrow ? 16 : SAFE;
     dustMat.uniforms.uSide.value = SAFE - sideM;
     stars.visible = narrow;
@@ -732,7 +741,7 @@ export function createConstellation(
     group.updateMatrixWorld();
     let bad = 0;
     for (let i = 0; i < n; i++) {
-      v.set(nodePos[i * 3], nodePos[i * 3 + 1], nodePos[i * 3 + 2]).applyMatrix4(group.matrixWorld).project(camera);
+      v.set(nodePos[i * 3], nodePos[i * 3 + 1], nodePos[i * 3 + 2]).applyMatrix4(inner.matrixWorld).project(camera);
       const x = (v.x * 0.5 + 0.5) * W, y = (-v.y * 0.5 + 0.5) * H;
       const m0 = SAFE + NODE_R, mx = sideM + NODE_R;
       bad += Math.max(0, mx - x) + Math.max(0, x - (W - mx)) + Math.max(0, m0 - y) + Math.max(0, y - (H - m0));
@@ -771,7 +780,7 @@ export function createConstellation(
   function project() {
     group.updateMatrixWorld();
     for (let i = 0; i < n; i++) {
-      v.set(nodePos[i * 3], nodePos[i * 3 + 1], nodePos[i * 3 + 2]).applyMatrix4(group.matrixWorld).project(camera);
+      v.set(nodePos[i * 3], nodePos[i * 3 + 1], nodePos[i * 3 + 2]).applyMatrix4(inner.matrixWorld).project(camera);
       screen[i * 2] = (v.x * 0.5 + 0.5) * W;
       screen[i * 2 + 1] = (-v.y * 0.5 + 0.5) * H;
     }
@@ -952,7 +961,7 @@ export function createConstellation(
     async warm() {
       /* 1. um programa por idle (poeira, linhas, nós): cada envio de shader
        *    custa ~15–25 ms com CPU 4× */
-      for (const obj of [...group.children, stars]) {
+      for (const obj of [...inner.children, stars]) {
         await idle();
         if (destroyed) return;
         resize();

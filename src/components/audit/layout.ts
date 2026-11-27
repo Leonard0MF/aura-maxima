@@ -180,23 +180,43 @@ export function narrowFit(orbits: Orbit[], w: number, h: number, safe = 48) {
   const by = NARROW_BH_Y * halfH;
   /* posições reais dos nós ao longo de 10 min (os nós andam em grupo: o
    * envelope de todos os tempos deixaria a rede estreita a cada instante) */
-  const pts: number[][] = [];
+  const STEP = 4;
+  const raw: number[][] = [];
   const tmp = [0, 0, 0];
-  for (let t = 0; t < 600; t += 4) for (const o of orbits) pts.push(orbitPos(o, t, tmp).slice());
+  for (let t = 0; t < 600; t += STEP) for (const o of orbits) raw.push(orbitPos(o, t, tmp).slice());
+  /* direção média dos nós (no plano das órbitas): a rede é girada para que
+   * ela aponte reto para baixo, centralizada sob o buraco negro */
+  let mx = 0, my = 0;
+  for (const [x, y] of raw) {
+    mx += x;
+    my += y;
+  }
+  const phi = Math.atan2(my, mx);
+  const c = Math.cos(-phi), sn = Math.sin(-phi);
+  const pts = raw.map(([x, y, z]) => [x * c - y * sn, x * sn + y * c, z]);
+  const n = orbits.length;
   const pct = (a: number[], p: number) => a.sort((x, y) => x - y)[Math.floor(p * (a.length - 1))];
   let kx = 1, ky = 1;
-  for (let it = 0; it < 6; it++) {
-    const half: number[] = [], down: number[] = [];
-    for (const [x, y, z] of pts) {
-      const X = ky * y, Y = by - kx * x, Z = ky * z;
-      const d = CAMERA_Z - Z;
-      half.push(Math.abs(((X * f) / d) * (h / 2)));
-      down.push(h / 2 - ((Y * f) / d) * (h / 2) - bhPx);
+  for (let it = 0; it < 8; it++) {
+    const widths: number[] = [], down: number[] = [];
+    for (let s0 = 0; s0 < pts.length; s0 += n) {
+      let lo = Infinity, hi = -Infinity;
+      for (let i = s0; i < s0 + n; i++) {
+        const [x, y, z] = pts[i];
+        const X = ky * y, Y = by - kx * x, Z = ky * z;
+        const d = CAMERA_Z - Z;
+        const sx = ((X * f) / d) * (h / 2);
+        lo = Math.min(lo, sx);
+        hi = Math.max(hi, sx);
+        down.push(h / 2 - ((Y * f) / d) * (h / 2) - bhPx);
+      }
+      widths.push(hi - lo);
     }
-    /* 90% das posições dentro de 85% da largura e 97% acima da margem de
-     * baixo; as raras passagens além disso apagam no fade das bordas */
-    ky *= (0.425 * w) / pct(half, 0.9);
-    kx *= (h - safe - 12 - bhPx) / pct(down, 0.97);
+    /* largura da rede a cada instante: mediana em ~85% da tela (fica entre
+     * ~75 e ~90% na maior parte do tempo); comprimento: 95% das posições
+     * acima da margem de baixo. O resto apaga no fade das bordas */
+    ky *= (0.85 * w) / pct(widths, 0.5);
+    kx *= (h - safe - 12 - bhPx) / pct(down, 0.95);
   }
-  return { vfov, halfH, pxPerRs, kx, ky, bhPx };
+  return { vfov, halfH, pxPerRs, kx, ky, bhPx, phi };
 }
