@@ -1231,7 +1231,7 @@ html[data-js] [data-stack]:not([data-static]) .stack-grid {
 .audit {
   /* a seção inteira é a tela da constelação */
   height: max(100svh, 600px); /* no celular o texto também cabe (≈500px) */
-  touch-action: manipulation; /* sem gestos próprios no toque: a página rola normalmente */
+  touch-action: pan-y; /* scroll vertical nativo; arrasto horizontal gira */
 }
 .audit-field {
   position: absolute;

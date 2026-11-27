@@ -7,7 +7,7 @@ import { claimGL, schedule as nudgeGL } from "@/lib/gl-slot";
 import { prewarm } from "@/lib/prewarm";
 
 import { auditDebug, note, probe } from "./diag";
-import type { Layout, Rect } from "./layout";
+import type { Layout } from "./layout";
 import type { Constellation } from "./scene";
 
 const idle = () => new Promise<void>((r) => ("requestIdleCallback" in window ? requestIdleCallback(() => r(), { timeout: 400 }) : setTimeout(r, 30)));
@@ -16,21 +16,21 @@ const idle = () => new Promise<void>((r) => ("requestIdleCallback" in window ? r
  * transferidos; sem Worker, na main thread em pedaços de 300 partículas, um
  * por idle) e reaproveitadas a cada nova montagem */
 const layouts = new Map<string, Promise<Layout>>();
-function getLayout(n: number, count: number, stars: number) {
-  const key = `${n}:${count}:${stars}`;
+function getLayout(n: number, count: number) {
+  const key = `${n}:${count}`;
   let p = layouts.get(key);
   if (!p) {
     const local = (why: string) =>
       import("./layout").then((m) => {
         note("layout", `main thread em pedaços (${why})`);
-        return m.makeLayoutChunked(n, count, stars, idle);
+        return idle().then(() => m.makeLayout(n, count));
       });
     p = new Promise<Layout>((res) => {
       if (typeof Worker === "undefined") return void local("sem Worker").then(res);
       try {
         const w = new Worker(new URL("./layout.worker.ts", import.meta.url), { type: "module" });
         w.onmessage = (e: MessageEvent<Layout>) => {
-          note("layout", `Worker (${count} partículas + ${stars} estrelas)`);
+          note("layout", `Worker (${count} partículas)`);
           res(e.data);
           w.terminate();
         };
@@ -38,7 +38,7 @@ function getLayout(n: number, count: number, stars: number) {
           w.terminate();
           void local("Worker falhou").then(res);
         };
-        w.postMessage({ n, count, stars });
+        w.postMessage({ n, count });
       } catch {
         void local("Worker indisponível").then(res);
       }
@@ -63,11 +63,9 @@ const fill = (s: string, v: Record<string, number>) => s.replace(/\{(\w+)\}/g, (
  * Camada interativa do AUDIT: buraco negro + constelação (WebGL) atrás do
  * texto da seção.
  * - hover/toque num nó brilhante: cartão com o dado
- * - desktop: arrastar sobre a nuvem gira em qualquer direção (1:1, com
- *   inércia; fica onde parou; 6 s depois volta a girar sozinha devagar).
- *   Cursor grab/grabbing
- * - celular: sem arraste (nenhum gesto é capturado: a página rola por cima),
- *   só a rotação automática; tocar num nó abre o cartão
+ * - arrastar: gira a rede em volta do próprio centróide, com os limites e a
+ *   volta ao repouso do commit 76d962c (o scroll vertical nunca é
+ *   capturado: touch-action pan-y, nenhum listener de wheel)
  * - toque (pointer: coarse): sem efeito de cursor na cena; no celular o
  *   cartão é um bottom sheet com botão de fechar (tocar fora ou rolar fecha)
  * - clique no vazio: onda de scan saindo do horizonte; os nós acendem em
@@ -105,17 +103,10 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
     const cap = probe(); // os contextos de teste são liberados na hora
     /* caixas de texto da seção por cima do campo (px do campo): o sistema
      * (nós e poeira) não as invade. No celular o campo já é só a faixa livre */
-    const keepOut = (): Rect[] => {
-      const f = field.getBoundingClientRect();
-      return [...section.querySelectorAll(".sh-label, .sh-title, .sh-lede, .audit-copy, .audit-list")]
-        .map((e) => e.getBoundingClientRect())
-        .filter((r) => r.width > 2 && r.height > 2 && r.bottom > f.top && r.top < f.bottom && r.right > f.left && r.left < f.right)
-        .map((r) => ({ x: r.left - f.left, y: r.top - f.top, w: r.width, h: r.height }));
-    };
     let isStatic = false;
     let lay: typeof import("./layout") | null = null;
-    const drawStatic = () => lay && setSvg(staticSvg(lay, nodes.length, field.clientWidth, field.clientHeight, keepOut()));
-    const ro = new ResizeObserver(() => (isStatic ? drawStatic() : sceneRef.current?.setKeepOut(keepOut())));
+    const drawStatic = () => lay && setSvg(staticSvg(lay, nodes.length));
+    const ro = new ResizeObserver(() => isStatic && drawStatic());
     ro.observe(section);
     /* os textos mudam de lugar sem a seção mudar de tamanho (modo estático,
      * fontes): observa também o rodapé e a lista */
@@ -214,15 +205,14 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
     /* preparação em pedaços: código e layout em paralelo (o layout num
      * Worker), contexto num idle, shaders e aquecimento em outros (warm).
      * Termina com o loop PARADO; quem liga é o gl-slot. */
-    /* rede (partículas finas) e estrelas */
-    const count = weak ? 600 : mobile ? 700 : 1200;
-    const starN = weak ? 500 : mobile ? 800 : 2500;
-    note("partículas", `${count} + ${starN} estrelas${weak ? " (aparelho fraco)" : ""} · ${simple ? "simple (sem lente)" : "lente (nível decidido perto da seção)"}`);
+    /* a densidade do commit 76d962c (aparelho fraco: 600, para não travar) */
+    const count = weak ? 600 : mobile ? 1500 : 4500;
+    note("partículas", `${count}${weak ? " (aparelho fraco)" : ""} · ${simple ? "simple (sem lente)" : "lente (nível decidido perto da seção)"}`);
     let losses = 0;
     let dead = false; // caiu na imagem estática: não monta mais
     const mount = async (): Promise<void> => {
       if (scene || dead) return;
-      const [{ createConstellation }, layout] = await Promise.all([import("./scene"), getLayout(Math.min(nodes.length, 12), count, starN)]);
+      const [{ createConstellation }, layout] = await Promise.all([import("./scene"), getLayout(Math.min(nodes.length, 12), count)]);
       await idle();
       if (!want || scene || dead) return;
       const c = document.createElement("canvas");
@@ -232,10 +222,8 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
       try {
         made = createConstellation(c, nodes.length, {
           count,
-          stars: starN,
           simple,
-          layout: layout.n === Math.min(nodes.length, 12) ? layout : undefined,
-          keep: keepOut(),
+          layout: layout.orbits.length === Math.min(nodes.length, 12) ? layout : undefined,
           /* contexto perdido (no celular: app em segundo plano, memória):
            * a 1ª vez recria; a 2ª vira imagem estática */
           onLost: () => {
@@ -302,7 +290,7 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
      * loop só pausa; ao voltar, retoma sem recompilar nem regenerar nada. */
     let early = false;
     const stopPrewarm = prewarm(() =>
-      Promise.all([import("./scene"), getLayout(Math.min(nodes.length, 12), count, starN)]).then(() => {
+      Promise.all([import("./scene"), getLayout(Math.min(nodes.length, 12), count)]).then(() => {
         early = true;
         nudgeGL();
       }),
@@ -383,47 +371,42 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
       if (i >= 0) follow = requestAnimationFrame(place);
     };
 
-    /* down.grab: botão do mouse apertado sobre a nuvem (gira); drag: moveu (não é clique) */
-    let down: { x: number; y: number; ox: number; oy: number; id: number; drag: boolean; grab: boolean } | null = null;
+    /* a interação do commit 76d962c: arrastar (> 6 px) gira; clique/toque
+     * num nó abre o cartão; no vazio, escaneia */
+    let down: { x: number; y: number; id: number; drag: boolean } | null = null;
     const onMove = (e: PointerEvent) => {
       if (!scene) return;
       const p = pos(e);
       if (down && down.id === e.pointerId) {
-        if (Math.hypot(p.x - down.ox, p.y - down.oy) > 4) down.drag = true;
-        if (down.grab) {
-          scene.dragBy(p.x - down.x, p.y - down.y); // 1:1, já neste evento
+        const dx = p.x - down.x;
+        const dy = p.y - down.y;
+        if (!down.drag && Math.hypot(dx, dy) > 6) {
+          down.drag = true;
+          field.setPointerCapture(e.pointerId);
+          show(-1);
+        }
+        if (down.drag) {
+          scene.dragBy(dx, dy);
           down.x = p.x;
           down.y = p.y;
-          if (down.drag) show(-1);
           return;
         }
       }
+      scene.pointer(p.x, p.y, true);
       if (e.pointerType === "mouse") {
-        scene.pointer(p.x, p.y, true); // efeito de cursor: só com mouse
         const i = scene.hit(p.x, p.y);
-        field.style.cursor = i >= 0 ? "pointer" : scene.inArea(p.x, p.y) ? "grab" : "";
+        field.style.cursor = i >= 0 ? "pointer" : "";
         show(i);
       }
     };
     const onDown = (e: PointerEvent) => {
       if (!scene || e.button > 0) return;
       const p = pos(e);
-      /* só o mouse gira; no toque a página precisa rolar */
-      const grab = e.pointerType === "mouse" && scene.hit(p.x, p.y) < 0 && scene.inArea(p.x, p.y);
-      down = { ...p, ox: p.x, oy: p.y, id: e.pointerId, drag: false, grab };
-      if (grab) {
-        field.setPointerCapture(e.pointerId);
-        field.style.cursor = "grabbing";
-        scene.grab();
-      }
+      down = { ...p, id: e.pointerId, drag: false };
     };
     const onUp = (e: PointerEvent) => {
       if (!scene || !down || down.id !== e.pointerId) return;
       const wasDrag = down.drag;
-      if (down.grab) {
-        scene.release();
-        field.style.cursor = "grab";
-      }
       down = null;
       if (wasDrag) return;
       const p = pos(e);
@@ -454,7 +437,6 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
       scene?.pointer(0, 0, false);
     };
     const onCancel = () => {
-      if (down?.grab) scene?.release();
       down = null;
       scene?.pointer(0, 0, false);
     };
@@ -543,45 +525,49 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
   );
 }
 
-/* imagem estática: a mesma cena na orientação inicial (estrelas pela seção
- * inteira, a rede, o buraco negro), em SVG, no tamanho do campo e com as
- * mesmas caixas de texto evitadas */
-function staticSvg(lay: typeof import("./layout"), n: number, fw: number, fh: number, keep: Rect[]) {
-  const { makeLayout, fitSphere, placeCloud, projectStatic, STAR_NEAR, STAR_FAR } = lay;
-  const W = Math.max(320, Math.round(fw)), H = Math.max(240, Math.round(fh));
-  const L = makeLayout(n, 900, 700);
-  const fit = fitSphere(W, H, keep);
-  const { hc } = fit;
-  const pc = placeCloud(fit, W, H, L.radius);
-  /* a inclinação inicial da cena (0,12 rad em x) */
-  const c = Math.cos(0.12), sn = Math.sin(0.12);
-  const P = (a: Float32Array, i: number) => {
-    const x = a[i * 3], y = a[i * 3 + 1], z = a[i * 3 + 2];
-    return projectStatic(pc.x + x * pc.scale, pc.y + (y * c - z * sn) * pc.scale, (y * sn + z * c) * pc.scale, W, H);
-  };
-  let starDots = "";
-  for (let k = 0; k < L.starCount; k++) {
-    const d = L.stars[k * 4 + 2];
-    const far = (d - STAR_NEAR) / (STAR_FAR - STAR_NEAR);
-    const x = (L.stars[k * 4] * 0.5 + 0.5) * W, y = (0.5 - L.stars[k * 4 + 1] * 0.5) * H;
-    starDots += `<circle cx="${x.toFixed(0)}" cy="${y.toFixed(0)}" r="${Math.max(0.5, 4.5 / d).toFixed(1)}" fill="#ece9e0" fill-opacity="${(0.55 - 0.42 * far).toFixed(2)}"/>`;
-  }
+/* imagem estática: a mesma cena no instante 0 (buraco negro + rede), em SVG */
+function staticSvg(lay: typeof import("./layout"), n: number) {
+  const { makeLayout, orbitPos, projectStatic, HALF_H, DUST_TILT } = lay;
+  const W = 1600;
+  const H = 800;
+  const L = makeLayout(n, 1400);
+  const bx = -0.5 * HALF_H * (W / H); // buraco negro no terço esquerdo
+  const P = (x: number, y: number, z: number) => projectStatic(x + bx, y, z, W, H);
+  const nodes = L.orbits.map((o) => orbitPos(o, 0));
+  const c = Math.cos(DUST_TILT), s = Math.sin(DUST_TILT);
   let dots = "";
   for (let i = 0; i < L.count; i++) {
-    const { x, y, s } = P(L.points, i);
+    const [px, py, pz] = L.points.subarray(i * 3, i * 3 + 3);
+    const [kind, a, b, t] = L.ref.subarray(i * 4, i * 4 + 4);
+    let q: number[];
+    if (kind === 0) q = [nodes[a][0] + px, nodes[a][1] + py, nodes[a][2] + pz];
+    else if (kind === 1) q = [0, 1, 2].map((k) => nodes[a][k] + (nodes[b][k] - nodes[a][k]) * t + [px, py, pz][k]);
+    else {
+      const r0 = kind === 2 ? px : px * Math.sqrt(1 - L.seeds[i]);
+      const h = kind === 2 ? pz : 0;
+      q = [Math.cos(py) * r0, Math.sin(py) * r0 * c - h * s, Math.sin(py) * r0 * s + h * c];
+      if (Math.hypot(q[0], q[1]) < 0.5) continue; // dentro da sombra
+    }
+    const p = P(q[0], q[1], q[2]);
     const col = L.tones[i] > 0.5 ? "#f5a524" : "#ece9e0";
-    dots += `<circle cx="${x.toFixed(0)}" cy="${y.toFixed(0)}" r="${(L.sizes[i] * 1.1 * s).toFixed(1)}" fill="${col}" fill-opacity="${L.tones[i] > 0.5 ? 0.55 : 0.4}"/>`;
+    dots += `<circle cx="${p.x.toFixed(0)}" cy="${p.y.toFixed(0)}" r="${(L.sizes[i] * 1.1 * p.s).toFixed(1)}" fill="${col}" fill-opacity="${L.tones[i] > 0.5 ? 0.55 : 0.4}"/>`;
   }
-  const homes = Array.from({ length: L.n }, (_, i) => P(L.nodes, i));
-  const lines = L.links
-    .map(([a, b]) => `<line x1="${homes[a].x.toFixed(0)}" y1="${homes[a].y.toFixed(0)}" x2="${homes[b].x.toFixed(0)}" y2="${homes[b].y.toFixed(0)}"/>`)
+  const lines = L.pairs
+    .map(([a, b]) => {
+      const p = P(nodes[a][0], nodes[a][1], nodes[a][2]);
+      const q = P(nodes[b][0], nodes[b][1], nodes[b][2]);
+      return `<line x1="${p.x.toFixed(0)}" y1="${p.y.toFixed(0)}" x2="${q.x.toFixed(0)}" y2="${q.y.toFixed(0)}"/>`;
+    })
     .join("");
-  const nodeDots = homes
-    .map((p) => `<circle cx="${p.x.toFixed(0)}" cy="${p.y.toFixed(0)}" r="14" fill="#f5a524" fill-opacity=".18"/><circle cx="${p.x.toFixed(0)}" cy="${p.y.toFixed(0)}" r="4" fill="#fff3d6"/>`)
+  const nodeDots = nodes
+    .map(([x, y, z]) => {
+      const p = P(x, y, z);
+      return `<circle cx="${p.x.toFixed(0)}" cy="${p.y.toFixed(0)}" r="14" fill="#f5a524" fill-opacity=".18"/><circle cx="${p.x.toFixed(0)}" cy="${p.y.toFixed(0)}" r="4" fill="#fff3d6"/>`;
+    })
     .join("");
   /* buraco negro: arco de trás (imagem curvada do disco), horizonte, anel de fótons, frente do disco */
-  const o = { x: hc.x, y: hc.y };
-  const rs = hc.rs;
+  const o = P(0, 0, 0);
+  const rs = H * 0.026;
   const sh = 2.6 * rs;
   const hole = `<defs>
 <radialGradient id="bh-arc" cx="${o.x}" cy="${o.y}" r="${(7.7 * rs).toFixed(0)}" gradientUnits="userSpaceOnUse"><stop offset="${(sh / (7.7 * rs)).toFixed(2)}" stop-color="#fff3d6"/><stop offset=".5" stop-color="#f5a524" stop-opacity=".7"/><stop offset="1" stop-color="#f5a524" stop-opacity="0"/></radialGradient>
@@ -591,5 +577,5 @@ function staticSvg(lay: typeof import("./layout"), n: number, fw: number, fh: nu
 <circle cx="${o.x}" cy="${o.y}" r="${sh.toFixed(0)}" fill="#000"/>
 <circle cx="${o.x}" cy="${o.y}" r="${(sh + 1).toFixed(0)}" fill="none" stroke="#fff3d6" stroke-width="2"/>
 <ellipse cx="${o.x}" cy="${o.y}" rx="${(9 * rs).toFixed(0)}" ry="${(9 * rs * 0.16).toFixed(0)}" fill="url(#bh-disk)" clip-path="url(#bh-bottom)"/>`;
-  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">${starDots}<g stroke="#f5a524" stroke-opacity=".22" stroke-width="1">${lines}</g>${dots}${nodeDots}${hole}</svg>`;
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg"><g stroke="#f5a524" stroke-opacity=".22" stroke-width="1">${lines}</g>${dots}${nodeDots}${hole}</svg>`;
 }
