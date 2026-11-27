@@ -12,6 +12,24 @@ export async function SiteFooter() {
     <footer className="border-t border-ink/20 bg-paper text-ink">
       <div className="flex flex-col gap-3 px-4 py-6 font-mono text-[11px] tracking-wide uppercase sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:text-xs">
         <SecurityBadge />
+        <ul className="flex flex-wrap gap-x-5 gap-y-1">
+          {[
+            { label: profile.contact.email, href: `mailto:${profile.contact.email}`, ext: false },
+            { label: "LinkedIn", href: profile.contact.linkedin, ext: true },
+            { label: "GitHub", href: profile.contact.github, ext: true },
+          ].map((l) => (
+            <li key={l.href}>
+              <a
+                href={l.href}
+                className={`tap ulink${l.ext ? "" : " normal-case"}`}
+                {...(l.ext ? { target: "_blank", rel: "noopener noreferrer me" } : {})}
+              >
+                {l.label}
+                {l.ext && <span className="sr-only">{t("common.newTab")}</span>}
+              </a>
+            </li>
+          ))}
+        </ul>
         <p className="text-ink-soft">
           © {new Date().getFullYear()} {profile.fullName}
         </p>

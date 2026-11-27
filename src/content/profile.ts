@@ -48,14 +48,17 @@ export const profile = {
   lastScan: "2026-11", // atualize quando mexer no conteúdo
 
   contact: {
-    email: "TODO@exemplo.com", // TODO: e-mail público de contato
+    email: "leonardomachmann@gmail.com",
     github: "https://github.com/Leonard0MF",
     githubHandle: "Leonard0MF",
-    linkedin: "https://www.linkedin.com/in/TODO", // TODO: URL do LinkedIn
+    linkedin: "https://www.linkedin.com/in/leonardo-machmann-francisco/",
   },
 
   aegisUrl: "https://aegis-ten-zeta.vercel.app/",
 } as const;
+
+/* perfis públicos: JSON-LD (sameAs), metadata e rodapé */
+export const sameAs = [profile.contact.linkedin, profile.contact.github];
 
 export const services: ServiceGroup[] = [
   { id: "frontend", port: "443/tcp", state: "open" },
