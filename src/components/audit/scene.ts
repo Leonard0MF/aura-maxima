@@ -369,6 +369,12 @@ export type Constellation = {
   pointer(x: number, y: number, inside: boolean): void;
   /** parallax: posição do mouse na seção (-1..1 nos dois eixos); null = volta ao centro */
   tilt(nx: number | null, ny?: number): void;
+  /** o ponto (px do campo) está sobre a constelação? (onde o arraste começa) */
+  inArea(x: number, y: number): boolean;
+  /** arraste (desktop): começo, deslocamento em px (1:1, sem atraso) e fim */
+  grab(): void;
+  dragBy(dx: number, dy: number): void;
+  release(): void;
   hit(x: number, y: number): number;
   nodeAt(i: number): { x: number; y: number };
   hover(i: number): void;
@@ -388,7 +394,7 @@ export type Constellation = {
     keep: Rect[];
     margin: number;
     fit: { s: number; dx: number; dy: number };
-    rot: { yaw: number; pitch: number; spin: number };
+    rot: { yaw: number; pitch: number; spin: number; gy: number; gp: number; mode: number };
     w: number;
     h: number;
   };
@@ -463,11 +469,11 @@ export function createConstellation(
       }
   }
   const updateNodes = (t: number) => {
-    const yaw = rot.spin + rot.yaw;
+    const yaw = rot.spin + rot.yaw + rot.gy;
     const cy = Math.cos(yaw), sy = Math.sin(yaw);
     /* celular: "respiração" (o volume pulsa ~2,5% e balança ±3° em 7 e 11 s) */
     const br = cloud.on ? 1 + 0.025 * Math.sin((t / 7) * Math.PI * 2) : 1;
-    const pitch = (cloud.on ? CLOUD_PITCH + 0.05 * Math.sin((t / 11) * Math.PI * 2) : 0) + rot.pitch;
+    const pitch = (cloud.on ? CLOUD_PITCH + 0.05 * Math.sin((t / 11) * Math.PI * 2) : 0) + rot.pitch + rot.gp;
     const cp = Math.cos(pitch), sp = Math.sin(pitch);
     for (let i = 0; i < n; i++) {
       let ox: number, oy: number, oz: number;
@@ -623,14 +629,31 @@ export function createConstellation(
   const pk = { v: 0, p: 0, t: 0 };
   const cm = { v: 0 };
   /*
-   * Rotação da constelação em volta do PRÓPRIO centro, sem arraste:
+   * Rotação da constelação em volta do PRÓPRIO centro:
    * - spin: automática, muito lenta (uma volta em yaw a cada 90 s);
-   * - yaw/pitch: parallax do mouse (até 12° e 6°), suavizado (lerp
-   *   exponencial); o disco do buraco negro acompanha de leve (±4°).
+   * - yaw/pitch: parallax do mouse (até 12° e 6°), suavizado (lerp exponencial);
+   * - gy/gp: arraste (só desktop), 1:1 com o mouse, até ±60° / ±20°.
+   *   mode 0: automático (spin + parallax); 1: arrastando (spin e parallax
+   *   parados; o parallax do momento é incorporado ao arraste, sem salto);
+   *   2: solto: inércia (~600 ms) e FICA onde parou; 4 s sem interação → 3:
+   *   volta suave (2 s) à pose de antes do arraste e retoma o automático.
+   * O disco do buraco negro acompanha yaw/pitch (sem o spin) até ±6°.
    * O encaixe (fit/placeCloud) garante a área segura em QUALQUER ângulo.
    */
   const PY = (12 * Math.PI) / 180, PP = (6 * Math.PI) / 180, SPIN = (Math.PI * 2) / 90;
-  const rot = { yaw: 0, pitch: 0, ty: 0, tp: 0, spin: 0, z: 0 };
+  const GY = (60 * Math.PI) / 180, GP = (20 * Math.PI) / 180;
+  const rot = { yaw: 0, pitch: 0, ty: 0, tp: 0, spin: 0, z: 0, gy: 0, gp: 0, vy: 0, vp: 0, mode: 0, idle: 0, last: 0, r0y: 0, r0p: 0, rt: 0 };
+  let rpx = 200; // raio da constelação na tela (px): 1 px de arraste = 1/rpx rad
+  const clampG = () => {
+    if (Math.abs(rot.gy) >= GY) {
+      rot.gy = Math.sign(rot.gy) * GY;
+      if (rot.vy * rot.gy > 0) rot.vy = 0;
+    }
+    if (Math.abs(rot.gp) >= GP) {
+      rot.gp = Math.sign(rot.gp) * GP;
+      if (rot.vp * rot.gp > 0) rot.vp = 0;
+    }
+  };
   let waveT = -1;
   let waveMax = 0;
   let waveOrder: { i: number; d: number }[] = [];
@@ -800,7 +823,7 @@ export function createConstellation(
       !keep.some((b) => x > b.x - KEEP_PAD - R0 && x < b.x + b.w + KEEP_PAD + R0 && y > b.y - KEEP_PAD - R0 && y < b.y + b.h + KEEP_PAD + R0);
     /* ângulos testados: volta inteira em yaw (15°) × pitch do parallax */
     const rots: [number, number, number, number][] = [];
-    for (let a = 0; a < 360; a += 15) for (const pp of [-PP, 0, PP]) rots.push([Math.cos((a * Math.PI) / 180), Math.sin((a * Math.PI) / 180), Math.cos(pp), Math.sin(pp)]);
+    for (let a = 0; a < 360; a += 15) for (const pp of [-GP, -GP / 2, 0, GP / 2, GP]) rots.push([Math.cos((a * Math.PI) / 180), Math.sin((a * Math.PI) / 180), Math.cos(pp), Math.sin(pp)]);
     const offs: [number, number][] = [];
     for (let dy = -320; dy <= 320; dy += 16) for (let dx = -480; dx <= 320; dx += 16) offs.push([dx, dy]);
     offs.sort((a, b) => a[0] ** 2 + a[1] ** 2 - b[0] ** 2 - b[1] ** 2);
@@ -828,19 +851,28 @@ export function createConstellation(
         }
       return true;
     };
+    /* custo: deslocamento (px) + redução (2000 px por 100%): o maior tamanho
+     * possível, sem fugir para longe da posição de origem (à direita do disco) */
     let best = { s: 0.35, dx: 0, dy: 0 };
-    search: for (let s = 1; s >= 0.35; s -= 0.025)
+    let bestC = Infinity;
+    for (let s = 1; s >= 0.35 && 2000 * (1 - s) < bestC; s -= 0.025)
       for (const [dx, dy] of offs) {
+        const c = Math.hypot(dx, dy) + 2000 * (1 - s);
+        if (c >= bestC) break; // offs em ordem de distância
         place(s, dx, dy);
         if (feasible()) {
           best = { s, dx, dy };
-          break search;
+          bestC = c;
+          break;
         }
       }
     place(best.s, best.dx, best.dy);
     for (let i = 0; i < n; i++) home[i].copy(group.worldToLocal(v.set(W3[i * 3], W3[i * 3 + 1], W3[i * 3 + 2])));
     pivot.copy(group.worldToLocal(v.set(P[0], P[1], P[2])));
     depthR = Math.max(1e-3, ...home.map((q) => Math.hypot(q.x - pivot.x, q.z - pivot.z))) * 0.8;
+    let rw = 0;
+    for (let i = 0; i < n; i++) rw = Math.max(rw, Math.hypot(W3[i * 3] - P[0], W3[i * 3 + 2] - P[2]));
+    rpx = Math.max(60, (rw * f) / (CAMERA_Z - P[2]));
     fitInfo = best;
   }
   let fitInfo = { s: 1, dx: 0, dy: 0 };
@@ -920,10 +952,34 @@ export function createConstellation(
     pk.p += pk.v * dt;
 
     /* rotação: automática lenta + parallax suavizado (ver rot) */
-    rot.spin = (rot.spin + SPIN * dt) % (Math.PI * 2);
+    if (rot.mode === 0) rot.spin = (rot.spin + SPIN * dt) % (Math.PI * 2);
+    else if (rot.mode === 2) {
+      rot.gy += rot.vy * dt;
+      rot.gp += rot.vp * dt;
+      const kk = Math.exp(-dt / 0.15); // inércia: ~600 ms até parar
+      rot.vy *= kk;
+      rot.vp *= kk;
+      clampG();
+      rot.idle += dt;
+      if (rot.idle >= 4) {
+        rot.mode = 3;
+        rot.rt = 0;
+        rot.r0y = rot.gy;
+        rot.r0p = rot.gp;
+      }
+    } else if (rot.mode === 3) {
+      rot.rt += dt;
+      const u = Math.min(1, rot.rt / 2);
+      const e = u * u * (3 - 2 * u);
+      rot.gy = rot.r0y * (1 - e);
+      rot.gp = rot.r0p * (1 - e);
+      if (u >= 1) rot.mode = rot.gy = rot.gp = 0;
+    }
+    /* parallax: só no automático (e na volta); arrastando, fica incorporado ao arraste */
+    const par = rot.mode === 0 || rot.mode === 3;
     const ease = 1 - Math.exp(-2.5 * dt);
-    rot.yaw += (rot.ty - rot.yaw) * ease;
-    rot.pitch += (rot.tp - rot.pitch) * ease;
+    rot.yaw += ((par ? rot.ty : 0) - rot.yaw) * ease;
+    rot.pitch += ((par ? rot.tp : 0) - rot.pitch) * ease;
 
     updateNodes(time);
     nodeGeo.attributes.position.needsUpdate = true;
@@ -958,8 +1014,8 @@ export function createConstellation(
 
     /* buraco negro: o disco acompanha o parallax de leve (±4°); o cursor perto dele pesa na lente */
     bhUniforms.uTime.value = time;
-    bhUniforms.uIncl.value = 0.16 + rot.pitch * (4 / 6);
-    bhUniforms.uRoll.value = -rot.yaw * (4 / 12);
+    bhUniforms.uIncl.value = Math.max(0.04, 0.16 + (rot.pitch + rot.gp) * (6 / 20));
+    bhUniforms.uRoll.value = -(rot.yaw + rot.gy) * (6 / 60);
     const pr = bhUniforms.uRes.value.x / W;
     const cx = (m.x * 0.5 + 0.5) * W, cy = (m.y * 0.5 + 0.5) * H;
     const bx = (bhNdc.x * 0.5 + 0.5) * W, by = (bhNdc.y * 0.5 + 0.5) * H;
@@ -1102,6 +1158,50 @@ export function createConstellation(
         rot.tp = Math.max(-1, Math.min(1, ny)) * PP;
       }
     },
+    inArea(x, y) {
+      if (cloud.on) return false;
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (let i = 0; i < n; i++) {
+        x0 = Math.min(x0, screen[i * 2]);
+        x1 = Math.max(x1, screen[i * 2]);
+        y0 = Math.min(y0, screen[i * 2 + 1]);
+        y1 = Math.max(y1, screen[i * 2 + 1]);
+      }
+      const pad = 40;
+      return x > x0 - pad && x < x1 + pad && y > y0 - pad && y < y1 + pad;
+    },
+    grab() {
+      /* o parallax do momento vira arraste: nada salta */
+      rot.gy += rot.yaw;
+      rot.gp += rot.pitch;
+      rot.yaw = rot.pitch = 0;
+      clampG();
+      rot.vy = rot.vp = 0;
+      rot.mode = 1;
+      rot.idle = 0;
+      rot.last = performance.now();
+    },
+    dragBy(dx, dy) {
+      if (rot.mode !== 1) return;
+      const now = performance.now();
+      const dts = Math.max(0.008, Math.min(0.1, (now - rot.last) / 1000));
+      rot.last = now;
+      const a = dx / rpx, b = dy / rpx;
+      rot.gy += a;
+      rot.gp += b;
+      /* inércia suave: no máximo ~17° / ~6° de deslize depois de soltar */
+      rot.vy = Math.max(-2, Math.min(2, rot.vy * 0.4 + (a / dts) * 0.6));
+      rot.vp = Math.max(-0.7, Math.min(0.7, rot.vp * 0.4 + (b / dts) * 0.6));
+      clampG();
+      updateNodes(time); // sem esperar o próximo quadro
+      project();
+    },
+    release() {
+      if (rot.mode !== 1) return;
+      if (performance.now() - rot.last > 80) rot.vy = rot.vp = 0; // parou antes de soltar
+      rot.mode = 2;
+      rot.idle = 0;
+    },
     debugSpin(a) {
       rot.spin = a;
     },
@@ -1139,7 +1239,7 @@ export function createConstellation(
         keep: keep.map((r) => ({ ...r })),
         margin: SAFE,
         fit: { ...fitInfo },
-        rot: { yaw: rot.yaw, pitch: rot.pitch, spin: rot.spin },
+        rot: { yaw: rot.yaw, pitch: rot.pitch, spin: rot.spin, gy: rot.gy, gp: rot.gp, mode: rot.mode },
         w: W,
         h: H,
       };

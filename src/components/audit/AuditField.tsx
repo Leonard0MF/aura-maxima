@@ -63,9 +63,11 @@ const fill = (s: string, v: Record<string, number>) => s.replace(/\{(\w+)\}/g, (
  * Camada interativa do AUDIT: buraco negro + constelação (WebGL) atrás do
  * texto da seção.
  * - hover/toque num nó brilhante: cartão com o dado
- * - sem arraste: a constelação gira sozinha (bem devagar) e, no desktop,
- *   inclina na direção do mouse (parallax, mesmo sem clicar). Nenhum gesto é
- *   capturado: a página rola normalmente por cima do canvas
+ * - a constelação gira sozinha (bem devagar) e, no desktop, inclina na
+ *   direção do mouse (parallax, mesmo sem clicar)
+ * - desktop: arrastar sobre a constelação gira (1:1, ±60°/±20°); solta,
+ *   desliza e fica; depois de 4 s volta sozinha. Cursor grab/grabbing
+ * - celular: sem arraste; nenhum gesto é capturado (a página rola por cima)
  * - toque (pointer: coarse): sem efeito de cursor na cena; no celular o
  *   cartão é um bottom sheet com botão de fechar (tocar fora ou rolar fecha)
  * - clique no vazio: onda de scan saindo do horizonte; os nós acendem em
@@ -357,29 +359,47 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
       if (i >= 0) follow = requestAnimationFrame(place);
     };
 
-    let down: { x: number; y: number; id: number; drag: boolean } | null = null;
+    /* down.grab: botão do mouse apertado sobre a constelação (gira); drag: moveu (não é clique) */
+    let down: { x: number; y: number; ox: number; oy: number; id: number; drag: boolean; grab: boolean } | null = null;
     const onMove = (e: PointerEvent) => {
       if (!scene) return;
       const p = pos(e);
       if (down && down.id === e.pointerId) {
-        /* moveu: não é clique (nem toque) */
-        if (Math.hypot(p.x - down.x, p.y - down.y) > 6) down.drag = true;
+        if (Math.hypot(p.x - down.ox, p.y - down.oy) > 4) down.drag = true;
+        if (down.grab) {
+          scene.dragBy(p.x - down.x, p.y - down.y); // 1:1, já neste evento
+          down.x = p.x;
+          down.y = p.y;
+          if (down.drag) show(-1);
+          return;
+        }
       }
       if (e.pointerType === "mouse") {
         scene.pointer(p.x, p.y, true); // efeito de cursor: só com mouse
         const i = scene.hit(p.x, p.y);
-        field.style.cursor = i >= 0 ? "pointer" : "";
+        field.style.cursor = i >= 0 ? "pointer" : scene.inArea(p.x, p.y) ? "grab" : "";
         show(i);
       }
     };
     const onDown = (e: PointerEvent) => {
       if (!scene || e.button > 0) return;
       const p = pos(e);
-      down = { ...p, id: e.pointerId, drag: false };
+      /* só o mouse gira; no toque a página precisa rolar */
+      const grab = e.pointerType === "mouse" && scene.hit(p.x, p.y) < 0 && scene.inArea(p.x, p.y);
+      down = { ...p, ox: p.x, oy: p.y, id: e.pointerId, drag: false, grab };
+      if (grab) {
+        field.setPointerCapture(e.pointerId);
+        field.style.cursor = "grabbing";
+        scene.grab();
+      }
     };
     const onUp = (e: PointerEvent) => {
       if (!scene || !down || down.id !== e.pointerId) return;
       const wasDrag = down.drag;
+      if (down.grab) {
+        scene.release();
+        field.style.cursor = "grab";
+      }
       down = null;
       if (wasDrag) return;
       const p = pos(e);
@@ -410,6 +430,7 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
       scene?.pointer(0, 0, false);
     };
     const onCancel = () => {
+      if (down?.grab) scene?.release();
       down = null;
       scene?.pointer(0, 0, false);
     };

@@ -179,7 +179,7 @@
     "real": "resultado real gerado pelo Aegis em {date}",
     "tradeoff": "Trade-off consciente: CSP sem nonce para manter o site estático e rápido; a superfície de XSS é mínima (sem inputs que virem HTML).",
     "cta": "Escaneie o site da sua empresa no Aegis",
-    "hint": "mova o mouse · passe nos pontos que brilham · clique no vazio para escanear",
+    "hint": "arraste para girar · passe nos pontos que brilham · clique no vazio para escanear",
     "ledeTouch": "Este site, visto por dentro. Toque nos pontos que brilham.",
     "hintTouch": "toque nos pontos que brilham · toque no vazio para escanear",
     "status": { "pass": "ok", "warn": "atenção", "fail": "falha", "info": "info" },
