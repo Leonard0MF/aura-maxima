@@ -16,21 +16,21 @@ const idle = () => new Promise<void>((r) => ("requestIdleCallback" in window ? r
  * transferidos; sem Worker, na main thread em pedaços de 300 partículas, um
  * por idle) e reaproveitadas a cada nova montagem */
 const layouts = new Map<string, Promise<Layout>>();
-function getLayout(n: number, count: number) {
-  const key = `${n}:${count}`;
+function getLayout(n: number, count: number, stars: number) {
+  const key = `${n}:${count}:${stars}`;
   let p = layouts.get(key);
   if (!p) {
     const local = (why: string) =>
       import("./layout").then((m) => {
         note("layout", `main thread em pedaços (${why})`);
-        return m.makeLayoutChunked(n, count, idle);
+        return m.makeLayoutChunked(n, count, stars, idle);
       });
     p = new Promise<Layout>((res) => {
       if (typeof Worker === "undefined") return void local("sem Worker").then(res);
       try {
         const w = new Worker(new URL("./layout.worker.ts", import.meta.url), { type: "module" });
         w.onmessage = (e: MessageEvent<Layout>) => {
-          note("layout", `Worker (${count} partículas)`);
+          note("layout", `Worker (${count} partículas + ${stars} estrelas)`);
           res(e.data);
           w.terminate();
         };
@@ -38,7 +38,7 @@ function getLayout(n: number, count: number) {
           w.terminate();
           void local("Worker falhou").then(res);
         };
-        w.postMessage({ n, count });
+        w.postMessage({ n, count, stars });
       } catch {
         void local("Worker indisponível").then(res);
       }
@@ -214,13 +214,15 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
     /* preparação em pedaços: código e layout em paralelo (o layout num
      * Worker), contexto num idle, shaders e aquecimento em outros (warm).
      * Termina com o loop PARADO; quem liga é o gl-slot. */
-    const count = weak ? 600 : mobile ? 1500 : 4500;
-    note("partículas", `${count}${weak ? " (aparelho fraco)" : ""} · ${simple ? "simple (sem lente)" : "lente (nível decidido perto da seção)"}`);
+    /* rede (partículas finas) e estrelas */
+    const count = weak ? 600 : mobile ? 700 : 1200;
+    const starN = weak ? 500 : mobile ? 800 : 2500;
+    note("partículas", `${count} + ${starN} estrelas${weak ? " (aparelho fraco)" : ""} · ${simple ? "simple (sem lente)" : "lente (nível decidido perto da seção)"}`);
     let losses = 0;
     let dead = false; // caiu na imagem estática: não monta mais
     const mount = async (): Promise<void> => {
       if (scene || dead) return;
-      const [{ createConstellation }, layout] = await Promise.all([import("./scene"), getLayout(Math.min(nodes.length, 12), count)]);
+      const [{ createConstellation }, layout] = await Promise.all([import("./scene"), getLayout(Math.min(nodes.length, 12), count, starN)]);
       await idle();
       if (!want || scene || dead) return;
       const c = document.createElement("canvas");
@@ -230,6 +232,7 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
       try {
         made = createConstellation(c, nodes.length, {
           count,
+          stars: starN,
           simple,
           layout: layout.n === Math.min(nodes.length, 12) ? layout : undefined,
           keep: keepOut(),
@@ -299,7 +302,7 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
      * loop só pausa; ao voltar, retoma sem recompilar nem regenerar nada. */
     let early = false;
     const stopPrewarm = prewarm(() =>
-      Promise.all([import("./scene"), getLayout(Math.min(nodes.length, 12), count)]).then(() => {
+      Promise.all([import("./scene"), getLayout(Math.min(nodes.length, 12), count, starN)]).then(() => {
         early = true;
         nudgeGL();
       }),
@@ -540,12 +543,13 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
   );
 }
 
-/* imagem estática: a mesma nuvem na orientação inicial (buraco negro + nuvem
- * + nós), em SVG, no tamanho do campo e com as mesmas caixas de texto evitadas */
+/* imagem estática: a mesma cena na orientação inicial (estrelas pela seção
+ * inteira, a rede, o buraco negro), em SVG, no tamanho do campo e com as
+ * mesmas caixas de texto evitadas */
 function staticSvg(lay: typeof import("./layout"), n: number, fw: number, fh: number, keep: Rect[]) {
-  const { makeLayout, fitSphere, placeCloud, projectStatic } = lay;
+  const { makeLayout, fitSphere, placeCloud, projectStatic, STAR_NEAR, STAR_FAR } = lay;
   const W = Math.max(320, Math.round(fw)), H = Math.max(240, Math.round(fh));
-  const L = makeLayout(n, 1400);
+  const L = makeLayout(n, 900, 700);
   const fit = fitSphere(W, H, keep);
   const { hc } = fit;
   const pc = placeCloud(fit, W, H, L.radius);
@@ -555,6 +559,13 @@ function staticSvg(lay: typeof import("./layout"), n: number, fw: number, fh: nu
     const x = a[i * 3], y = a[i * 3 + 1], z = a[i * 3 + 2];
     return projectStatic(pc.x + x * pc.scale, pc.y + (y * c - z * sn) * pc.scale, (y * sn + z * c) * pc.scale, W, H);
   };
+  let starDots = "";
+  for (let k = 0; k < L.starCount; k++) {
+    const d = L.stars[k * 4 + 2];
+    const far = (d - STAR_NEAR) / (STAR_FAR - STAR_NEAR);
+    const x = (L.stars[k * 4] * 0.5 + 0.5) * W, y = (0.5 - L.stars[k * 4 + 1] * 0.5) * H;
+    starDots += `<circle cx="${x.toFixed(0)}" cy="${y.toFixed(0)}" r="${Math.max(0.5, 4.5 / d).toFixed(1)}" fill="#ece9e0" fill-opacity="${(0.55 - 0.42 * far).toFixed(2)}"/>`;
+  }
   let dots = "";
   for (let i = 0; i < L.count; i++) {
     const { x, y, s } = P(L.points, i);
@@ -580,5 +591,5 @@ function staticSvg(lay: typeof import("./layout"), n: number, fw: number, fh: nu
 <circle cx="${o.x}" cy="${o.y}" r="${sh.toFixed(0)}" fill="#000"/>
 <circle cx="${o.x}" cy="${o.y}" r="${(sh + 1).toFixed(0)}" fill="none" stroke="#fff3d6" stroke-width="2"/>
 <ellipse cx="${o.x}" cy="${o.y}" rx="${(9 * rs).toFixed(0)}" ry="${(9 * rs * 0.16).toFixed(0)}" fill="url(#bh-disk)" clip-path="url(#bh-bottom)"/>`;
-  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg"><g stroke="#f5a524" stroke-opacity=".22" stroke-width="1">${lines}</g>${dots}${nodeDots}${hole}</svg>`;
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">${starDots}<g stroke="#f5a524" stroke-opacity=".22" stroke-width="1">${lines}</g>${dots}${nodeDots}${hole}</svg>`;
 }
