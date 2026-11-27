@@ -32,7 +32,7 @@
  * criada uma vez por página e depois só pausa/retoma.
  *
  * Movimento: tudo no vertex shader (a CPU nunca reescreve partículas). Por
- * frame a CPU resolve Kepler para os ~10 nós, integra 2 molas e a rotação e
+ * frame a CPU soma a oscilação dos ~10 nós (presos ao repouso), integra as molas e a rotação e
  * projeta os nós (hover/cartão). DPR ≤ 1,5; loop parado fora da tela e com a
  * aba oculta (o componente chama run(false)).
  */
@@ -54,6 +54,7 @@ import {
   ShaderMaterial,
   Vector2,
   Vector3,
+  Vector4,
   WebGLRenderer,
   WebGLRenderTarget,
 } from "three";
@@ -61,7 +62,7 @@ import {
 import { glCensus } from "@/lib/gl-census";
 import { pickLevel } from "@/lib/gpu-perf";
 
-import { CAMERA_Z, DISK_RS, DISK_VISIBLE_RS, DUST_TILT, FOV, HALF_H, holeCenter, makeLayout, orbitPos, type Layout } from "./layout";
+import { CAMERA_Z, DISK_RS, DUST_TILT, FOV, HALF_H, KEEP_PAD, makeLayout, region, ringPairs, type Layout, type Rect, type Region } from "./layout";
 
 const MAX_NODES = 12;
 /* raio da sombra em rs (≈ 2,6 rs: 3√3/2) */
@@ -78,11 +79,16 @@ uniform float uPR;
 uniform float uAspect;
 uniform float uPush;
 uniform float uScale;
-uniform float uHz;      // raio do horizonte (espaço local) onde a poeira some
+uniform float uRin;     // anel da poeira (espaço local): borda de dentro
+uniform float uRout;    // e de fora
+uniform float uSpread;  // escala dos aglomerados e filamentos dos nós
+uniform vec2 uRes2;     // tamanho do campo (px CSS)
+uniform vec4 uHole;     // xy: centro do buraco negro (px, origem em cima), zw: semi-eixos da área proibida (px)
+uniform vec4 uKeep[4];  // caixas de texto (px: x0, y0, x1, y1, já com folga)
 uniform vec2 uMouse;
 uniform vec3 uWave;     // xy: centro (NDC), z: raio
 uniform float uWaveA;
-uniform float uDepthR;  // celular: meia profundidade da nuvem de nós (0 = desliga)
+uniform float uDepthR;  // meia profundidade dos nós para apagar o fundo (0 = desliga)
 varying float vA;
 varying float vTone;
 varying float vGlow;
@@ -94,22 +100,23 @@ void main() {
   vec3 p;
   float fade = 1.0;
   if (aRef.x < 0.5) {
-    p = uNode[int(aRef.y + 0.5)] + position;
+    p = uNode[int(aRef.y + 0.5)] + position * uSpread;
   } else if (aRef.x < 1.5) {
-    p = mix(uNode[int(aRef.y + 0.5)], uNode[int(aRef.z + 0.5)], aRef.w) + position;
+    p = mix(uNode[int(aRef.y + 0.5)], uNode[int(aRef.z + 0.5)], aRef.w) + position * uSpread;
   } else if (aRef.x < 2.5) {
-    // órbita (Kepler: ω ∝ r^-1.5)
-    float r0 = position.x;
+    // órbita no anel (Kepler: ω ∝ r^-1.5)
+    float r0 = mix(uRin, uRout, position.x);
     float a = position.y + uTime * 0.2 * pow(r0, -1.5);
-    p = tiltX(vec3(cos(a) * r0, sin(a) * r0, position.z));
+    p = tiltX(vec3(cos(a) * r0, sin(a) * r0, position.z * r0));
   } else {
-    // espiral: r = r0·√(1-f); o ângulo é a integral fechada de ω(r(t))
-    float r0 = position.x, T = position.z;
+    // espiral: da borda de fora até a de dentro em T s; "engolida" some antes
+    // de chegar ao disco e renasce na borda de fora (fract)
+    float T = position.z;
     float f = fract(uTime / T + aSeed);
-    float rr = r0 * sqrt(1.0 - f);
-    float a = position.y + 0.8 * pow(r0, -1.5) * T * 4.0 * (1.0 - pow(1.0 - f, 0.25));
+    float rr = mix(uRin, uRout, position.x * (1.0 - f));
+    float a = position.y + f * 2.4;
     p = tiltX(vec3(cos(a) * rr, sin(a) * rr, 0.0));
-    fade = smoothstep(0.0, 0.06, f) * smoothstep(uHz * 1.05, uHz * 1.9, rr);
+    fade = smoothstep(0.0, 0.08, f) * smoothstep(1.0, 0.85, f);
   }
   float t = uTime * 0.25 + aSeed * 6.2831;
   p += vec3(sin(t * 1.3), cos(t * 1.1), sin(t * 0.7)) * 0.035;
@@ -132,6 +139,16 @@ void main() {
 
   clip.xy = ndc * clip.w;
   gl_Position = clip;
+
+  /* nunca sobre o disco nem sobre os textos: some (suave) dentro da área
+   * proibida do buraco negro e das caixas de texto */
+  vec2 px = vec2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5) * uRes2;
+  fade *= smoothstep(1.0, 1.2, length((px - uHole.xy) / uHole.zw));
+  for (int k = 0; k < 4; k++) {
+    vec4 b = uKeep[k];
+    float dk = max(max(b.x - px.x, px.x - b.z), max(b.y - px.y, px.y - b.w));
+    fade *= smoothstep(0.0, 10.0, dk);
+  }
   float tw = 0.75 + 0.25 * sin(uTime * 1.7 + aSeed * 40.0);
   vA = ((0.36 + 0.24 * aTone) * tw + abs(push) * 0.5) * fade;
   /* poeira dos nós e filamentos: a do fundo mais apagada (perspectiva já reduz o tamanho) */
@@ -202,6 +219,8 @@ uniform vec2 uBH;      // centro em px do drawing buffer (origem embaixo)
 uniform float uScale;  // px por rs
 uniform float uTime;
 uniform float uIncl;   // elevação da câmera sobre o plano do disco (rad)
+uniform float uRoll;   // giro do disco no plano da tela (rad): acompanha o arrasto
+vec2 roll(vec2 p) { float c = cos(uRoll), s = sin(uRoll); return vec2(c * p.x + s * p.y, -s * p.x + c * p.y); }
 uniform vec3 uWhite;
 uniform vec3 uAmber;
 const float RIN = 2.6;
@@ -253,7 +272,8 @@ void main() {
     vec3 cam = vec3(0.0, si, ci) * D;
     vec3 fwd = -normalize(cam);
     vec3 up = vec3(0.0, ci, -si);
-    vec3 dir = normalize(fwd + (p.x * vec3(1.0, 0.0, 0.0) + p.y * up) / D);
+    vec2 pr = roll(p);
+    vec3 dir = normalize(fwd + (pr.x * vec3(1.0, 0.0, 0.0) + pr.y * up) / D);
     // linha reta até a esfera de raio 15 (fora dela a curvatura é desprezível)
     float b = dot(cam, dir);
     float tt = -b - sqrt(max(0.0, b * b - (dot(cam, cam) - 225.0)));
@@ -297,7 +317,7 @@ void main() {
 const SIMPLE_FS = /* glsl */ `
 ${BH_COMMON}
 void main() {
-  vec2 p = (gl_FragCoord.xy - uBH) / uScale;
+  vec2 p = roll((gl_FragCoord.xy - uBH) / uScale);
   float r = length(p);
   float si = max(0.08, sin(uIncl));
   vec3 col = vec3(0.0);
@@ -353,15 +373,26 @@ export type Constellation = {
   choose(): { quality: string; why: string };
   /** onda de scan saindo do horizonte; acende os nós na ordem em que o anel os alcança */
   wave(onLit: (i: number) => void, onEnd: () => void): void;
-  /** testes: centro e raio do disco (px) e os nós na tela */
-  debug(): { hole: { x: number; y: number; r: number }; nodes: { x: number; y: number }[]; w: number; h: number };
+  /** caixas de texto por cima do campo (px do campo): o sistema não as invade */
+  setKeepOut(rects: Rect[]): void;
+  /** testes: buraco negro, nós na tela, posições de repouso, caixas e rotação */
+  debug(): {
+    hole: { x: number; y: number; r: number; ex: number; ey: number };
+    nodes: { x: number; y: number }[];
+    homes: { x: number; y: number }[];
+    keep: Rect[];
+    margin: number;
+    rot: { yaw: number; pitch: number; mode: number };
+    w: number;
+    h: number;
+  };
   destroy(): void;
 };
 
 export function createConstellation(
   canvas: HTMLCanvasElement,
   nNodes: number,
-  opts: { count: number; simple: boolean; layout?: Layout; onLost(): void },
+  opts: { count: number; simple: boolean; layout?: Layout; keep?: Rect[]; onLost(): void },
 ): Constellation {
   const n = Math.min(nNodes, MAX_NODES);
   const L = opts.layout ?? makeLayout(n, opts.count);
@@ -384,38 +415,25 @@ export function createConstellation(
   const white = new Vector3(0.93, 0.92, 0.88);
   const amber = new Vector3(0.96, 0.65, 0.14);
 
-  /* nós: posições atualizadas por frame (Kepler na CPU) */
+  /* nós: presos à posição de repouso (region(), recalculada no resize), com
+   * uma oscilação de no máximo ~8 px; a CPU só soma a oscilação por frame */
   const nodePos = new Float32Array(n * 3);
   const nodeVec = Array.from({ length: MAX_NODES }, () => new Vector3());
-  const tmp = [0, 0, 0];
-  /* tela estreita: os nós formam uma nuvem 3D (elipsoide) abaixo do buraco
-   * negro, que gira devagar em torno do eixo vertical; o arrasto gira à mão
-   * (e pausa a rotação automática). Perspectiva real da câmera; o fundo fica
-   * menor e mais apagado (uDepthR nos shaders) e os filamentos também. */
-  const cloud = { on: false, c: new Vector3(), r: new Vector3(), pts: new Float32Array(MAX_NODES * 3), yaw: 0, spin: 0, held: false };
-  const depth = new Float32Array(MAX_NODES).fill(1);
-  const CLOUD_SPIN = 0.16; // rad/s (~40 s por volta)
-  const CLOUD_PITCH = 0.32; // inclinação fixa: o volume se lê como volume
+  const home = new Float32Array(n * 3);
+  let osc = 0; // amplitude da oscilação (espaço local)
+  let keep: Rect[] = opts.keep ?? [];
+  let reg: Region | null = null;
   const updateNodes = (t: number) => {
-    const cy = Math.cos(cloud.yaw), sy = Math.sin(cloud.yaw), cp = Math.cos(CLOUD_PITCH), sp = Math.sin(CLOUD_PITCH);
     for (let i = 0; i < n; i++) {
-      if (cloud.on) {
-        const ox = cloud.pts[i * 3] * cloud.r.x, oy = cloud.pts[i * 3 + 1] * cloud.r.y, oz = cloud.pts[i * 3 + 2] * cloud.r.z;
-        const x1 = ox * cy + oz * sy, z1 = -ox * sy + oz * cy; // yaw (eixo vertical)
-        const y2 = oy * cp - z1 * sp, z2 = oy * sp + z1 * cp; // pitch fixo
-        depth[i] = Math.max(0, Math.min(1, 0.5 + (0.5 * z2) / cloud.r.z));
-        v.set(cloud.c.x + x1, cloud.c.y + y2, cloud.c.z + z2);
-        group.worldToLocal(v);
-        nodePos.set([v.x, v.y, v.z], i * 3);
-        nodeVec[i].copy(v);
-        continue;
-      }
-      orbitPos(L.orbits[i], t, tmp);
-      nodePos.set(tmp, i * 3);
-      nodeVec[i].set(tmp[0], tmp[1], tmp[2]);
+      const x = home[i * 3] + osc * Math.sin(t * 0.53 + i * 1.9);
+      const y = home[i * 3 + 1] + osc * Math.cos(t * 0.41 + i * 2.7);
+      const z = home[i * 3 + 2] + osc * Math.sin(t * 0.37 + i * 0.8);
+      nodePos[i * 3] = x;
+      nodePos[i * 3 + 1] = y;
+      nodePos[i * 3 + 2] = z;
+      nodeVec[i].set(x, y, z);
     }
   };
-  updateNodes(0);
 
   /* partículas */
   const dustGeo = new BufferGeometry();
@@ -437,7 +455,12 @@ export function createConstellation(
       uAspect: { value: 2 },
       uPush: { value: 0 },
       uScale: { value: 15 },
-      uHz: { value: 0.33 },
+      uRin: { value: 1 },
+      uRout: { value: 3 },
+      uSpread: { value: 0.4 },
+      uRes2: { value: new Vector2(1, 1) },
+      uHole: { value: new Vector4(0, 0, 1, 1) },
+      uKeep: { value: Array.from({ length: 4 }, () => new Vector4(-1e5, -1e5, -1e5, -1e5)) },
       uMouse: { value: [9, 9] },
       uWave: { value: [0, 0, 0] },
       uWaveA: { value: 0 },
@@ -450,9 +473,9 @@ export function createConstellation(
   dust.frustumCulled = false; // posições saem do shader
   group.add(dust);
 
-  /* linhas: todos os pares, brilho pela distância (sem trocas bruscas enquanto orbitam) */
-  const pairs: [number, number][] = [];
-  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) pairs.push([i, j]);
+  /* linhas: os vizinhos na volta do anel (os mesmos pares dos filamentos);
+   * uma linha que passaria por cima do disco não acende */
+  const pairs = ringPairs(n);
   const seg = new Float32Array(pairs.length * 6);
   const segCol = new Float32Array(pairs.length * 6);
   const lineGeo = new BufferGeometry();
@@ -462,14 +485,12 @@ export function createConstellation(
   const lines = new LineSegments(lineGeo, lineMat);
   lines.frustumCulled = false;
   group.add(lines);
+  let lineOk = new Float32Array(pairs.length).fill(1);
   const updateLines = () => {
     pairs.forEach(([i, j], k) => {
       seg.set(nodePos.subarray(i * 3, i * 3 + 3), k * 6);
       seg.set(nodePos.subarray(j * 3, j * 3 + 3), k * 6 + 3);
-      const d = Math.hypot(nodePos[i * 3] - nodePos[j * 3], nodePos[i * 3 + 1] - nodePos[j * 3 + 1], nodePos[i * 3 + 2] - nodePos[j * 3 + 2]);
-      const t = Math.max(0, Math.min(1, (2.0 - d) / 0.9));
-      /* celular: o filamento do fundo some junto com os nós */
-      const v = 0.22 * t * t * (3 - 2 * t) * (cloud.on ? 0.2 + 0.8 * Math.min(depth[i], depth[j]) : 1);
+      const v = 0.2 * lineOk[k];
       segCol.set([amber.x * v, amber.y * v, amber.z * v, amber.x * v, amber.y * v, amber.z * v], k * 6);
     });
     lineGeo.attributes.position.needsUpdate = true;
@@ -509,6 +530,7 @@ export function createConstellation(
     uScale: { value: 20 },
     uTime: { value: 0 },
     uIncl: { value: 0.16 },
+    uRoll: { value: 0 },
     uCursor: { value: new Vector2(-1e4, -1e4) },
     uCM: { value: 0 },
     uE2: { value: 5.2 },
@@ -539,9 +561,27 @@ export function createConstellation(
   const m = { x: 9, y: 9, vx: 0, vy: 0, tx: 9, ty: 9 };
   const pk = { v: 0, p: 0, t: 0 };
   const cm = { v: 0 };
-  const rot = { x: 0, y: 0, vx: 0, vy: 0, z: 0 };
-  let dragging = 0;
-  let dragTimer = 0;
+  /*
+   * Rotação do sistema inteiro em volta do buraco negro (pivô = centro dele):
+   * yaw ±40°, pitch ±15°; o disco inclina junto (±8°, uIncl/uRoll).
+   * mode 1: arrastando (o dedo/mouse manda); 2: inércia curta (≤ 400 ms,
+   * decaindo); 0: mola criticamente amortecida até a pose de repouso
+   * (~1,5 s). Nunca gira indefinidamente. No celular, sem toque, a pose de
+   * repouso vai e volta em yaw ±20° (16 s por ciclo).
+   */
+  const YAW = (40 * Math.PI) / 180, PITCH = (15 * Math.PI) / 180, AUTO = (20 * Math.PI) / 180;
+  const rot = { yaw: 0, pitch: 0, vy: 0, vp: 0, mode: 0, t: 0, auto: 0, last: 0 };
+  let autoOn = false;
+  const clampRot = () => {
+    if (Math.abs(rot.yaw) >= YAW) {
+      rot.yaw = Math.sign(rot.yaw) * YAW;
+      if (rot.vy * rot.yaw > 0) rot.vy = 0;
+    }
+    if (Math.abs(rot.pitch) >= PITCH) {
+      rot.pitch = Math.sign(rot.pitch) * PITCH;
+      if (rot.vp * rot.pitch > 0) rot.vp = 0;
+    }
+  };
   let waveT = -1;
   let waveMax = 0;
   let waveOrder: { i: number; d: number }[] = [];
@@ -579,7 +619,7 @@ export function createConstellation(
   function resize() {
     const w = canvas.clientWidth || 1;
     const h = canvas.clientHeight || 1;
-    if (w === W && h === H) return;
+    if (w === W && h === H && reg) return;
     W = w;
     H = h;
     renderer.setSize(w, h, false);
@@ -587,28 +627,46 @@ export function createConstellation(
     camera.updateProjectionMatrix();
     dustMat.uniforms.uAspect.value = w / h;
     const asp = w / h;
-    /* desktop: buraco negro no terço esquerdo; telas estreitas: no topo,
-     * centralizado e menor (layout.holeCenter, o mesmo da transição) */
-    const hc = holeCenter(w, h);
-    const narrow = hc.narrow;
+    /* o sistema: buraco negro (layout.holeCenter) + anel livre em volta dele,
+     * fora do disco, das margens e das caixas de texto (layout.region) */
+    reg = region(w, h, keep, n);
+    const hc = reg.hc;
     bhNdc.x = (hc.x / w) * 2 - 1;
     bhNdc.y = 1 - (hc.y / h) * 2;
     pxPerRs = hc.rs;
-    group.position.set(bhNdc.x * HALF_H * asp, bhNdc.y * HALF_H, 0);
-    rot.z = narrow ? -Math.PI / 2 : 0;
-    /* a constelação abre para o lado livre: cabe na largura (desktop) ou na altura (celular) */
-    const room = narrow ? (bhNdc.y + 0.55) * HALF_H : 1.45 * HALF_H * asp;
-    const k = Math.min(1, room / 5.4);
-    group.scale.setScalar(k);
-    group.rotation.set(0, 0, rot.z);
+    const gx = bhNdc.x * HALF_H * asp, gy = bhNdc.y * HALF_H;
+    group.position.set(gx, gy, 0);
+    group.rotation.set(rot.pitch, rot.yaw, 0);
+    group.scale.setScalar(1);
     group.updateMatrixWorld();
-    const worldPerPx = (2 * HALF_H) / h;
-    cloud.on = narrow;
-    if (narrow) placeCloud(w, h, hc, worldPerPx);
-    const dr = narrow ? cloud.r.z * 1.1 : 0;
-    dustMat.uniforms.uDepthR.value = dr;
-    nodeMat.uniforms.uDepthR.value = dr;
-    dustMat.uniforms.uHz.value = (SHADOW * pxPerRs * worldPerPx) / k;
+    const wpp = (2 * HALF_H) / h; // unidades de cena por px no plano z = 0
+    /* repouso dos nós: o px escolhido, numa profundidade que acompanha o
+     * plano inclinado da poeira (em cima mais perto, embaixo mais longe) */
+    reg.homes.forEach((q, i) => {
+      const z = (hc.y - q.y) * wpp * 0.35 + Math.sin(i * 2.3) * 0.12;
+      const k = (CAMERA_Z - z) / CAMERA_Z;
+      home[i * 3] = ((q.x / w) * 2 - 1) * asp * HALF_H * k - gx;
+      home[i * 3 + 1] = (1 - (q.y / h) * 2) * HALF_H * k - gy;
+      home[i * 3 + 2] = z;
+    });
+    osc = 4.5 * wpp;
+    const rinW = reg.rin * wpp;
+    dustMat.uniforms.uRin.value = rinW;
+    dustMat.uniforms.uRout.value = reg.rout * wpp;
+    dustMat.uniforms.uSpread.value = 0.38 * rinW;
+    dustMat.uniforms.uRes2.value.set(w, h);
+    dustMat.uniforms.uHole.value.set(hc.x, hc.y, reg.ex, reg.ey);
+    const kb = dustMat.uniforms.uKeep.value as Vector4[];
+    const pad = KEEP_PAD / 2;
+    kb.forEach((b, i) => {
+      const r = keep[i];
+      if (r) b.set(r.x - pad, r.y - pad, r.x + r.w + pad, r.y + r.h + pad);
+      else b.set(-1e5, -1e5, -1e5, -1e5);
+    });
+    /* linha cujo meio cai perto do centro: passaria sobre o disco */
+    lineOk = Float32Array.from(pairs, ([i, j]) => (Math.hypot((home[i * 3] + home[j * 3]) / 2, (home[i * 3 + 1] + home[j * 3 + 1]) / 2) > rinW * 0.9 ? 1 : 0));
+    autoOn = hc.narrow || matchMedia("(pointer: coarse)").matches;
+    updateNodes(time);
     renderer.getDrawingBufferSize(buf);
     const pr = buf.x / w;
     bhUniforms.uRes.value.copy(buf);
@@ -619,49 +677,6 @@ export function createConstellation(
       else rt.setSize(buf.x, buf.y);
       bhUniforms.tScene.value = rt.texture;
     }
-  }
-
-  /*
-   * Tela estreita: a nuvem fica na área livre abaixo do disco (24 px de
-   * margem). As posições saem das órbitas no instante 0, normalizadas por
-   * eixo para dentro de uma esfera unitária (os vizinhos continuam vizinhos:
-   * filamentos curtos) e relaxadas para não se sobreporem.
-   */
-  const MARGIN = 24;
-  function placeCloud(w: number, h: number, hc: { x: number; y: number; rs: number }, wpp: number) {
-    const top = Math.max(hc.y + DISK_VISIBLE_RS * hc.rs * 1.1, MARGIN);
-    const bottom = h - MARGIN;
-    const asp = w / h;
-    const cx = w / 2, cy = (top + bottom) / 2;
-    cloud.c.set(((cx / w) * 2 - 1) * HALF_H * asp, (1 - (cy / h) * 2) * HALF_H, 0);
-    /* a frente se aproxima da câmera e cresce: raios com folga para caber */
-    const rx = 0.5 * (w - 2 * MARGIN) * wpp * 0.86;
-    cloud.r.set(rx, 0.5 * Math.max(40, bottom - top) * wpp * 0.86, rx * 1.2);
-    const raw: number[][] = [];
-    for (let i = 0; i < n; i++) raw.push(orbitPos(L.orbits[i], 0, [0, 0, 0]));
-    const mean = [0, 1, 2].map((k) => raw.reduce((a, p) => a + p[k], 0) / n);
-    const ext = [0, 1, 2].map((k) => Math.max(1e-3, ...raw.map((p) => Math.abs(p[k] - mean[k]))));
-    /* local (x, y, z) → nuvem: y local vira a largura, x a altura, z a profundidade */
-    const q = raw.map((p) => [(p[1] - mean[1]) / ext[1], (p[0] - mean[0]) / ext[0], (p[2] - mean[2]) / ext[2]]);
-    for (let it = 0; it < 80; it++) {
-      for (let a = 0; a < n; a++)
-        for (let b = a + 1; b < n; b++) {
-          const d = [0, 1, 2].map((k) => q[b][k] - q[a][k]);
-          const l = Math.hypot(d[0], d[1], d[2]) || 0.01;
-          if (l < 0.62) {
-            const f = (0.62 - l) / 2 / l;
-            for (let k = 0; k < 3; k++) {
-              q[a][k] -= d[k] * f;
-              q[b][k] += d[k] * f;
-            }
-          }
-        }
-      for (const p of q) {
-        const l = Math.hypot(p[0], p[1], p[2]);
-        if (l > 1) for (let k = 0; k < 3; k++) p[k] /= l;
-      }
-    }
-    q.forEach((p, i) => cloud.pts.set(p, i * 3));
   }
 
   function project() {
@@ -721,27 +736,27 @@ export function createConstellation(
     pk.v += ap * dt;
     pk.p += pk.v * dt;
 
-    /* arrastar gira o sistema em volta do buraco negro; solto, volta devagar ao repouso */
-    if (!dragging) {
-      rot.vx *= Math.pow(0.04, dt);
-      rot.vy *= Math.pow(0.04, dt);
-      rot.x += (0 - rot.x) * Math.min(1, dt * 0.5);
-      rot.y += (0 - rot.y) * Math.min(1, dt * 0.5);
+    /* rotação: arrasto → inércia curta → mola até o repouso (ver rot) */
+    if (rot.mode === 2) {
+      rot.t += dt;
+      rot.yaw += rot.vy * dt;
+      rot.pitch += rot.vp * dt;
+      const k = Math.exp(-7 * dt);
+      rot.vy *= k;
+      rot.vp *= k;
+      clampRot();
+      if (rot.t >= 0.4) rot.mode = 0;
+    } else if (rot.mode === 0) {
+      if (autoOn) rot.auto += dt;
+      const ty = autoOn ? AUTO * Math.sin((rot.auto / 16) * Math.PI * 2) : 0;
+      const w0 = 4; // criticamente amortecida: assenta em ~1,5 s
+      rot.vy += (w0 * w0 * (ty - rot.yaw) - 2 * w0 * rot.vy) * dt;
+      rot.vp += (w0 * w0 * (0 - rot.pitch) - 2 * w0 * rot.vp) * dt;
+      rot.yaw += rot.vy * dt;
+      rot.pitch += rot.vp * dt;
+      clampRot();
     }
-    if (cloud.on) {
-      /* celular: gira só a nuvem; solto, a inércia volta à rotação lenta */
-      if (cloud.held) {
-        /* dedo na tela: só o arrasto gira (o valor guardado é para a inércia) */
-        cloud.spin *= Math.exp(-dt * 10);
-      } else {
-        cloud.spin += (CLOUD_SPIN - cloud.spin) * Math.min(1, dt * 1.5);
-        cloud.yaw += cloud.spin * dt;
-      }
-    } else {
-      rot.y = Math.max(-0.9, Math.min(0.9, rot.y + rot.vy * dt));
-      rot.x = Math.max(-0.5, Math.min(0.5, rot.x + rot.vx * dt));
-      group.rotation.set(rot.x, rot.y, rot.z);
-    }
+    group.rotation.set(rot.pitch, rot.yaw, 0);
 
     updateNodes(time);
     nodeGeo.attributes.position.needsUpdate = true;
@@ -776,7 +791,9 @@ export function createConstellation(
 
     /* buraco negro: inclinação acompanha o arrasto vertical; o cursor perto dele pesa na lente */
     bhUniforms.uTime.value = time;
-    bhUniforms.uIncl.value = Math.max(0.06, Math.min(0.5, 0.16 + rot.x * 0.6));
+    /* o disco inclina junto com o sistema, de leve: ±8° nos dois eixos */
+    bhUniforms.uIncl.value = Math.max(0.03, 0.16 + rot.pitch * (8 / 15));
+    bhUniforms.uRoll.value = -rot.yaw * (8 / 40);
     const pr = bhUniforms.uRes.value.x / W;
     const cx = (m.x * 0.5 + 0.5) * W, cy = (m.y * 0.5 + 0.5) * H;
     const bx = (bhNdc.x * 0.5 + 0.5) * W, by = (bhNdc.y * 0.5 + 0.5) * H;
@@ -913,25 +930,33 @@ export function createConstellation(
       pk.t = inside ? 1 : 0;
     },
     release() {
-      cloud.held = false;
-      dragging = 0;
+      if (rot.mode !== 1) return;
+      /* dedo parado antes de soltar: sem inércia */
+      if (performance.now() - rot.last > 80) rot.vy = rot.vp = 0;
+      rot.mode = 2;
+      rot.t = 0;
     },
     dragBy(dx, dy) {
-      dragging = 1;
-      if (cloud.on) {
-        /* celular: o dedo gira a nuvem (a rotação automática para enquanto arrasta) */
-        const a = (dx / Math.max(1, W)) * Math.PI * 1.4;
-        cloud.yaw += a;
-        cloud.held = true; // até release(): dedo parado continua segurando
-        cloud.spin = Math.max(-5, Math.min(5, a * 60)); // inércia ao soltar
-        return;
-      }
-      rot.vy = (dx / Math.max(1, W)) * 36;
-      rot.vx = (dy / Math.max(1, H)) * 18;
-      rot.y = Math.max(-0.9, Math.min(0.9, rot.y + (dx / Math.max(1, W)) * 3));
-      rot.x = Math.max(-0.5, Math.min(0.5, rot.x + (dy / Math.max(1, H)) * 1.5));
-      clearTimeout(dragTimer);
-      dragTimer = window.setTimeout(() => (dragging = 0), 60);
+      const now = performance.now();
+      const dts = Math.max(0.008, Math.min(0.1, (now - (rot.mode === 1 ? rot.last : now - 16)) / 1000));
+      rot.mode = 1;
+      rot.last = now;
+      const dyaw = (dx / Math.max(1, W)) * 2.2;
+      const dp = (dy / Math.max(1, H)) * 1.2;
+      rot.yaw += dyaw;
+      rot.pitch += dp;
+      /* velocidade para a inércia (média móvel, limitada) */
+      rot.vy = Math.max(-3, Math.min(3, rot.vy * 0.5 + (dyaw / dts) * 0.5));
+      rot.vp = Math.max(-1.5, Math.min(1.5, rot.vp * 0.5 + (dp / dts) * 0.5));
+      clampRot();
+    },
+    setKeepOut(rects) {
+      const same = rects.length === keep.length && rects.every((r, i) => ["x", "y", "w", "h"].every((k) => Math.abs(r[k as keyof Rect] - keep[i][k as keyof Rect]) < 1));
+      if (same) return;
+      keep = rects.slice(0, 4);
+      reg = null; // força o resize a recalcular a região
+      resize();
+      updateLines();
     },
     hit(x, y) {
       let best = -1;
@@ -952,8 +977,12 @@ export function createConstellation(
     },
     debug() {
       return {
-        hole: { x: (bhNdc.x * 0.5 + 0.5) * W, y: (-bhNdc.y * 0.5 + 0.5) * H, r: DISK_RS * pxPerRs },
+        hole: { x: (bhNdc.x * 0.5 + 0.5) * W, y: (-bhNdc.y * 0.5 + 0.5) * H, r: DISK_RS * pxPerRs, ex: reg?.ex ?? 0, ey: reg?.ey ?? 0 },
         nodes: Array.from({ length: n }, (_, i) => ({ x: screen[i * 2], y: screen[i * 2 + 1] })),
+        homes: reg?.homes.map((q) => ({ ...q })) ?? [],
+        keep: keep.map((r) => ({ ...r })),
+        margin: reg?.margin ?? 0,
+        rot: { yaw: rot.yaw, pitch: rot.pitch, mode: rot.mode },
         w: W,
         h: H,
       };
@@ -978,7 +1007,6 @@ export function createConstellation(
       destroyed = true;
       running = false;
       cancelAnimationFrame(raf);
-      clearTimeout(dragTimer);
       canvas.removeEventListener("webglcontextlost", onLost);
       for (const d of [dustGeo, dustMat, lineGeo, lineMat, nodeGeo, nodeMat, quad, lensMat, simpleMat]) d.dispose();
       rt?.dispose();

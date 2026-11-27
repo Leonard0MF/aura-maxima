@@ -7,7 +7,7 @@ import { claimGL, schedule as nudgeGL } from "@/lib/gl-slot";
 import { prewarm } from "@/lib/prewarm";
 
 import { auditDebug, note, probe } from "./diag";
-import type { Layout } from "./layout";
+import type { Layout, Rect } from "./layout";
 import type { Constellation } from "./scene";
 
 const idle = () => new Promise<void>((r) => ("requestIdleCallback" in window ? requestIdleCallback(() => r(), { timeout: 400 }) : setTimeout(r, 30)));
@@ -96,10 +96,32 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
     const field = ref.current!;
     const section = field.closest("section")!;
     const cap = probe(); // os contextos de teste são liberados na hora
+    /* caixas de texto da seção por cima do campo (px do campo): o sistema
+     * (nós e poeira) não as invade. No celular o campo já é só a faixa livre */
+    const keepOut = (): Rect[] => {
+      const f = field.getBoundingClientRect();
+      return [...section.querySelectorAll(".sh-label, .sh-title, .sh-lede, .audit-copy, .audit-list")]
+        .map((e) => e.getBoundingClientRect())
+        .filter((r) => r.width > 2 && r.height > 2 && r.bottom > f.top && r.top < f.bottom && r.right > f.left && r.left < f.right)
+        .map((r) => ({ x: r.left - f.left, y: r.top - f.top, w: r.width, h: r.height }));
+    };
+    let isStatic = false;
+    let lay: typeof import("./layout") | null = null;
+    const drawStatic = () => lay && setSvg(staticSvg(lay, nodes.length, field.clientWidth, field.clientHeight, keepOut()));
+    const ro = new ResizeObserver(() => (isStatic ? drawStatic() : sceneRef.current?.setKeepOut(keepOut())));
+    ro.observe(section);
+    /* os textos mudam de lugar sem a seção mudar de tamanho (modo estático,
+     * fontes): observa também o rodapé e a lista */
+    section.querySelectorAll(".audit-foot, .audit-list, .sh").forEach((e) => ro.observe(e));
     const fallback = (why: string) => {
       note("fallback", `imagem estática + lista (${why})`);
       section.dataset.static = "";
-      void import("./layout").then((lay) => setSvg(staticSvg(lay, nodes.length)));
+      isStatic = true;
+      /* mede depois de o layout do modo estático (data-static) assentar */
+      void import("./layout").then((m) => {
+        lay = m;
+        requestAnimationFrame(() => requestAnimationFrame(drawStatic));
+      });
     };
     /* só reduced-motion (escolha do usuário) ou falta de WebGL2 viram imagem
      * estática. O data-fx="static" do boot (≤ 4 núcleos) vale para o hero; a
@@ -196,7 +218,8 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
         made = createConstellation(c, nodes.length, {
           count,
           simple,
-          layout: layout.orbits.length === Math.min(nodes.length, 12) ? layout : undefined,
+          layout: layout.n === Math.min(nodes.length, 12) ? layout : undefined,
+          keep: keepOut(),
           /* contexto perdido (no celular: app em segundo plano, memória):
            * a 1ª vez recria; a 2ª vira imagem estática */
           onLost: () => {
@@ -444,6 +467,7 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
     field.addEventListener("pointercancel", onCancel);
 
     return () => {
+      ro.disconnect();
       mo.disconnect();
       document.removeEventListener("visibilitychange", sync);
       field.removeEventListener("touchstart", onTouch);
@@ -509,49 +533,50 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
   );
 }
 
-/* imagem estática: a mesma cena no instante 0 (buraco negro + rede), em SVG */
-function staticSvg(lay: typeof import("./layout"), n: number) {
-  const { makeLayout, orbitPos, projectStatic, HALF_H, DUST_TILT } = lay;
-  const W = 1600;
-  const H = 800;
+/* imagem estática: o mesmo sistema em repouso (buraco negro + anel + nós),
+ * em SVG, no tamanho do campo e com as mesmas caixas de texto evitadas */
+function staticSvg(lay: typeof import("./layout"), n: number, fw: number, fh: number, keep: Rect[]) {
+  const { makeLayout, region, DUST_TILT } = lay;
+  const W = Math.max(320, Math.round(fw)), H = Math.max(240, Math.round(fh));
   const L = makeLayout(n, 1400);
-  const bx = -0.5 * HALF_H * (W / H); // buraco negro no terço esquerdo
-  const P = (x: number, y: number, z: number) => projectStatic(x + bx, y, z, W, H);
-  const nodes = L.orbits.map((o) => orbitPos(o, 0));
-  const c = Math.cos(DUST_TILT), s = Math.sin(DUST_TILT);
+  const R = region(W, H, keep, n);
+  const { hc } = R;
+  const homes = R.homes;
+  const sq = Math.cos(DUST_TILT); // o anel visto inclinado
+  const spread = 0.38 * R.rin * 0.55;
+  const g = (k: number) => Math.sin(k * 12.9898) * 43758.5453 % 1; // desvio determinístico
   let dots = "";
   for (let i = 0; i < L.count; i++) {
     const [px, py, pz] = L.points.subarray(i * 3, i * 3 + 3);
     const [kind, a, b, t] = L.ref.subarray(i * 4, i * 4 + 4);
-    let q: number[];
-    if (kind === 0) q = [nodes[a][0] + px, nodes[a][1] + py, nodes[a][2] + pz];
-    else if (kind === 1) q = [0, 1, 2].map((k) => nodes[a][k] + (nodes[b][k] - nodes[a][k]) * t + [px, py, pz][k]);
-    else {
-      const r0 = kind === 2 ? px : px * Math.sqrt(1 - L.seeds[i]);
-      const h = kind === 2 ? pz : 0;
-      q = [Math.cos(py) * r0, Math.sin(py) * r0 * c - h * s, Math.sin(py) * r0 * s + h * c];
-      if (Math.hypot(q[0], q[1]) < 0.5) continue; // dentro da sombra
+    let x: number, y: number;
+    if (kind === 0) {
+      x = homes[a].x + px * spread;
+      y = homes[a].y + py * spread;
+    } else if (kind === 1) {
+      x = homes[a].x + (homes[b].x - homes[a].x) * t + px * spread;
+      y = homes[a].y + (homes[b].y - homes[a].y) * t + py * spread;
+    } else {
+      const u = kind === 2 ? px : px * (1 - Math.abs(g(i)));
+      const rr = R.rin + (R.rout - R.rin) * u;
+      x = hc.x + Math.cos(py) * rr;
+      y = hc.y - Math.sin(py) * rr * sq + pz * rr * 0.3;
     }
-    const p = P(q[0], q[1], q[2]);
+    /* nunca sobre o disco nem sobre um texto (o mesmo corte do shader) */
+    if (((x - hc.x) / R.ex) ** 2 + ((y - hc.y) / R.ey) ** 2 < 1.2 || keep.some((k) => x > k.x - 8 && x < k.x + k.w + 8 && y > k.y - 8 && y < k.y + k.h + 8)) continue;
     const col = L.tones[i] > 0.5 ? "#f5a524" : "#ece9e0";
-    dots += `<circle cx="${p.x.toFixed(0)}" cy="${p.y.toFixed(0)}" r="${(L.sizes[i] * 1.1 * p.s).toFixed(1)}" fill="${col}" fill-opacity="${L.tones[i] > 0.5 ? 0.55 : 0.4}"/>`;
+    dots += `<circle cx="${x.toFixed(0)}" cy="${y.toFixed(0)}" r="${(L.sizes[i] * 1.1).toFixed(1)}" fill="${col}" fill-opacity="${L.tones[i] > 0.5 ? 0.55 : 0.4}"/>`;
   }
   const lines = L.pairs
-    .map(([a, b]) => {
-      const p = P(nodes[a][0], nodes[a][1], nodes[a][2]);
-      const q = P(nodes[b][0], nodes[b][1], nodes[b][2]);
-      return `<line x1="${p.x.toFixed(0)}" y1="${p.y.toFixed(0)}" x2="${q.x.toFixed(0)}" y2="${q.y.toFixed(0)}"/>`;
-    })
+    .filter(([a, b]) => Math.hypot((homes[a].x + homes[b].x) / 2 - hc.x, (homes[a].y + homes[b].y) / 2 - hc.y) > R.rin * 0.9)
+    .map(([a, b]) => `<line x1="${homes[a].x.toFixed(0)}" y1="${homes[a].y.toFixed(0)}" x2="${homes[b].x.toFixed(0)}" y2="${homes[b].y.toFixed(0)}"/>`)
     .join("");
-  const nodeDots = nodes
-    .map(([x, y, z]) => {
-      const p = P(x, y, z);
-      return `<circle cx="${p.x.toFixed(0)}" cy="${p.y.toFixed(0)}" r="14" fill="#f5a524" fill-opacity=".18"/><circle cx="${p.x.toFixed(0)}" cy="${p.y.toFixed(0)}" r="4" fill="#fff3d6"/>`;
-    })
+  const nodeDots = homes
+    .map((p) => `<circle cx="${p.x.toFixed(0)}" cy="${p.y.toFixed(0)}" r="14" fill="#f5a524" fill-opacity=".18"/><circle cx="${p.x.toFixed(0)}" cy="${p.y.toFixed(0)}" r="4" fill="#fff3d6"/>`)
     .join("");
   /* buraco negro: arco de trás (imagem curvada do disco), horizonte, anel de fótons, frente do disco */
-  const o = P(0, 0, 0);
-  const rs = H * 0.026;
+  const o = { x: hc.x, y: hc.y };
+  const rs = hc.rs;
   const sh = 2.6 * rs;
   const hole = `<defs>
 <radialGradient id="bh-arc" cx="${o.x}" cy="${o.y}" r="${(7.7 * rs).toFixed(0)}" gradientUnits="userSpaceOnUse"><stop offset="${(sh / (7.7 * rs)).toFixed(2)}" stop-color="#fff3d6"/><stop offset=".5" stop-color="#f5a524" stop-opacity=".7"/><stop offset="1" stop-color="#f5a524" stop-opacity="0"/></radialGradient>
