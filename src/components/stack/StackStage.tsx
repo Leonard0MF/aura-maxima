@@ -226,7 +226,10 @@ export function StackStage({ tokens, mobile: mobileIds, cats }: { tokens: { id: 
     const html = document.documentElement;
     const gl2 = (() => {
       try {
-        return !!document.createElement("canvas").getContext("webgl2");
+        /* contexto de teste liberado na hora (celular tem poucos contextos) */
+        const gl = document.createElement("canvas").getContext("webgl2");
+        gl?.getExtension("WEBGL_lose_context")?.loseContext();
+        return !!gl;
       } catch {
         return false;
       }

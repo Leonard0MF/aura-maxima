@@ -60,7 +60,27 @@ export function orbitPos(o: Orbit, t: number, out: number[] = [0, 0, 0]) {
   return out;
 }
 
+/* mesmo resultado nos dois caminhos: Worker (de uma vez) ou main thread em
+ * pedaços (sem Worker): o gerador para a cada `chunk` partículas */
 export function makeLayout(nNodes: number, count: number, seed = 7): Layout {
+  const it = layoutSteps(nNodes, count, seed, Infinity);
+  let r = it.next();
+  while (!r.done) r = it.next();
+  return r.value;
+}
+
+/** sem Worker: gera em pedaços de `chunk` partículas, um por idle */
+export async function makeLayoutChunked(nNodes: number, count: number, idle: () => Promise<void>, chunk = 300): Promise<Layout> {
+  const it = layoutSteps(nNodes, count, 7, chunk);
+  let r = it.next();
+  while (!r.done) {
+    await idle();
+    r = it.next();
+  }
+  return r.value;
+}
+
+function* layoutSteps(nNodes: number, count: number, seed: number, chunk: number): Generator<void, Layout, void> {
   const r = rng(seed);
   const g = () => {
     const u = Math.max(1e-6, r());
@@ -107,6 +127,7 @@ export function makeLayout(nNodes: number, count: number, seed = 7): Layout {
   const tones = new Float32Array(count);
   const sizes = new Float32Array(count);
   for (let p = 0; p < count; p++) {
+    if (p > 0 && p % chunk === 0) yield;
     const kind = r();
     if (kind < 0.3) {
       const s = 0.16 + r() * 0.3;

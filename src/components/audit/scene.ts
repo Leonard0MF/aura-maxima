@@ -889,6 +889,23 @@ export function createConstellation(
       resize();
       updateLines();
       draw();
+      /* 4. todos os programas linkaram? Sem KHR_parallel_shader_compile é
+       *    aqui que o link acontece: síncrono, mas um programa por idle e
+       *    longe da seção. Erro de shader (comum em GPU de celular) vira
+       *    exceção: o componente cai na imagem estática em vez de um canvas
+       *    vazio (em produção o three não confere os shaders). */
+      const gl = renderer.getContext();
+      type Prog = { program: WebGLProgram; vertexShader?: WebGLShader; fragmentShader?: WebGLShader; name?: string };
+      for (const p of (renderer.info.programs ?? []) as unknown as Prog[]) {
+        await idle();
+        if (destroyed) return;
+        if (gl.isContextLost()) throw new Error("contexto perdido durante o aquecimento");
+        if (gl.getProgramParameter(p.program, gl.LINK_STATUS)) continue;
+        const logs = [gl.getProgramInfoLog(p.program), p.vertexShader && gl.getShaderInfoLog(p.vertexShader), p.fragmentShader && gl.getShaderInfoLog(p.fragmentShader)];
+        throw new Error(`shader ${p.name || "?"}: ${logs.filter(Boolean).join(" | ").trim().slice(0, 600) || "link falhou"}`);
+      }
+      const err = gl.getError();
+      if (err && err !== gl.CONTEXT_LOST_WEBGL) throw new Error(`WebGL erro 0x${err.toString(16)} no aquecimento`);
     },
     choose() {
       if (!chosen) chosen = pickLevel(renderer.getContext(), opts.simple);

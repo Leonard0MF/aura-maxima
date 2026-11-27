@@ -6,43 +6,47 @@ import type { AuditNode, CheckStatus } from "@/content/audit";
 import { claimGL, schedule as nudgeGL } from "@/lib/gl-slot";
 import { prewarm } from "@/lib/prewarm";
 
+import { auditDebug, note, probe } from "./diag";
 import type { Layout } from "./layout";
 import type { Constellation } from "./scene";
 
-/* posições das partículas: geradas uma vez (num Worker; sem Worker, em idle)
- * e reaproveitadas a cada nova montagem */
+const idle = () => new Promise<void>((r) => ("requestIdleCallback" in window ? requestIdleCallback(() => r(), { timeout: 400 }) : setTimeout(r, 30)));
+
+/* posições das partículas: geradas uma vez (num Worker, buffers
+ * transferidos; sem Worker, na main thread em pedaços de 300 partículas, um
+ * por idle) e reaproveitadas a cada nova montagem */
 const layouts = new Map<string, Promise<Layout>>();
 function getLayout(n: number, count: number) {
   const key = `${n}:${count}`;
   let p = layouts.get(key);
   if (!p) {
-    const local = () =>
-      new Promise<Layout>((res) => {
-        const go = () => void import("./layout").then((m) => res(m.makeLayout(n, count)));
-        if ("requestIdleCallback" in window) requestIdleCallback(go, { timeout: 500 });
-        else setTimeout(go, 0);
+    const local = (why: string) =>
+      import("./layout").then((m) => {
+        note("layout", `main thread em pedaços (${why})`);
+        return m.makeLayoutChunked(n, count, idle);
       });
     p = new Promise<Layout>((res) => {
+      if (typeof Worker === "undefined") return void local("sem Worker").then(res);
       try {
         const w = new Worker(new URL("./layout.worker.ts", import.meta.url), { type: "module" });
         w.onmessage = (e: MessageEvent<Layout>) => {
+          note("layout", `Worker (${count} partículas)`);
           res(e.data);
           w.terminate();
         };
         w.onerror = () => {
           w.terminate();
-          void local().then(res);
+          void local("Worker falhou").then(res);
         };
         w.postMessage({ n, count });
       } catch {
-        void local().then(res);
+        void local("Worker indisponível").then(res);
       }
     });
     layouts.set(key, p);
   }
   return p;
 }
-const idle = () => new Promise<void>((r) => ("requestIdleCallback" in window ? requestIdleCallback(() => r(), { timeout: 400 }) : setTimeout(r, 30)));
 
 const STATUS: Record<CheckStatus, string> = {
   pass: "bg-[#8fd6a8]",
@@ -67,10 +71,13 @@ const fill = (s: string, v: Record<string, number>) => s.replace(/\{(\w+)\}/g, (
  *   cartão é um bottom sheet com botão de fechar (tocar fora ou rolar fecha)
  * - clique no vazio: onda de scan saindo do horizonte; os nós acendem em
  *   sequência e a nota aparece grande ao lado
- * Celular e máquinas fracas: versão simplificada (sem o pass de lente).
- * Fallback (reduced-motion, aparelho fraco, sem WebGL): imagem estática da
- * mesma cena + a lista dos dados em texto (que sempre existe para leitores
- * de tela).
+ * Celular e máquinas fracas: versão simplificada (sem o pass de lente) e,
+ * em aparelho fraco, menos partículas (mínimo 600) — o nível mais baixo
+ * NUNCA desliga a constelação; os nós continuam visíveis.
+ * Fallback (reduced-motion, sem WebGL2, erro de shader, contexto perdido
+ * duas vezes): imagem estática da mesma cena + os nós como lista tocável
+ * no celular (a lista em texto sempre existe para leitores de tela).
+ * Diagnóstico em aparelho real: ?auditdebug (diag.ts).
  */
 export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: AuditLabels }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -80,6 +87,7 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
   const [reveal, setReveal] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [svg, setSvg] = useState<string | null>(null);
+  const [tap, setTap] = useState(-1); // modo estático: nó aberto na lista tocável
   const sceneRef = useRef<Constellation | null>(null);
   const cardIdx = useRef(-1);
   const closeCard = useRef<() => void>(() => {});
@@ -87,25 +95,30 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
   useEffect(() => {
     const field = ref.current!;
     const section = field.closest("section")!;
-    const gl = (() => {
-      try {
-        return !!document.createElement("canvas").getContext("webgl2");
-      } catch {
-        return false;
-      }
-    })();
-    const fallback = () => {
+    const cap = probe(); // os contextos de teste são liberados na hora
+    const fallback = (why: string) => {
+      note("fallback", `imagem estática + lista (${why})`);
       section.dataset.static = "";
       void import("./layout").then((lay) => setSvg(staticSvg(lay, nodes.length)));
     };
-    if (document.documentElement.dataset.fx === "static" || !gl) {
-      fallback();
+    /* só reduced-motion (escolha do usuário) ou falta de WebGL2 viram imagem
+     * estática. O data-fx="static" do boot (≤ 4 núcleos) vale para o hero; a
+     * constelação roda nesses aparelhos, só mais leve. O three.js (r163+) não
+     * suporta WebGL1: aí a versão simplificada é a imagem + lista */
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      fallback("reduced-motion");
+      return;
+    }
+    if (!cap.webgl2) {
+      fallback(cap.webgl1 ? "só WebGL1" : "sem WebGL");
       return;
     }
 
     const mobile = matchMedia("(max-width: 639px)").matches;
     /* sem o pass de lente: celular/toque (no resto, lib/gpu-perf decide) */
     const simple = mobile || matchMedia("(pointer: coarse)").matches;
+    /* aparelho fraco: menos partículas, nunca menos de 600 */
+    const weak = (cap.cores > 0 && cap.cores <= 4) || (cap.mem > 0 && cap.mem <= 2);
     let scene: Constellation | null = null;
     let canvas: HTMLCanvasElement | null = null;
     let want = false; // o contexto deve existir (lib/gl-slot)
@@ -135,7 +148,7 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
         stop();
         if (scene !== s) return;
         const r = s.choose();
-        if (process.env.NODE_ENV !== "production") console.info(`[audit] qualidade ${r.quality} · ${r.why}`);
+        note("qualidade", `${r.quality} · ${r.why}`);
         ready = true;
         sync();
       };
@@ -147,12 +160,15 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
     /* preparação em pedaços: código e layout em paralelo (o layout num
      * Worker), contexto num idle, shaders e aquecimento em outros (warm).
      * Termina com o loop PARADO; quem liga é o gl-slot. */
-    const count = mobile ? 1500 : 4500;
-    const mount = async () => {
-      if (scene) return;
+    const count = weak ? 600 : mobile ? 1500 : 4500;
+    note("partículas", `${count}${weak ? " (aparelho fraco)" : ""} · ${simple ? "simple (sem lente)" : "lente (nível decidido perto da seção)"}`);
+    let losses = 0;
+    let dead = false; // caiu na imagem estática: não monta mais
+    const mount = async (): Promise<void> => {
+      if (scene || dead) return;
       const [{ createConstellation }, layout] = await Promise.all([import("./scene"), getLayout(Math.min(nodes.length, 12), count)]);
       await idle();
-      if (!want || scene) return;
+      if (!want || scene || dead) return;
       const c = document.createElement("canvas");
       c.className = "audit-canvas";
       c.setAttribute("aria-hidden", "true");
@@ -162,17 +178,36 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
           count,
           simple,
           layout: layout.orbits.length === Math.min(nodes.length, 12) ? layout : undefined,
+          /* contexto perdido (no celular: app em segundo plano, memória):
+           * a 1ª vez recria; a 2ª vira imagem estática */
           onLost: () => {
+            losses++;
+            note("contexto perdido", `${losses}×`);
             unmount();
-            fallback();
+            if (losses >= 2) {
+              dead = true;
+              fallback("contexto WebGL perdido 2×");
+            } else
+              setTimeout(() => {
+                if (want && !scene && !pending) pending = mount().finally(() => (pending = null));
+              }, 600);
           },
         });
-      } catch {
-        fallback();
+      } catch (e) {
+        dead = true;
+        fallback(`erro ao criar o WebGL: ${(e as Error)?.message || e}`);
         return;
       }
       field.prepend(c);
-      await made.warm();
+      try {
+        await made.warm();
+      } catch (e) {
+        made.destroy();
+        c.remove();
+        dead = true;
+        fallback((e as Error)?.message || String(e));
+        return;
+      }
       if (!want) {
         made.destroy();
         c.remove();
@@ -182,8 +217,9 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
       scene = made;
       sceneRef.current = scene;
       /* testes automatizados (?auditdebug) */
-      if (location.search.includes("auditdebug")) (window as unknown as { __audit?: Constellation }).__audit = scene;
+      if (auditDebug()) (window as unknown as { __audit?: Constellation }).__audit = scene;
       section.dataset.live = "";
+      note("campo", `${field.clientWidth}×${field.clientHeight} px · canvas ${c.width}×${c.height}`);
       chooseWhenNear(made);
     };
     const unmount = () => {
@@ -414,6 +450,25 @@ export function AuditField({ nodes, labels }: { nodes: AuditNode[]; labels: Audi
   return (
     <div ref={ref} className="audit-field">
       {svg && <div className="audit-static" aria-hidden="true" dangerouslySetInnerHTML={{ __html: svg }} />}
+      {/* modo estático no celular: os nós como cartões tocáveis sobre a imagem
+          (no desktop, a lista em texto do rodapé) */}
+      {svg && (
+        <ul className="audit-taps font-mono">
+          {nodes.map((n, i) => (
+            <li key={n.id}>
+              <button type="button" className="audit-tap" aria-expanded={tap === i} aria-controls={`audit-tap-${n.id}`} onClick={() => setTap(tap === i ? -1 : i)}>
+                <span aria-hidden="true" className={`size-1.5 shrink-0 rounded-full ${STATUS[n.status]}`} />
+                <span className="min-w-0 flex-1 truncate">{n.label}</span>
+                <span className="sr-only">{labels.status[n.status]}</span>
+                <span aria-hidden="true" className="text-dim">{tap === i ? "−" : "+"}</span>
+              </button>
+              <p id={`audit-tap-${n.id}`} hidden={tap !== i} className="audit-tap__value">
+                {n.value}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {node && (
         <div ref={cardRef} className="audit-card" role="status">
