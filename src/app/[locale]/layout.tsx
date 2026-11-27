@@ -3,6 +3,7 @@ import { hasLocale } from "next-intl";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { notFound } from "next/navigation";
 
+import { DiagMount } from "@/components/DiagMount";
 import { SITE_URL, profile } from "@/content/profile";
 import { htmlLang, ogLocale, routing } from "@/i18n/routing";
 import { alternates } from "@/i18n/seo";
@@ -59,12 +60,15 @@ export const viewport: Viewport = {
 /*
  * Roda antes da primeira pintura:
  *  - pula a animação do scan em visitas repetidas na sessão ou com reduced-motion;
- *  - usa a imagem estática do objeto 3D com reduced-motion ou CPU fraca (≤ 4 núcleos);
+ *  - usa a imagem estática do hero só com reduced-motion (nunca pelo número
+ *    de núcleos: o Safari do iPhone informa 4 mesmo em aparelhos potentes;
+ *    a qualidade de cada seção sai da medição de fps);
  *  - liga a entrada do AUDIT (data-reveal: círculo de ~900 ms); com
  *    reduced-motion fica o fade simples.
- * Storage pode lançar exceção (aba privada, bloqueio): tudo em try/catch.
+ * Storage pode lançar exceção (aba privada, bloqueio): cada leitura em
+ * try/catch; sem storage, só repete o scan/intro na próxima visita.
  */
-const boot = `(function(){var d=document.documentElement;d.dataset.js="1";try{if(sessionStorage.getItem("recon:scan-seen")||matchMedia("(prefers-reduced-motion: reduce)").matches)d.dataset.scan="instant"}catch(e){}try{var q=location.search,f=/[?&]intro=1/.test(q),rm=matchMedia("(prefers-reduced-motion: reduce)").matches,lc=(navigator.hardwareConcurrency||8)<=4,w="";if((rm||lc)&&!f)d.dataset.fx="static";if(/[?&]intro=0/.test(q))w="param";else if(!f&&rm)w="reduced-motion";else if(!f&&lc)w="low-cores";else if(!f&&sessionStorage.getItem("recon:intro"))w="session";if(w)d.dataset.introWhy=w;else{d.dataset.intro="pending";d.dataset.introAt=Math.round(performance.now());if(f)d.dataset.introForce="";var s=function(){if(d.dataset.intro==="pending"){d.dataset.intro="done";d.dataset.introWhy="input"}};["pointerdown","keydown","wheel","touchstart","scroll"].forEach(function(n){addEventListener(n,s,{once:true,passive:true})})}}catch(e){d.dataset.introWhy="error"}try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches)d.dataset.reveal="1"}catch(e){}})()`;
+const boot = `(function(){var d=document.documentElement;d.dataset.js="1";var ss=function(k){try{return sessionStorage.getItem(k)}catch(e){return null}};var rm=false;try{rm=matchMedia("(prefers-reduced-motion: reduce)").matches}catch(e){}if(ss("recon:scan-seen")||rm)d.dataset.scan="instant";try{var q=location.search,f=/[?&]intro=1/.test(q),w="";if(rm&&!f)d.dataset.fx="static";if(/[?&]intro=0/.test(q))w="param";else if(!f&&rm)w="reduced-motion";else if(!f&&ss("recon:intro"))w="session";if(w)d.dataset.introWhy=w;else{d.dataset.intro="pending";d.dataset.introAt=Math.round(performance.now());if(f)d.dataset.introForce="";var s=function(){if(d.dataset.intro==="pending"){d.dataset.intro="done";d.dataset.introWhy="input"}};["pointerdown","keydown","wheel","touchstart","scroll"].forEach(function(n){addEventListener(n,s,{once:true,passive:true})})}}catch(e){d.dataset.introWhy="error"}if(!rm)d.dataset.reveal="1"})()`;
 
 export default async function LocaleLayout({ children, params }: Readonly<{ children: React.ReactNode }> & Props) {
   const { locale } = await params;
@@ -85,6 +89,7 @@ export default async function LocaleLayout({ children, params }: Readonly<{ chil
           {t("skip")}
         </a>
         {children}
+        <DiagMount />
       </body>
     </html>
   );

@@ -1,36 +1,22 @@
 /*
  * Diagnóstico da constelação (para depurar em aparelho real).
  *
- * Com ?auditdebug na URL: cada dado vai para o console ("[audit] chave: valor")
- * e para um painel fixo na tela (dá para tirar print no celular, mesmo sem
- * depuração remota). No dev, só o console. Em produção sem o parâmetro, nada.
+ * Com ?debug (ou ?auditdebug) na URL: cada dado vai para o console
+ * ("[audit] chave: valor") e para o painel geral de lib/diag. No dev, só o
+ * console. Em produção sem o parâmetro, nada.
  *
  * O que registra: WebGL2/WebGL1, KHR_parallel_shader_compile,
  * Worker/OffscreenCanvas/requestIdleCallback, núcleos, memória, GPU, nº de
  * partículas, onde o layout foi gerado, nível de qualidade, erros de shader,
  * perdas de contexto, tamanho do campo e o motivo de qualquer fallback.
  */
-const data: Record<string, string> = {};
-let panel: HTMLPreElement | null = null;
+import { debugOn, report } from "@/lib/diag";
 
-export const auditDebug = () => typeof location !== "undefined" && location.search.includes("auditdebug");
+export const auditDebug = debugOn;
 
+/** vai para o painel geral (lib/diag, seção "audit") */
 export function note(key: string, value: unknown) {
-  const v = typeof value === "string" ? value : JSON.stringify(value);
-  data[key] = v;
-  const debug = auditDebug();
-  if (debug || process.env.NODE_ENV !== "production") console.info(`[audit] ${key}: ${v}`);
-  if (!debug) return;
-  if (!panel) {
-    panel = document.createElement("pre");
-    panel.setAttribute("aria-hidden", "true");
-    panel.style.cssText =
-      "position:fixed;left:8px;right:8px;bottom:8px;z-index:9999;max-height:45vh;overflow:auto;margin:0;padding:8px 10px;background:rgb(0 0 0/.85);color:#f5a524;font:10px/1.45 ui-monospace,monospace;white-space:pre-wrap;word-break:break-word;border:1px solid #f5a524;pointer-events:none";
-    document.body.appendChild(panel);
-  }
-  panel.textContent = Object.entries(data)
-    .map(([k, x]) => `${k}: ${x}`)
-    .join("\n");
+  report("audit", key, value);
 }
 
 /** suporte do aparelho (uma vez; os contextos de teste são liberados na hora) */

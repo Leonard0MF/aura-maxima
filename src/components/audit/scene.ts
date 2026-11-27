@@ -411,7 +411,9 @@ export function createConstellation(
   const n = Math.min(nNodes, MAX_NODES);
   /* posições prontas do Worker (layout.worker); sem ele, o mesmo cálculo aqui */
   const L = opts.layout ?? makeLayout(n, opts.count);
-  const dpr = Math.min(1.5, window.devicePixelRatio || 1);
+  /* DPR até 2: os níveis de qualidade (lente 0,75/0,5) e a vigia de fps
+   * baixam a resolução se o aparelho não aguentar */
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
 
   const renderer = new WebGLRenderer({ canvas, alpha: true, antialias: false, powerPreference: "high-performance" });
   renderer.setPixelRatio(dpr);

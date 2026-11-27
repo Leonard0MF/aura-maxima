@@ -1227,6 +1227,11 @@ html[data-js] [data-stack]:not([data-static]) .stack-grid {
 .audit-body {
   position: relative;
 }
+/* hero: no toque, a lente segue o dedo (Pointer Events); a rolagem vertical
+ * da página continua nativa */
+.hero {
+  touch-action: pan-y;
+}
 /* ---- constelação (AuditField) ---- */
 .audit {
   /* a seção inteira é a tela da constelação */
