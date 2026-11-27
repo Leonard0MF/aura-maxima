@@ -11,5 +11,5 @@ const ctx = self as unknown as {
 
 ctx.onmessage = (e) => {
   const L = makeLayout(e.data.n, e.data.count);
-  ctx.postMessage(L, [L.points.buffer, L.ref.buffer, L.seeds.buffer, L.tones.buffer, L.sizes.buffer]);
+  ctx.postMessage(L, [L.nodes.buffer, L.points.buffer, L.seeds.buffer, L.tones.buffer, L.sizes.buffer]);
 };
